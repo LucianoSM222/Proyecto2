@@ -104,6 +104,10 @@ excel_data: List[Dict] = []
 #   by_caseron : {caseron_norm: [band, ...]}       (mismo caserón, varias litologías)
 #   records    : lista completa de bandas parseadas
 geomech_bands: Dict[str, Dict] = {"by_pair": {}, "by_lito": {}, "by_caseron": {}, "records": []}
+# Resultados de la validación multipozo de posición de mallas (T4): lista de
+# dicts por malla de estructura, poblada por run_validation_task en el hilo de
+# fondo y renderizada por _mesh_validation_card en el Paso 5.
+mesh_validation_results: List[Dict] = []
 parse_warnings: List[str] = []
 rf_model = None
 rf_stats: Optional[Dict] = None
@@ -138,6 +142,15 @@ task_state = {
     "done": False,           # True cuando la tarea terminó (con o sin error)
 }
 task_lock = threading.Lock()
+
+# Segunda tarea de fondo (T4, validación multipozo de mallas). Estado separado
+# de task_state a propósito: la validación puede correr sin pisar el flujo del
+# ML (cada tarea tiene su propio dcc.Interval de polling); ambas comparten
+# task_lock, que solo protege lecturas/escrituras breves de los dicts.
+val_task_state = {
+    "running": False, "progress": 0, "stage": "", "log": [],
+    "error": None, "result": None, "done": False,
+}
 
 def task_log(msg, stage=None, progress=None):
     with task_lock:
@@ -850,6 +863,223 @@ def compute_di():
         except Exception as e:
             log_warn(f'DI "{wn}": {e}')
 
+# ─── VALIDACIÓN MULTIPOZO DE POSICIÓN DE MALLAS DXF (T4) ──────────────────────
+# Un pico DI aislado en un pozo no prueba nada; la evidencia de que una malla
+# está corrida es la CONSISTENCIA MULTIPOZO: si ≥3 pozos del mismo sector
+# cruzan la misma estructura y sus picos DI apareados son coplanares entre sí
+# pero sistemáticamente desplazados respecto de la malla, la malla es la
+# sospechosa. Los primeros metros de cada tiro (emboquillado / daño por
+# tronadura → picos DI falsos) se excluyen reutilizando p.entrenable.
+VAL_MAX_OFFSET_M = 10.0   # descartar apareos cruce↔pico con |offset| mayor
+VAL_MIN_WELLS = 3         # mínimo de pozos apareados para emitir veredicto
+
+def well_mesh_crossings(well, layer):
+    """
+    (T4a) Profundidades (largo) donde el pozo ENTRA o SALE de la malla,
+    detectadas como transiciones del estado dentro/fuera al aplicar
+    points_in_mesh a los puntos del pozo en orden. La coordenada del cruce se
+    interpola al punto medio entre el último punto de un estado y el primero
+    del otro (muestreo MWD ~2 cm → error de interpolación despreciable).
+    Devuelve [(largo_cruce, coord_utm(3,)), ...] con coord = [Este,Norte,Cota].
+    """
+    pts = well.points
+    if len(pts) < 2: return []
+    coords = np.array([[p.este, p.norte, p.cota] for p in pts], dtype=np.float64)
+    valid = np.all(np.isfinite(coords), axis=1)
+    if not valid.any(): return []
+    inside = np.zeros(len(pts), dtype=bool)
+    inside[valid] = points_in_mesh(coords[valid], layer)
+    crossings = []
+    for i in range(1, len(pts)):
+        if not (valid[i] and valid[i-1]): continue
+        if inside[i] != inside[i-1]:
+            lc = 0.5 * (pts[i-1].largo + pts[i].largo)
+            cc = 0.5 * (coords[i-1] + coords[i])
+            crossings.append((float(lc), cc))
+    return crossings
+
+def di_peaks(well, min_gap_m=0.5):
+    """
+    (T4b) Profundidades de picos con DI > di_threshold. Picos separados menos
+    de min_gap_m se fusionan en un solo evento (se toma el largo del máximo DI
+    del grupo). Se ignoran los puntos con entrenable=False (excluye el
+    emboquillado con el corte ya existente). Devuelve
+    [(largo_pico, coord_utm(3,), di_max), ...].
+    """
+    cand = [(p.largo, np.array([p.este, p.norte, p.cota], dtype=np.float64), p.di)
+            for p in well.points
+            if p.entrenable and p.di is not None and np.isfinite(p.di)
+            and p.di > di_threshold]
+    if not cand: return []
+    cand.sort(key=lambda c: c[0])
+    grupos, grupo = [], [cand[0]]
+    for c in cand[1:]:
+        if c[0] - grupo[-1][0] < min_gap_m: grupo.append(c)
+        else: grupos.append(grupo); grupo = [c]
+    grupos.append(grupo)
+    return [max(g, key=lambda c: c[2]) for g in grupos]
+
+def _pair_crossings_peaks(well, layer, max_offset_m=VAL_MAX_OFFSET_M):
+    """
+    (T4c) Aparea cada cruce pozo↔malla con el pico DI más cercano del mismo
+    pozo. Offset firmado = largo_pico − largo_cruce (positivo = el pico está
+    MÁS PROFUNDO que la malla). Se descartan apareos con |offset| > max_offset_m.
+    """
+    crossings = well_mesh_crossings(well, layer)
+    peaks = di_peaks(well)
+    pares = []
+    for lc, cc in crossings:
+        if not peaks: break
+        lp, cp, dv = min(peaks, key=lambda pk: abs(pk[0] - lc))
+        off = lp - lc
+        if abs(off) <= max_offset_m:
+            pares.append({"pozo": well.well_name,
+                          "largo_cruce": round(lc, 3), "largo_pico": round(lp, 3),
+                          "offset": round(off, 3), "di_pico": round(float(dv), 3),
+                          "cruce_pt": cc, "pico_pt": cp})
+    return {"n_cruces": len(crossings), "pares": pares}
+
+def _fit_plane_svd(points):
+    """
+    (T4d) Ajuste de plano por SVD: se centran los puntos y la normal del plano
+    es el vector singular de MENOR valor singular. Devuelve (centroide,
+    normal_unitaria, degenerado). Degenerado = puntos casi colineales (2º valor
+    singular ~0), caso en que la normal es ambigua y no debe usarse.
+    """
+    P = np.asarray(points, dtype=np.float64)
+    c = P.mean(axis=0)
+    _, S, Vt = np.linalg.svd(P - c, full_matrices=False)
+    n = Vt[-1]
+    nrm = float(np.linalg.norm(n))
+    if nrm == 0: return c, np.array([0.0, 0.0, 1.0]), True
+    degen = len(P) < 3 or S[-2] < 1e-9 or (S[-2] / max(S[0], 1e-12)) < 1e-4
+    return c, n / nrm, degen
+
+def validate_mesh_positions(kinds=("estructura",), max_offset_m=VAL_MAX_OFFSET_M,
+                            min_wells=VAL_MIN_WELLS, progress_cb=None):
+    """
+    (T4d/e) Validación multipozo de la posición de cada malla DXF de los tipos
+    `kinds`. Por malla: cruces y picos por pozo, apareo cruce↔pico, y con ≥
+    min_wells pozos apareados se calcula el offset medio ± std y un veredicto:
+      · "consistente" si |offset medio| < 2·std  o  |offset medio| < 1.0 m
+      · "posible desplazamiento de X m" en caso contrario.
+
+    El offset PRIMARIO (veredicto) es a lo largo del pozo (largo_pico −
+    largo_cruce), robusto siempre. Como métrica adicional (T4d) se ajusta un
+    plano por SVD a los picos apareados y, si no es degenerado (picos no
+    colineales), se reporta el offset NORMAL: distancia firmada de cada pico al
+    plano medio de los cruces DXF a lo largo de la normal ajustada (la
+    aproximación aceptada por la spec frente al triángulo-más-cercano, que es
+    ambiguo en mallas rugosas). Si los picos son colineales (p.ej. pozos
+    paralelos con picos a igual largo) la normal es ambigua y se omite.
+
+    Pozos con posición ficticia (origin no_dq/ambiguous) se excluyen: su
+    geometría no aporta evidencia de posición.
+    """
+    target = [(n, l) for n, l in layers.items() if l.kind in kinds]
+    resultados = []
+    total = max(len(target) * max(len(wells), 1), 1)
+    done = 0
+    for name, layer in target:
+        pares_all = []
+        pozos_cruzan, pozos_apareados = set(), set()
+        for wn, well in wells.items():
+            done += 1
+            if progress_cb: progress_cb(done / total, f"{name} ↔ {wn}")
+            if well.origin in ("no_dq", "ambiguous"):
+                continue
+            try:
+                r = _pair_crossings_peaks(well, layer, max_offset_m)
+            except Exception as e:
+                log_warn(f'Validación "{name}" en "{wn}": {e}'); continue
+            if r["n_cruces"]: pozos_cruzan.add(wn)
+            if r["pares"]:
+                pozos_apareados.add(wn)
+                pares_all.extend(r["pares"])
+        res = {"malla": name, "n_pozos_cruzan": len(pozos_cruzan),
+               "n_pozos_apareados": len(pozos_apareados), "n_pares": len(pares_all),
+               "offsets": [p["offset"] for p in pares_all],
+               "offset_medio": None, "offset_std": None,
+               "offset_normal_medio": None, "offset_normal_std": None,
+               "veredicto": "sin datos", "detalle": pares_all}
+        if len(pozos_apareados) >= min_wells:
+            offs = np.array(res["offsets"], dtype=np.float64)
+            om, osd = float(offs.mean()), float(offs.std())
+            res["offset_medio"], res["offset_std"] = round(om, 3), round(osd, 3)
+            # (T4d) plano SVD sobre los picos únicos (un pico puede aparearse a
+            # dos cruces —entrada y salida—; para el plano cuenta una vez)
+            uniq = {}
+            for p in pares_all:
+                uniq[(p["pozo"], p["largo_pico"])] = p["pico_pt"]
+            ppts = list(uniq.values())
+            if len(ppts) >= 3:
+                _, npk, degen = _fit_plane_svd(ppts)
+                if not degen:
+                    c_ref = np.mean([p["cruce_pt"] for p in pares_all], axis=0)
+                    # Orientar la normal hacia el avance del pozo, para que
+                    # "positivo = más profundo" coincida con el offset por largo
+                    adv = np.zeros(3)
+                    for p in pares_all:
+                        d = np.asarray(p["pico_pt"]) - np.asarray(p["cruce_pt"])
+                        adv += d if p["offset"] >= 0 else -d
+                    if float(np.dot(npk, adv)) < 0: npk = -npk
+                    dn = [float(np.dot(np.asarray(v) - c_ref, npk)) for v in ppts]
+                    res["offset_normal_medio"] = round(float(np.mean(dn)), 3)
+                    res["offset_normal_std"] = round(float(np.std(dn)), 3)
+            # (T4e) veredicto por consistencia
+            if abs(om) < 2.0 * osd or abs(om) < 1.0:
+                res["veredicto"] = "consistente"
+            else:
+                res["veredicto"] = f"posible desplazamiento de {om:+.1f} m"
+        elif pares_all:
+            res["veredicto"] = f"insuficiente (<{min_wells} pozos apareados)"
+        resultados.append(res)
+    return resultados
+
+def run_validation_task():
+    """Ejecuta validate_mesh_positions en hilo de fondo, reportando a val_task_state."""
+    with task_lock:
+        val_task_state.update(running=True, progress=0, stage="Iniciando…",
+                              log=[], error=None, result=None, done=False)
+    try:
+        def cb(frac, msg):
+            with task_lock:
+                val_task_state["progress"] = int(5 + 90 * frac)
+                val_task_state["stage"] = msg
+        t0 = time.time()
+        res = validate_mesh_positions(progress_cb=cb)
+        mesh_validation_results.clear()
+        mesh_validation_results.extend(res)
+        n_desp = sum(1 for r in res if r["veredicto"].startswith("posible"))
+        with task_lock:
+            val_task_state.update(running=False, done=True, progress=100,
+                                  stage="Completado",
+                                  result={"n_mallas": len(res), "n_desplazadas": n_desp,
+                                          "t": round(time.time() - t0, 1)})
+    except Exception as e:
+        tb = traceback.format_exc()
+        print(f"[VAL] ERROR: {e}\n{tb}")
+        with task_lock:
+            val_task_state.update(running=False, done=True, error=str(e), progress=100)
+
+def export_validation_csv():
+    """Detalle por pozo de la validación multipozo (para el botón de export)."""
+    rows = []
+    for r in mesh_validation_results:
+        for p in r["detalle"]:
+            rows.append({
+                "malla": r["malla"], "pozo": p["pozo"],
+                "largo_cruce_m": p["largo_cruce"], "largo_pico_m": p["largo_pico"],
+                "offset_m": p["offset"], "di_pico": p["di_pico"],
+                "este_pico": round(float(p["pico_pt"][0]), 3),
+                "norte_pico": round(float(p["pico_pt"][1]), 3),
+                "cota_pico": round(float(p["pico_pt"][2]), 3),
+                "offset_medio_malla": r["offset_medio"],
+                "offset_std_malla": r["offset_std"],
+                "veredicto_malla": r["veredicto"],
+            })
+    return pd.DataFrame(rows)
+
 def _get_train_data(ucs_min, ucs_max):
     X, y, n_excl = [], [], 0
     for p in all_points():
@@ -1486,6 +1716,7 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
     dcc.Store(id="refresh", data=0),
     dcc.Store(id="active-step", data=1),
     dcc.Interval(id="ml-task-poll", interval=500, disabled=True),
+    dcc.Interval(id="val-task-poll", interval=500, disabled=True),
     dcc.Store(id="report-well-name", data=None),
     dbc.Modal([
         dbc.ModalHeader(dbc.ModalTitle(id="well-report-title", children="Reporte de pozo")),
@@ -2083,6 +2314,82 @@ def poll_ml_task(_, ref):
     msg = f"✅ R² in-sample={result['r2_train']} | R² CV={cv_display} | RMSE={result['rmse_train']} MPa | N={result['n_train']}"
     return progress, f"{progress}%", stage, log_box, True, ref+1, badges, msg, True
 
+# ─── Callbacks de la validación multipozo (T4e) ───────────────────────────────
+@app.callback(
+    Output("val-task-poll","disabled"),
+    Output("toast","children",allow_duplicate=True),
+    Output("toast","is_open",allow_duplicate=True),
+    Input({"type":"val-mesh-btn","index":ALL},"n_clicks"),
+    prevent_initial_call=True,
+)
+def start_mesh_validation(n_clicks_list):
+    """
+    Lanza la validación multipozo en hilo de fondo y habilita su polling. El
+    botón vive en contenido regenerado → id pattern-matching, nunca fijo. No
+    interfiere con el flujo del ML: usa val_task_state y val-task-poll propios.
+    """
+    ctx = callback_context
+    tid = ctx.triggered_id
+    if not isinstance(tid, dict) or not ctx.triggered[0]["value"]:
+        return no_update, no_update, no_update
+    if val_task_state["running"]:
+        return no_update, "⚠ La validación ya está corriendo.", True
+    if not any(l.kind == "estructura" for l in layers.values()):
+        return no_update, "⚠ No hay mallas de estructura cargadas.", True
+    if not any(p.di is not None for p in all_points()):
+        return no_update, "⚠ Calcula el DI primero (Paso 3).", True
+    threading.Thread(target=run_validation_task, daemon=True).start()
+    return False, "🧭 Validación multipozo iniciada…", True
+
+@app.callback(
+    Output("val-task-poll","disabled",allow_duplicate=True),
+    Output({"type":"val-progress","index":ALL},"value"),
+    Output({"type":"val-progress","index":ALL},"label"),
+    Output({"type":"val-progress-txt","index":ALL},"children"),
+    Output("refresh","data",allow_duplicate=True),
+    Output("toast","children",allow_duplicate=True),
+    Output("toast","is_open",allow_duplicate=True),
+    Input("val-task-poll","n_intervals"),
+    State({"type":"val-progress","index":ALL},"id"),
+    State("refresh","data"), prevent_initial_call=True,
+)
+def poll_mesh_validation(_, prog_ids, ref):
+    """
+    Polling de la validación de mallas. Los componentes de progreso viven en
+    contenido regenerado → outputs pattern-matching (ALL); si el usuario
+    navegó a otro paso, las listas quedan vacías y no pasa nada. Al terminar:
+    detiene el polling, refresca (re-renderiza el Paso 5 con la tabla) y
+    muestra el resumen en el toast.
+    """
+    n = len(prog_ids)
+    with task_lock:
+        prog = val_task_state["progress"]; stage = val_task_state["stage"]
+        done = val_task_state["done"]; err = val_task_state["error"]
+        result = val_task_state["result"]
+    if done:
+        with task_lock:
+            val_task_state["done"] = False   # consumir para no repetir el toast
+        if err:
+            return True, [100]*n, [""]*n, [""]*n, no_update, f"❌ Validación: {err}", True
+        msg = (f"✅ Validación: {result['n_mallas']} mallas · "
+               f"{result['n_desplazadas']} con posible desplazamiento · {result['t']}s")
+        return True, [100]*n, [""]*n, [""]*n, ref+1, msg, True
+    return no_update, [prog]*n, [f"{prog}%"]*n, [stage]*n, no_update, no_update, no_update
+
+@app.callback(
+    Output("download","data",allow_duplicate=True),
+    Input({"type":"val-export-btn","index":ALL},"n_clicks"),
+    prevent_initial_call=True,
+)
+def do_export_validation(n_clicks_list):
+    ctx = callback_context
+    tid = ctx.triggered_id
+    if not isinstance(tid, dict) or not ctx.triggered[0]["value"]:
+        return no_update
+    df = export_validation_csv()
+    if df.empty: return no_update
+    return dcc.send_data_frame(df.to_csv, "validacion_mallas.csv", index=False)
+
 @app.callback(
     Output("refresh","data",allow_duplicate=True),
     Output("toast","children",allow_duplicate=True),
@@ -2500,6 +2807,82 @@ def _domain_report_table():
     ], className="mb-1 py-1", style={"borderBottom":"1px solid #1a1a1a"}) for g in rows]
     return card(f"Dominios detectados ({len(domain_groups)})", [header] + body)
 
+def _mesh_validation_card():
+    """
+    (T4e) Card "Validación de capas DXF" del Paso 5: tabla por malla de
+    estructura, histograma de offsets y export CSV. Los componentes
+    interactivos usan ids pattern-matching (viven en contenido regenerado);
+    el cálculo corre en hilo de fondo (val_task_state + val-task-poll).
+    """
+    struct_layers = [n for n, l in layers.items() if l.kind == "estructura"]
+    body = [html.Small(
+        "Consistencia multipozo: si ≥3 pozos cruzan la misma estructura y sus "
+        "picos DI apareados están sistemáticamente desplazados respecto de la "
+        "malla, la evidencia favorece que la malla está corrida. El emboquillado "
+        "se excluye con el corte existente (puntos no entrenables).",
+        style={"color":"#aaa","display":"block","marginBottom":"8px"})]
+    if not struct_layers:
+        body.append(dbc.Alert("No hay mallas de estructura cargadas (el tipo se "
+                              "infiere del nombre del DXF: falla/fault/struct/fractura).",
+                              color="secondary", style={"fontSize":"11px","padding":"6px 10px"}))
+    body.append(dbc.Button("🧭 Validar posición de mallas",
+                           id={"type":"val-mesh-btn","index":0}, color="info",
+                           outline=True, size="sm", className="mb-2",
+                           disabled=not struct_layers or not wells))
+    # Progreso de la tarea de fondo (lo actualiza el polling val-task-poll)
+    body.append(dbc.Progress(id={"type":"val-progress","index":0},
+                             value=val_task_state["progress"],
+                             label=f"{val_task_state['progress']}%" if val_task_state["running"] else "",
+                             striped=val_task_state["running"], animated=val_task_state["running"],
+                             style={"height":"14px","fontSize":"9px","marginBottom":"4px"}))
+    body.append(html.Small(id={"type":"val-progress-txt","index":0},
+                           children=val_task_state["stage"] if val_task_state["running"] else "",
+                           style={"color":"#777","fontSize":"10px","display":"block","marginBottom":"6px"}))
+    if mesh_validation_results:
+        header = dbc.Row([
+            dbc.Col(html.Small("Malla", style={"color":"#888","fontWeight":700}), width=3),
+            dbc.Col(html.Small("Cruzan", style={"color":"#888","fontWeight":700}), width=1),
+            dbc.Col(html.Small("Apareados", style={"color":"#888","fontWeight":700}), width=1),
+            dbc.Col(html.Small("Offset [m]", style={"color":"#888","fontWeight":700}), width=2),
+            dbc.Col(html.Small("Offset ⊥ [m]", style={"color":"#888","fontWeight":700}), width=2),
+            dbc.Col(html.Small("Veredicto", style={"color":"#888","fontWeight":700}), width=3),
+        ], className="mb-1")
+        rows = []
+        for r in mesh_validation_results:
+            off_txt = (f"{r['offset_medio']:+.2f} ± {r['offset_std']:.2f}"
+                       if r["offset_medio"] is not None else "—")
+            offn_txt = (f"{r['offset_normal_medio']:+.2f} ± {r['offset_normal_std']:.2f}"
+                        if r["offset_normal_medio"] is not None else "—")
+            ok = r["veredicto"] == "consistente"
+            ver_color = "#2ECC71" if ok else ("#F1C40F" if r["veredicto"].startswith(("sin", "insuf")) else "#E74C3C")
+            rows.append(dbc.Row([
+                dbc.Col(html.Small(r["malla"], style={"color":"#ccc"}), width=3),
+                dbc.Col(html.Small(str(r["n_pozos_cruzan"]), style={"color":"#aaa"}), width=1),
+                dbc.Col(html.Small(str(r["n_pozos_apareados"]), style={"color":"#aaa"}), width=1),
+                dbc.Col(html.Small(off_txt, style={"color":"#EF9F27"}), width=2),
+                dbc.Col(html.Small(offn_txt, style={"color":"#EF9F27"}), width=2),
+                dbc.Col(html.Small(r["veredicto"], style={"color":ver_color,"fontWeight":700}), width=3),
+            ], className="mb-1 py-1", style={"borderBottom":"1px solid #1a1a1a"}))
+        body.extend([header] + rows)
+        # Histograma de offsets (solo lectura: no participa en callbacks)
+        fig = go.Figure()
+        for r in mesh_validation_results:
+            if r["offsets"]:
+                fig.add_trace(go.Histogram(x=r["offsets"], name=r["malla"],
+                                           nbinsx=20, opacity=0.7))
+        fig.add_vline(x=0, line_dash="dash", line_color="#888")
+        fig.update_layout(barmode="overlay", template="plotly_dark",
+                          paper_bgcolor="#0d0d1a", plot_bgcolor="#0d0d1a", height=240,
+                          margin=dict(l=40, r=10, t=10, b=35),
+                          xaxis_title="Offset pico − malla [m]", yaxis_title="N pares",
+                          legend=dict(font=dict(size=9)))
+        body.append(dcc.Graph(figure=fig, config={"displayModeBar": False},
+                              style={"marginTop":"6px"}))
+        body.append(dbc.Button("CSV detalle por pozo",
+                               id={"type":"val-export-btn","index":0},
+                               color="secondary", outline=True, size="sm", className="mt-2"))
+    return card("Validación de capas DXF (consistencia multipozo)", body)
+
 def _step5():
     all_pts = list(all_points())
     n_nodom = sum(1 for p in all_pts if not p.dominio)
@@ -2520,6 +2903,7 @@ def _step5():
             dbc.Button("🔀 Agrupar dominios", id="btn-group", color="info", outline=True, size="sm"),
         ]),
         _domain_report_table(),
+        _mesh_validation_card(),
         card("Predicción sin DXF", [
             html.Small(f"{n_nodom} pts sin dominio DXF recibirán grupo inferido.",
                        style={"color":"#aaa","display":"block","marginBottom":"8px"}),

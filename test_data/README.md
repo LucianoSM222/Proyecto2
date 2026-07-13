@@ -10,6 +10,9 @@
 
 El DXF `Metandesitas.dxf` (~21 MB, 70.842 caras) NO se versiona por tamaño.
 
+Tests: `test_matching.py` (T1), `test_geomech.py` (T2/T3),
+`test_validation.py` (T4, consistencia multipozo de mallas).
+
 ## Variables de entorno para los tests
 
 - `GEOMECH_DXF` → ruta al DXF Metandesitas (necesario para el test e2e de
