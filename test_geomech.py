@@ -131,14 +131,21 @@ def test_parse_geomech():
     # Verificar el parseo de una banda con rango y una con valor único
     for rec in records:
         assert rec["ucs_lo"] is None or rec["ucs_lo"] <= rec["ucs_hi"]
-    # Metandesitas "100 - 267" → mid 183.5 (si está presente)
+    # Debe existir la fila Metandesitas "100 - 267" → mid 183.5 (en el Excel
+    # real es el caserón MGN_3032; en el fixture sintético, MGN_3025).
     gw.index_geomech_bands(records)
-    band_meta = gw.lookup_band("MGN_3025", "Metandesitas")
-    if band_meta:
-        print(f"[TEST parse] Metandesitas@MGN_3025: mid={band_meta['ucs_mid']}")
-        assert abs(band_meta["ucs_mid"] - 183.5) < 1e-6, \
-            f"mid Metandesitas esperado 183.5, obtenido {band_meta['ucs_mid']}"
+    meta_183 = [r for r in records
+                if _norm(r["litologia"]).startswith("metandesita")
+                and r["ucs_mid"] is not None and abs(r["ucs_mid"] - 183.5) < 1e-6]
+    if any(_norm(r["litologia"]).startswith("metandesita") for r in records):
+        assert meta_183, "No se encontró la fila Metandesitas '100-267' (mid=183.5)."
+        print(f"[TEST parse] Metandesitas '100-267' en caserón(es): "
+              f"{[r['caseron'] for r in meta_183]} → mid=183.5 ✓")
     return records
+
+
+def _norm(s):
+    return gw._norm_txt(s)
 
 
 # ─── TEST 2: end-to-end con archivos reales ───────────────────────────────────
@@ -164,9 +171,18 @@ def test_end_to_end_bands():
     layer = gw.Layer(name="Metandesitas", kind="litologia", triangles=tris,
                      bbox_min=bmin, bbox_max=bmax)
     gw.layers["Metandesitas"] = layer
-    # Asignar caserón y autocompletar banda desde el Excel
-    layer.caseron = "MGN_3025"
+    # Asignar el caserón cuya banda Metandesitas es "100 - 267" (mid=183.5). En
+    # el Excel real es MGN_3032; en el fixture sintético, MGN_3025. Se busca
+    # dinámicamente para no depender del archivo.
+    caseron_183 = None
+    for rec in records:
+        if gw._norm_txt(rec["litologia"]).startswith("metandesita") \
+           and rec["ucs_mid"] is not None and abs(rec["ucs_mid"] - 183.5) < 1e-6:
+            caseron_183 = rec["caseron"]; break
+    assert caseron_183, "No se encontró la fila Metandesitas '100-267' (mid=183.5)."
+    layer.caseron = caseron_183
     ok = gw.apply_layer_band(layer)
+    print(f"[TEST e2e] Caserón con banda 100-267: {caseron_183}")
     print(f"[TEST e2e] Banda Metandesitas autocompletada: {ok} → "
           f"[{layer.ucs_lo}, {layer.ucs_mid}, {layer.ucs_hi}], ucs_lab={layer.ucs_lab}")
     assert ok and abs(layer.ucs_mid - 183.5) < 1e-6, "La banda de Metandesitas debe dar mid=183.5."
