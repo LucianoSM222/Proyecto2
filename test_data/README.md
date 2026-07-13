@@ -11,7 +11,8 @@
 El DXF `Metandesitas.dxf` (~21 MB, 70.842 caras) NO se versiona por tamaño.
 
 Tests: `test_matching.py` (T1), `test_geomech.py` (T2/T3),
-`test_validation.py` (T4, consistencia multipozo de mallas).
+`test_validation.py` (T4, consistencia multipozo de mallas),
+`test_di_rqd.py` (T5, validación externa DI↔RQD).
 
 ## Variables de entorno para los tests
 

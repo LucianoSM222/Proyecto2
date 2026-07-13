@@ -1227,6 +1227,129 @@ def band_consistency():
         except Exception:
             p.band_check = None
 
+# ─── VALIDACIÓN INDEPENDIENTE DI ↔ RQD (T5) ────────────────────────────────────
+# El RQD del Excel geomecánico proviene de mapeo/sondajes: es INDEPENDIENTE del
+# MWD. Hipótesis: el DI medio por caserón anticorrelaciona con el RQD (más
+# discontinuidades detectadas por MWD → roca más fracturada → menor RQD). Es la
+# única validación externa del DI disponible en la mina.
+DI_RQD_MIN_PUNTOS = 100
+
+def di_vs_rqd_by_caseron(min_puntos=DI_RQD_MIN_PUNTOS):
+    """
+    (T5a) DI medio por caserón vs su RQD de laboratorio. Un caserón es
+    evaluable si tiene al menos una Layer DXF con ese caserón asignado cuya
+    banda caserón×litología incluya RQD (rqd_mid), y el conjunto de puntos MWD
+    dentro de esas mallas (excluyendo entrenable=False, es decir el
+    emboquillado) suma >= min_puntos.
+
+    Si un caserón tiene MÁS DE UNA Layer asignada (varias litologías dentro
+    del mismo caserón), se agrupan los puntos de todas ellas y el rqd_mid
+    reportado es el promedio de las bandas de esas litologías ponderado por
+    su cantidad de puntos (cada banda del Excel es en rigor caserón×litología,
+    no puramente caserón; esta agregación es la aproximación al nivel caserón
+    que pide la tarea).
+
+    Devuelve lista de {caseron, di_medio, di_std, rqd_mid, n_puntos}.
+    """
+    by_cas = {}
+    for layer in layers.values():
+        if not layer.caseron: continue
+        lito = layer.lito_alias or layer.name
+        band = lookup_band(layer.caseron, lito)
+        if band is None or band.get("rqd_mid") is None: continue
+        by_cas.setdefault(layer.caseron, []).append((layer, band))
+
+    resultados = []
+    for caseron, layer_bands in by_cas.items():
+        di_vals = []
+        rqd_weighted_sum, n_total = 0.0, 0
+        for layer, band in layer_bands:
+            pts = [p for p in all_points()
+                   if p.lito == layer.name and p.entrenable
+                   and p.di is not None and np.isfinite(p.di)]
+            if not pts: continue
+            di_vals.extend(p.di for p in pts)
+            rqd_weighted_sum += band["rqd_mid"] * len(pts)
+            n_total += len(pts)
+        if n_total < min_puntos: continue
+        di_arr = np.array(di_vals, dtype=np.float64)
+        resultados.append({
+            "caseron": caseron,
+            "di_medio": round(float(di_arr.mean()), 4),
+            "di_std": round(float(di_arr.std()), 4),
+            "rqd_mid": round(rqd_weighted_sum / n_total, 2),
+            "n_puntos": n_total,
+        })
+    return sorted(resultados, key=lambda r: r["caseron"])
+
+def spearman_rho(x, y):
+    """
+    (T5b) Correlación de Spearman implementada a mano con numpy (sin scipy,
+    fuera de las dependencias permitidas): se rankea cada serie con
+    argsort(argsort(·)) — equivalente a rankdata SIN manejo especial de
+    empates (a diferencia de scipy.stats.rankdata, no promedia el rango de
+    valores repetidos; cada elemento recibe un rango distinto según el orden
+    estable de np.argsort) — y se aplica la correlación de Pearson sobre los
+    rangos, que es la definición misma de Spearman. El offset de rango
+    0-index vs 1-index no afecta el resultado: Pearson es invariante a
+    desplazamientos constantes. Aceptable para las muestras pequeñas de
+    caserones de este análisis, donde empates exactos de DI son improbables.
+    Devuelve None si n<2 (con este método de rankeo, el vector de rangos es
+    siempre una permutación 0..n-1 de varianza no nula para n>=2, incluso si
+    los VALORES originales son constantes — el guard de varianza nula queda
+    como defensa adicional, no se espera que dispare para n>=2).
+    """
+    x = np.asarray(x, dtype=np.float64); y = np.asarray(y, dtype=np.float64)
+    n = len(x)
+    if n < 2 or len(y) != n: return None
+    rx = np.argsort(np.argsort(x)).astype(np.float64)
+    ry = np.argsort(np.argsort(y)).astype(np.float64)
+    rx -= rx.mean(); ry -= ry.mean()
+    denom = np.sqrt(np.sum(rx**2) * np.sum(ry**2))
+    if denom == 0: return None
+    return float(np.sum(rx * ry) / denom)
+
+def di_rqd_correlation(min_puntos=DI_RQD_MIN_PUNTOS):
+    """
+    (T5b) rho de Spearman entre di_medio y rqd_mid sobre los caserones
+    evaluables de di_vs_rqd_by_caseron(). Con menos de 4 caserones se considera
+    insuficiente para una correlación confiable: se omite rho (None) y se
+    devuelve la advertencia. Devuelve {rho, n, data, warning}.
+    """
+    data = di_vs_rqd_by_caseron(min_puntos)
+    n = len(data)
+    if n < 4:
+        return {"rho": None, "n": n, "data": data,
+                "warning": "insuficientes caserones para correlación confiable"}
+    rho = spearman_rho([d["di_medio"] for d in data], [d["rqd_mid"] for d in data])
+    return {"rho": rho, "n": n, "data": data, "warning": None}
+
+def build_di_rqd_figure(data):
+    """(T5c) Scatter DI medio vs RQD por caserón; tamaño del marcador ~ n_puntos."""
+    fig = go.Figure()
+    if not data: return fig
+    xs = [d["rqd_mid"] for d in data]
+    ys = [d["di_medio"] for d in data]
+    texts = [d["caseron"] for d in data]
+    max_n = max(d["n_puntos"] for d in data) or 1
+    sizes = [8 + 22 * (d["n_puntos"] / max_n) for d in data]
+    hover = [f"{d['caseron']}<br>DI medio={d['di_medio']:.3f} ± {d['di_std']:.3f}"
+             f"<br>RQD={d['rqd_mid']:.1f}<br>n={d['n_puntos']}" for d in data]
+    fig.add_trace(go.Scatter(
+        x=xs, y=ys, mode="markers+text", text=texts, textposition="top center",
+        textfont=dict(size=9, color="#aaa"),
+        marker=dict(size=sizes, color="#3B8BD4", opacity=0.75,
+                    line=dict(width=1, color="#0d0d1a")),
+        hovertext=hover, hoverinfo="text",
+    ))
+    fig.update_layout(template="plotly_dark", paper_bgcolor="#0d0d1a", plot_bgcolor="#0d0d1a",
+                      height=280, margin=dict(l=45, r=15, t=15, b=40),
+                      xaxis_title="RQD medio [%]", yaxis_title="DI medio")
+    return fig
+
+def export_di_rqd_csv():
+    return pd.DataFrame(di_vs_rqd_by_caseron())
+
 def run_cross_ml(ucs_min=None, ucs_max=None):
     classify_all_wells()
     build_domain_index()
@@ -2391,6 +2514,21 @@ def do_export_validation(n_clicks_list):
     return dcc.send_data_frame(df.to_csv, "validacion_mallas.csv", index=False)
 
 @app.callback(
+    Output("download","data",allow_duplicate=True),
+    Input({"type":"di-rqd-export-btn","index":ALL},"n_clicks"),
+    prevent_initial_call=True,
+)
+def do_export_di_rqd(n_clicks_list):
+    """(T5c) Export CSV de di_vs_rqd_by_caseron(). Botón en contenido regenerado → id pattern-matching."""
+    ctx = callback_context
+    tid = ctx.triggered_id
+    if not isinstance(tid, dict) or not ctx.triggered[0]["value"]:
+        return no_update
+    df = export_di_rqd_csv()
+    if df.empty: return no_update
+    return dcc.send_data_frame(df.to_csv, "di_vs_rqd_por_caseron.csv", index=False)
+
+@app.callback(
     Output("refresh","data",allow_duplicate=True),
     Output("toast","children",allow_duplicate=True),
     Output("toast","is_open",allow_duplicate=True),
@@ -2688,6 +2826,48 @@ def _step2():
         ], className="mt-3"),
     ])
 
+def _di_rqd_card():
+    """
+    (T5c) Card "Validación independiente DI ↔ RQD" del Paso 3. El RQD del
+    Excel geomecánico proviene de mapeo/sondajes — es independiente del MWD —
+    y es la única validación externa del DI disponible en la mina. Solo se
+    muestra si hay geomech_bands cargadas; si no hay ningún caserón evaluable
+    (falta asignar caserón a alguna capa, o falta calcular el DI), se explicita
+    el requisito faltante en vez de un gráfico vacío.
+    """
+    if not geomech_bands["records"]:
+        return card("Validación independiente DI ↔ RQD", [
+            dbc.Alert("Carga el Excel geomecánico (Paso 1) para habilitar esta validación.",
+                      color="secondary", style={"fontSize":"11px","padding":"6px 10px"}),
+        ])
+    result = di_rqd_correlation()
+    data = result["data"]
+    if not data:
+        return card("Validación independiente DI ↔ RQD", [
+            dbc.Alert(f"Ningún caserón evaluable todavía: asigna caserón a una capa DXF "
+                      f"(árbol de capas) con banda RQD, y calcula el DI (≥{DI_RQD_MIN_PUNTOS} "
+                      f"puntos MWD dentro de esa malla).",
+                      color="secondary", style={"fontSize":"11px","padding":"6px 10px"}),
+        ])
+    if result["rho"] is None:
+        badge = dbc.Badge(f"n={result['n']} caserones — {result['warning']}", color="warning")
+    else:
+        badge = dbc.Badge(f"Spearman ρ = {result['rho']:.3f}  (n={result['n']})",
+                          color="success" if result["rho"] < 0 else "danger")
+    return card("Validación independiente DI ↔ RQD", [
+        html.Small("El RQD proviene de mapeo/sondajes: es independiente del MWD. Es la "
+                   "única validación externa del DI disponible en la mina.",
+                   style={"color":"#aaa","display":"block","marginBottom":"6px"}),
+        badge,
+        dcc.Graph(figure=build_di_rqd_figure(data), config={"displayModeBar": False},
+                  style={"marginTop":"6px"}),
+        dbc.Alert("Se espera anticorrelación (ρ<0). Una correlación nula o positiva sugiere "
+                  "revisar pesos/ventana del DI o la asignación de caserones a las mallas.",
+                  color="dark", style={"fontSize":"10px","padding":"6px 10px","marginTop":"6px"}),
+        dbc.Button("CSV DI↔RQD por caserón", id={"type":"di-rqd-export-btn","index":0},
+                   color="secondary", outline=True, size="sm", className="mt-2"),
+    ])
+
 def _step3():
     all_pts = list(all_points())
     n_di = sum(1 for p in all_pts if p.di is not None)
@@ -2713,6 +2893,7 @@ def _step3():
         ]),
         dbc.Badge(f"DI: {n_di} pts · {n_disc} discontinuidades", color="success",
                   className="mb-2") if n_di else None,
+        _di_rqd_card(),
         dbc.Row([
             dbc.Col(dbc.Button("← Atrás", id={"type":"pill","index":2}, color="secondary", outline=True, size="sm"), width="auto"),
             dbc.Col(dbc.Button("Siguiente → ML", id={"type":"pill","index":4}, color="info", size="sm",
