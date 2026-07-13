@@ -79,6 +79,9 @@ class MWDPoint:
     # Verificación de consistencia banda-laboratorio vs intervalo ML (T3):
     # "compatible" / "incompatible" / "ambiguo" / None (no evaluable).
     band_check: Optional[str] = None
+    # Seteo real del equipo para el punto (T9): presión de percusión y avance
+    # registrados en el CSV/Excel de seteo, si están disponibles.
+    seteo_pp: Optional[float] = None; seteo_pa: Optional[float] = None
 
 @dataclass
 class Well:
@@ -485,6 +488,8 @@ def parse_excel(path):
         "pr":["pr","rp","rotacion","rotación"],"pa":["pa","ap","avance"],
         "pd":["pd","dp","damper"],"pf":["pf","fp","flujo"],
         "ucs_excel":["ucs","resistencia","mpa","ucs_prom"],
+        "seteo_pp":["seteo pp","set pp","pp set","seteo_pp","sp","spp"],
+        "seteo_pa":["seteo pa","set pa","pa set","seteo_pa","sa","spa"],
     }
     def find_col(cands):
         for c in cands:
@@ -509,6 +514,7 @@ def parse_excel(path):
         if ucs is not None and (ucs < UCS_CONFIG["physical_min"] or ucs > UCS_CONFIG["physical_max"]):
             log_warn(f'Excel: UCS={ucs} MPa fuera físico, tiro {r.get("tiro")} omitido.')
             continue
+        # seteo fields pass-through (already float|None from mapping above)
         rows.append(r)
     return rows
 
@@ -584,6 +590,7 @@ def parse_geomech_excel(path, sheet=GEO_SHEET):
             "gsi_raw": None if cell(row, "gsi") is None else str(cell(row, "gsi")).strip(),
         }
         records.append(rec)
+    index_geomech_bands(records)
     return records
 
 def index_geomech_bands(records):
@@ -802,6 +809,27 @@ def derive_cal_factors_from_excel():
             esums[k] += v_excel; rsums[k] += rmean; counts[k] += 1
     return {k: round(esums[k]/rsums[k], 4) for k in var_map if counts[k] > 0 and rsums[k] > 0}
 
+def apply_seteo_from_excel():
+    """
+    Propaga los campos seteo_pp / seteo_pa de los registros excel_data a los
+    MWDPoint del pozo correspondiente. El valor de seteo es constante por tiro
+    (el operador lo fija antes de perforar), así que se asigna igualmente a
+    todos los puntos del pozo. Sólo actúa si la fila excel tiene al menos uno
+    de los dos campos no None.
+    """
+    for ex in excel_data:
+        spp = ex.get("seteo_pp")
+        spa = ex.get("seteo_pa")
+        if spp is None and spa is None:
+            continue
+        wkey = next((k for k in wells
+                     if str(ex.get("perfil","")) in k and str(ex.get("tiro","")) in k), None)
+        if wkey is None:
+            continue
+        for p in wells[wkey].points:
+            if spp is not None: p.seteo_pp = spp
+            if spa is not None: p.seteo_pa = spa
+
 def apply_inicio_filter(cut_m):
     for well in wells.values():
         for p in well.points:
@@ -960,6 +988,26 @@ def build_di_sensitivity_content(well):
         dcc.Graph(figure=fig, config={"displayModeBar": False}),
         table,
     ])
+
+def build_di_figure(well):
+    """Perfil DI vs profundidad de un pozo, con línea de umbral."""
+    pts = [p for p in well.points if p.di is not None]
+    if not pts:
+        return go.Figure()
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=[p.largo for p in pts], y=[p.di for p in pts],
+        mode="lines", name="DI", line=dict(color="#5DCAA5", width=1.2),
+    ))
+    fig.add_hline(y=di_threshold, line_dash="dash", line_color="#E74C3C",
+                 annotation_text=f"Umbral={di_threshold}")
+    fig.update_layout(
+        template="plotly_dark", paper_bgcolor="#0d0d1a", plot_bgcolor="#0d0d1a",
+        height=300, margin=dict(l=45, r=15, t=30, b=40),
+        title=f"Perfil DI — {well.well_name}",
+        xaxis_title="Profundidad [m]", yaxis_title="DI",
+    )
+    return fig
 
 # ─── VALIDACIÓN MULTIPOZO DE POSICIÓN DE MALLAS DXF (T4) ──────────────────────
 # Un pico DI aislado en un pozo no prueba nada; la evidencia de que una malla
@@ -1655,13 +1703,20 @@ def top_drilling(group_id, n=5, method="min_se_cv"):
         se_arr = np.array([p.se for p in seg])
         vel_arr = np.array([p.vel for p in seg])
         se_cv = float(se_arr.std() / (se_arr.mean() or 1e-9))
-        candidates.append({
+        spp_vals = [p.seteo_pp for p in seg if p.seteo_pp is not None]
+        spa_vals = [p.seteo_pa for p in seg if p.seteo_pa is not None]
+        entry = {
             "well": wn, "largo": seg[len(seg)//2].largo, "n_pts": len(seg),
             "vel": float(vel_arr.mean()), "se": float(se_arr.mean()), "se_cv": round(se_cv, 4),
             "pp": float(np.mean([p.pp for p in seg])), "pr": float(np.mean([p.pr for p in seg])),
             "pa": float(np.mean([p.pa for p in seg])), "pd": float(np.mean([p.pd for p in seg])),
             "pf": float(np.mean([p.pf for p in seg])),
-        })
+        }
+        if len(spp_vals) >= len(seg) * 0.5:
+            entry["seteo_pp"] = round(float(np.mean(spp_vals)), 1)
+        if len(spa_vals) >= len(seg) * 0.5:
+            entry["seteo_pa"] = round(float(np.mean(spa_vals)), 1)
+        candidates.append(entry)
     if not candidates: return []
 
     if method == "min_se_cv":
@@ -1702,6 +1757,267 @@ def export_predictions_csv():
                 "band_check":p.band_check or "",
             })
     return pd.DataFrame(rows)
+
+# ─── T10: PERSISTENCIA DE SESIÓN (save / load project) ───────────────────────
+# El ZIP contiene:
+#   project.json  — toda la información serializable (pozos, filtros, config,
+#                   bandas geomecánicas, asignaciones de Layer, grupos)
+#   triangles.npz — mallas DXF (triangles de cada Layer por nombre)
+# El modelo RF NO se serializa: el usuario debe re-entrenar al cargar. Esto
+# evita problemas de compatibilidad entre versiones de scikit-learn y mantiene
+# el ZIP liviano (el entrenamiento sobre ~50 k puntos tarda <30 s).
+import zipfile as _zipfile
+import io as _io
+
+def _point_to_dict(p):
+    return {
+        "largo":p.largo,"vel":p.vel,"pp":p.pp,"pa":p.pa,
+        "pd":p.pd,"pr":p.pr,"pf":p.pf,"se":p.se,"t":p.t,
+        "este":p.este,"norte":p.norte,"cota":p.cota,
+        "raw_vel":p.raw_vel,"raw_pp":p.raw_pp,"raw_pa":p.raw_pa,
+        "raw_pd":p.raw_pd,"raw_pr":p.raw_pr,"raw_pf":p.raw_pf,
+        "entrenable":p.entrenable,"norm_excluded":p.norm_excluded,
+        "dominio":p.dominio,"lito":p.lito,"estructura":p.estructura,
+        "ucs_ml":p.ucs_ml,"ucs_confiable":p.ucs_confiable,
+        "ucs_ml_prelim":p.ucs_ml_prelim,
+        "ucs_ml_p10":p.ucs_ml_p10,"ucs_ml_p90":p.ucs_ml_p90,
+        "di":p.di,"grupo":p.grupo,
+        "lito_inferida":p.lito_inferida,"estructura_inferida":p.estructura_inferida,
+        "grupo_confianza":p.grupo_confianza,"band_check":p.band_check,
+        "seteo_pp":p.seteo_pp,"seteo_pa":p.seteo_pa,
+    }
+
+def _point_from_dict(d):
+    p = MWDPoint(
+        largo=d["largo"],vel=d["vel"],pp=d["pp"],pa=d["pa"],
+        pd=d["pd"],pr=d["pr"],pf=d["pf"],se=d["se"],t=d.get("t",0.0),
+        este=d.get("este",0.0),norte=d.get("norte",0.0),cota=d.get("cota",0.0),
+        raw_vel=d.get("raw_vel",0.0),raw_pp=d.get("raw_pp",0.0),raw_pa=d.get("raw_pa",0.0),
+        raw_pd=d.get("raw_pd",0.0),raw_pr=d.get("raw_pr",0.0),raw_pf=d.get("raw_pf",0.0),
+        entrenable=d.get("entrenable",True),norm_excluded=d.get("norm_excluded",False),
+    )
+    for attr in ("dominio","lito","estructura","ucs_ml","ucs_confiable","ucs_ml_prelim",
+                 "ucs_ml_p10","ucs_ml_p90","di","grupo","lito_inferida",
+                 "estructura_inferida","grupo_confianza","band_check","seteo_pp","seteo_pa"):
+        if attr in d: setattr(p, attr, d[attr])
+    return p
+
+def save_project(path):
+    """
+    Guarda el estado actual en `path` (archivo .gwz, ZIP).
+    rf_model NO se serializa (re-entrenar al cargar; documentado en la UI).
+    """
+    proj = {
+        "version": 2,
+        "wells": {
+            wn: {
+                "well_name": w.well_name, "plan_id": w.plan_id, "hole_id": w.hole_id,
+                "collar": w.collar, "final_pt": w.final_pt, "origin": w.origin,
+                "dq_candidates": w.dq_candidates,
+                "points": [_point_to_dict(p) for p in w.points],
+            }
+            for wn, w in wells.items()
+        },
+        "layers_meta": {
+            ln: {
+                "name": lay.name, "kind": lay.kind, "folder": lay.folder,
+                "ucs_lab": lay.ucs_lab, "caseron": lay.caseron,
+                "lito_alias": lay.lito_alias,
+                "ucs_lo": lay.ucs_lo, "ucs_hi": lay.ucs_hi, "ucs_mid": lay.ucs_mid,
+                "bbox_min": lay.bbox_min.tolist(), "bbox_max": lay.bbox_max.tolist(),
+            }
+            for ln, lay in layers.items()
+        },
+        "domains": domains,
+        "domain_groups": domain_groups,
+        "clean_filters": clean_filters,
+        "cal_factors": cal_factors,
+        "di_config": di_config,
+        "di_threshold": di_threshold,
+        "group_interval_m": group_interval_m,
+        "ucs_range": ucs_range,
+        "global_center": global_center,
+        "geomech_records": geomech_bands["records"],
+        "excel_data": excel_data,
+        "parse_warnings": parse_warnings,
+        "wz_state": wz_state,
+    }
+    tris_npz = {}
+    for ln, lay in layers.items():
+        tris_npz[ln] = lay.triangles
+    buf = _io.BytesIO()
+    with _zipfile.ZipFile(buf, "w", _zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("project.json", json.dumps(proj, allow_nan=True))
+        npz_buf = _io.BytesIO()
+        np.savez_compressed(npz_buf, **{k.replace("/","_"): v for k, v in tris_npz.items()})
+        zf.writestr("triangles.npz", npz_buf.getvalue())
+    with open(path, "wb") as f:
+        f.write(buf.getvalue())
+
+def load_project(path):
+    """
+    Carga un proyecto desde `path` (.gwz). Limpia el estado global y lo
+    reconstruye. El modelo RF NO se restaura (se muestra advertencia en la UI).
+    """
+    global di_threshold, group_interval_m, global_center
+    with _zipfile.ZipFile(path, "r") as zf:
+        proj = json.loads(zf.read("project.json"))
+        npz_data = np.load(_io.BytesIO(zf.read("triangles.npz")), allow_pickle=False)
+
+    # Limpiar estado global
+    wells.clear(); layers.clear(); domains.clear()
+    domain_groups.clear(); clean_filters.clear()
+    excel_data.clear(); parse_warnings.clear()
+    geomech_bands["by_pair"].clear(); geomech_bands["by_lito"].clear()
+    geomech_bands["by_caseron"].clear(); geomech_bands["records"].clear()
+
+    # Restaurar pozos
+    for wn, wd in proj.get("wells", {}).items():
+        pts = [_point_from_dict(pd_) for pd_ in wd["points"]]
+        w = Well(well_name=wd["well_name"], plan_id=wd["plan_id"], hole_id=wd["hole_id"],
+                 points=pts, collar=wd.get("collar"), final_pt=wd.get("final_pt"),
+                 origin=wd.get("origin","loaded"), dq_candidates=wd.get("dq_candidates",[]))
+        wells[wn] = w
+
+    # Restaurar capas (meta + triángulos)
+    for ln, lm in proj.get("layers_meta", {}).items():
+        npz_key = ln.replace("/","_")
+        tris = npz_data[npz_key] if npz_key in npz_data else np.zeros((0,3,3))
+        lay = Layer(
+            name=lm["name"], kind=lm["kind"], triangles=tris,
+            bbox_min=np.array(lm["bbox_min"]), bbox_max=np.array(lm["bbox_max"]),
+            ucs_lab=lm.get("ucs_lab"), folder=lm.get("folder","Litología"),
+            caseron=lm.get("caseron"), lito_alias=lm.get("lito_alias"),
+            ucs_lo=lm.get("ucs_lo"), ucs_hi=lm.get("ucs_hi"), ucs_mid=lm.get("ucs_mid"),
+        )
+        layers[ln] = lay
+
+    # Restaurar colecciones y configuración
+    domains.update(proj.get("domains", {}))
+    domain_groups.extend(proj.get("domain_groups", []))
+    clean_filters.extend(proj.get("clean_filters", []))
+    cal_factors.update(proj.get("cal_factors", {}))
+    di_config.update(proj.get("di_config", {}))
+    di_threshold = proj.get("di_threshold", di_threshold)
+    group_interval_m = proj.get("group_interval_m", group_interval_m)
+    ucs_range.update(proj.get("ucs_range", {}))
+    global_center = proj.get("global_center")
+    excel_data.extend(proj.get("excel_data", []))
+    parse_warnings.extend(proj.get("parse_warnings", []))
+    wz_state.update(proj.get("wz_state", {}))
+    if proj.get("geomech_records"):
+        index_geomech_bands(proj["geomech_records"])
+
+# ─── T11: KIT DE EXPORTACIÓN "CAPÍTULO 5" ────────────────────────────────────
+# Genera un ZIP con CSVs + figuras HTML standalone + resumen.txt para incluir
+# directamente en el informe de tesis (Capítulo 5). La operación corre en hilo
+# de fondo y reporta avance a kit_task_state (polling desde dcc.Interval).
+
+kit_task_state = {
+    "running": False, "progress": 0, "stage": "",
+    "error": None, "bytes": None, "done": False,
+}
+
+def _build_kit_zip():
+    """Genera el contenido del ZIP Cap.5 y lo retorna como bytes."""
+    buf = _io.BytesIO()
+    with _zipfile.ZipFile(buf, "w", _zipfile.ZIP_DEFLATED) as zf:
+
+        # 1. CSVs
+        try:
+            zf.writestr("predicciones.csv", export_predictions_csv().to_csv(index=False))
+        except Exception: pass
+        try:
+            zf.writestr("dominios.csv", export_domain_csv().to_csv(index=False))
+        except Exception: pass
+        try:
+            df_val = export_validation_csv()
+            if not df_val.empty:
+                zf.writestr("validacion_mallas.csv", df_val.to_csv(index=False))
+        except Exception: pass
+        try:
+            df_rqd = export_di_rqd_csv()
+            if not df_rqd.empty:
+                zf.writestr("di_rqd.csv", df_rqd.to_csv(index=False))
+        except Exception: pass
+
+        # 2. Figuras HTML standalone
+        def _html(fig):
+            return fig.to_html(full_html=True, include_plotlyjs="cdn")
+
+        # Visor 3D coloreado por dominio
+        try:
+            fig3d = build_3d_figure(color_by="grupo")
+            zf.writestr("visor_3d_dominios.html", _html(fig3d))
+        except Exception: pass
+
+        # DI ↔ RQD scatter
+        try:
+            data_rqd = di_vs_rqd_by_caseron()
+            if data_rqd:
+                zf.writestr("di_vs_rqd.html", _html(build_di_rqd_figure(data_rqd)))
+        except Exception: pass
+
+        # Histograma de offsets (validación de mallas)
+        try:
+            if mesh_validation_results:
+                fig_off = go.Figure()
+                for r in mesh_validation_results:
+                    if r.get("offsets"):
+                        fig_off.add_trace(go.Histogram(x=r["offsets"], name=r["malla"],
+                                                        nbinsx=20, opacity=0.7))
+                fig_off.add_vline(x=0, line_dash="dash", line_color="#888")
+                fig_off.update_layout(barmode="overlay", template="plotly_dark",
+                                      xaxis_title="Offset [m]", yaxis_title="N pares")
+                zf.writestr("offset_histogram.html", _html(fig_off))
+        except Exception: pass
+
+        # Perfil DI + sensibilidad del pozo con más datos
+        best_well = max(wells.values(), key=lambda w: len(w.points)) if wells else None
+        if best_well:
+            try:
+                fig_di = build_di_figure(best_well)
+                zf.writestr("di_perfil.html", _html(fig_di))
+            except Exception: pass
+            try:
+                sens_result = di_sensitivity_analysis(best_well)
+                fig_sens = build_di_sensitivity_figure(sens_result)
+                zf.writestr("di_sensibilidad.html", _html(fig_sens))
+            except Exception: pass
+
+        # 3. Resumen
+        lines = ["MWD GeoMech Wizard — Resumen Cap. 5", "="*50]
+        lines.append(f"Pozos: {len(wells)}")
+        lines.append(f"Puntos MWD: {sum(len(w.points) for w in wells.values())}")
+        all_pts = list(all_points())
+        n_class = sum(1 for p in all_pts if p.lito)
+        pct_class = round(100.0*n_class/len(all_pts), 1) if all_pts else 0
+        lines.append(f"Clasificados: {n_class} ({pct_class}%)")
+        if rf_stats:
+            lines.append(f"RF R²: {rf_stats.get('r2_train','-')} (entrena) | "
+                         f"CV GroupKFold: {rf_stats.get('cv_r2_mean','-')}")
+            lines.append(f"MAE entrena: {rf_stats.get('mae_train','-')} MPa")
+        lines.append(f"Dominios: {len(domains)}")
+        lines.append(f"Grupos geomecánicos: {len(domain_groups)}")
+        if mesh_validation_results:
+            verdicts = [r['veredicto'] for r in mesh_validation_results]
+            lines.append(f"Validación mallas: {', '.join(verdicts)}")
+        zf.writestr("resumen.txt", "\n".join(lines))
+    return buf.getvalue()
+
+def run_kit_task():
+    with task_lock:
+        kit_task_state.update(running=True, progress=0, stage="Generando kit…",
+                               error=None, bytes=None, done=False)
+    try:
+        with task_lock: kit_task_state["stage"] = "CSVs…"; kit_task_state["progress"] = 10
+        data = _build_kit_zip()
+        with task_lock:
+            kit_task_state.update(running=False, progress=100, stage="Listo.",
+                                   bytes=data, done=True)
+    except Exception as e:
+        with task_lock:
+            kit_task_state.update(running=False, done=True, error=str(e), progress=100)
 
 # ─── VISOR 3D ─────────────────────────────────────────────────────────────────
 COLOR_FIELDS = {
@@ -1956,11 +2272,16 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
     dcc.Upload(id="up-xml", multiple=True, children=html.Div(), style={"display":"none"}),
     dcc.Upload(id="up-excel", multiple=False, children=html.Div(), style={"display":"none"}),
     dcc.Upload(id="up-geomech", multiple=False, children=html.Div(), style={"display":"none"}),
+    dcc.Upload(id="up-project", multiple=False, children=html.Span(""), accept=".gwz",
+               style={"display":"none"}),
     dcc.Download(id="download"),
+    dcc.Download(id="download-project"),
+    dcc.Download(id="download-kit"),
     dcc.Store(id="refresh", data=0),
     dcc.Store(id="active-step", data=1),
     dcc.Interval(id="ml-task-poll", interval=500, disabled=True),
     dcc.Interval(id="val-task-poll", interval=500, disabled=True),
+    dcc.Interval(id="kit-interval", interval=1000, disabled=True),
     dcc.Store(id="report-well-name", data=None),
     dbc.Modal([
         dbc.ModalHeader(dbc.ModalTitle(id="well-report-title", children="Reporte de pozo")),
@@ -2271,6 +2592,7 @@ def on_excel(content, fname, ref):
             f.write(raw); tmp = f.name
         rows = parse_excel(tmp); os.unlink(tmp)
         excel_data.clear(); excel_data.extend(rows)
+        apply_seteo_from_excel()
         return ref+1, f"✅ Excel: {len(rows)} tiros.", True
     except Exception as e:
         return no_update, f"❌ Excel: {e}", True
@@ -2773,6 +3095,102 @@ def do_export(*args):
         return dcc.send_data_frame(export_predictions_csv().to_csv, "predicciones.csv", index=False)
     return no_update
 
+# ─── T10: callbacks de guardar / cargar proyecto ──────────────────────────────
+@app.callback(
+    Output("download-project","data"),
+    Output("toast","children",allow_duplicate=True),
+    Output("toast","is_open",allow_duplicate=True),
+    Input("btn-save-project","n_clicks"),
+    prevent_initial_call=True,
+)
+def on_save_project(n):
+    if not n: return no_update, no_update, no_update
+    if not wells:
+        return no_update, "⚠ No hay datos cargados para guardar.", True
+    try:
+        tmp = tempfile.NamedTemporaryFile(suffix=".gwz", delete=False)
+        tmp.close()
+        save_project(tmp.name)
+        with open(tmp.name, "rb") as f:
+            data = f.read()
+        os.unlink(tmp.name)
+        return dcc.send_bytes(data, "proyecto.gwz"), f"✅ Guardado — {len(wells)} pozos.", True
+    except Exception as e:
+        return no_update, f"❌ Error al guardar: {e}", True
+
+@app.callback(
+    Output("refresh","data",allow_duplicate=True),
+    Output("toast","children",allow_duplicate=True),
+    Output("toast","is_open",allow_duplicate=True),
+    Input("up-project","contents"),
+    State("up-project","filename"),
+    State("refresh","data"),
+    prevent_initial_call=True,
+)
+def on_load_project(content, fname, ref):
+    if not content: return no_update, no_update, no_update
+    try:
+        _, b64 = content.split(",", 1)
+        raw = base64.b64decode(b64)
+        tmp = tempfile.NamedTemporaryFile(suffix=".gwz", delete=False)
+        tmp.write(raw); tmp.close()
+        load_project(tmp.name)
+        os.unlink(tmp.name)
+        msg = (f"✅ Proyecto cargado — {len(wells)} pozos, "
+               f"{sum(len(w.points) for w in wells.values())} pts. "
+               "El modelo RF no se restaura: re-entrenar en Paso 4.")
+        return ref+1, msg, True
+    except Exception as e:
+        return no_update, f"❌ Error al cargar: {e}", True
+
+@app.callback(
+    Output("up-project","style"),
+    Input("btn-load-project","n_clicks"),
+    prevent_initial_call=True,
+)
+def trigger_load_project(n):
+    return {"display":"block"} if n else no_update
+
+# ─── T11: callbacks de exportar kit Cap.5 ─────────────────────────────────────
+@app.callback(
+    Output("kit-interval","disabled"),
+    Output("toast","children",allow_duplicate=True),
+    Output("toast","is_open",allow_duplicate=True),
+    Input("btn-kit-cap5","n_clicks"),
+    prevent_initial_call=True,
+)
+def on_kit_start(n):
+    if not n: return no_update, no_update, no_update
+    if not wells:
+        return True, "⚠ No hay datos para exportar.", True
+    with task_lock:
+        if kit_task_state["running"]:
+            return no_update, "⏳ Ya está generando el kit…", True
+    threading.Thread(target=run_kit_task, daemon=True).start()
+    return False, "⏳ Generando kit Cap.5…", True
+
+@app.callback(
+    Output("download-kit","data"),
+    Output("toast","children",allow_duplicate=True),
+    Output("toast","is_open",allow_duplicate=True),
+    Output("kit-interval","disabled",allow_duplicate=True),
+    Input("kit-interval","n_intervals"),
+    prevent_initial_call=True,
+)
+def on_kit_poll(n):
+    with task_lock:
+        done = kit_task_state["done"]
+        err = kit_task_state["error"]
+        data = kit_task_state["bytes"]
+        stage = kit_task_state["stage"]
+        pct = kit_task_state["progress"]
+    if not done:
+        return no_update, f"⏳ Kit: {stage} ({pct}%)", True, False
+    if err:
+        return no_update, f"❌ Kit: {err}", True, True
+    kit_task_state["bytes"] = None
+    return dcc.send_bytes(data, "kit_cap5.zip"), "✅ Kit Cap.5 listo — descargando.", True, True
+
 @app.callback(
     Output("well-report-modal","is_open"),
     Output("report-well-name","data"),
@@ -2897,6 +3315,17 @@ def _step1():
                        style={"color":"#aaa","display":"block","marginBottom":"8px"}),
             dbc.Button([f"🧪 Cargar Excel geomecánico ({len(geomech_bands['records'])} bandas)"],
                        id="btn-geomech", color="secondary", outline=True, size="sm"),
+        ]),
+        card("Proyecto (.gwz)", [
+            html.Small("Guarda/carga toda la sesión (pozos, DXF, configuración). "
+                       "El modelo RF no se guarda: re-entrena al cargar.",
+                       style={"color":"#aaa","display":"block","marginBottom":"8px"}),
+            dbc.Row([
+                dbc.Col(dbc.Button("💾 Guardar proyecto", id="btn-save-project",
+                                    color="info", outline=True, size="sm"), width="auto"),
+                dbc.Col(dbc.Button("📂 Cargar proyecto", id="btn-load-project",
+                                    color="info", outline=True, size="sm"), width="auto"),
+            ], className="g-2"),
         ]),
         dbc.Row([
             dbc.Col(dbc.Alert("Carga al menos un XML MWD.", color="warning",
@@ -3308,6 +3737,8 @@ def _step5():
                                     outline=True, size="sm"), width="auto"),
                 dbc.Col(dbc.Button("CSV predicciones", id="btn-exp-pred", color="secondary",
                                     outline=True, size="sm"), width="auto"),
+                dbc.Col(dbc.Button("📦 Exportar kit Cap.5", id="btn-kit-cap5",
+                                    color="warning", outline=True, size="sm"), width="auto"),
             ], className="g-1"),
         ]),
         dbc.Button("← Atrás", id={"type":"pill","index":4}, color="secondary", outline=True, size="sm", className="mt-3"),
