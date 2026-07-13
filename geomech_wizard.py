@@ -51,6 +51,14 @@ class Layer:
     name: str; kind: str; triangles: np.ndarray
     bbox_min: np.ndarray; bbox_max: np.ndarray
     ucs_lab: Optional[float] = None; folder: str = "Litología"
+    # Etiquetado caserón×litología (T2): el caserón se asigna por dropdown en
+    # el árbol de capas; lito_alias permite matchear la litología del Excel
+    # cuando el nombre de la capa DXF no coincide literal. ucs_lo/hi/mid son la
+    # banda de laboratorio autocompletada desde geomech_bands (el usuario puede
+    # sobrescribir ucs_lab manualmente sin perder la banda).
+    caseron: Optional[str] = None; lito_alias: Optional[str] = None
+    ucs_lo: Optional[float] = None; ucs_hi: Optional[float] = None
+    ucs_mid: Optional[float] = None
 
 @dataclass
 class MWDPoint:
@@ -63,9 +71,14 @@ class MWDPoint:
     dominio: Optional[str] = None; lito: Optional[str] = None; estructura: Optional[str] = None
     ucs_ml: Optional[float] = None; ucs_confiable: Optional[float] = None
     ucs_ml_prelim: bool = False
+    # Intervalo de predicción del RF (percentiles 10/90 sobre los árboles).
+    ucs_ml_p10: Optional[float] = None; ucs_ml_p90: Optional[float] = None
     di: Optional[float] = None; grupo: Optional[str] = None
     lito_inferida: Optional[str] = None; estructura_inferida: Optional[str] = None
     grupo_confianza: Optional[float] = None
+    # Verificación de consistencia banda-laboratorio vs intervalo ML (T3):
+    # "compatible" / "incompatible" / "ambiguo" / None (no evaluable).
+    band_check: Optional[str] = None
 
 @dataclass
 class Well:
@@ -85,6 +98,12 @@ domains: Dict[str, Dict] = {}
 domain_groups: List[Dict] = []
 clean_filters: List[Dict] = []
 excel_data: List[Dict] = []
+# Bandas geomecánicas de laboratorio (T2): registros por caserón×litología.
+#   by_pair    : {(caseron_norm, lito_norm): band}
+#   by_lito    : {lito_norm: [band, ...]}          (misma litología, varios caserones)
+#   by_caseron : {caseron_norm: [band, ...]}       (mismo caserón, varias litologías)
+#   records    : lista completa de bandas parseadas
+geomech_bands: Dict[str, Dict] = {"by_pair": {}, "by_lito": {}, "by_caseron": {}, "records": []}
 parse_warnings: List[str] = []
 rf_model = None
 rf_stats: Optional[Dict] = None
@@ -478,6 +497,139 @@ def parse_excel(path):
         rows.append(r)
     return rows
 
+# ─── EXCEL GEOMECÁNICO caserón×litología (T2) ─────────────────────────────────
+# Columnas por índice (fila de encabezados = índice 2, datos desde índice 3):
+#   2=Caserón · 3=Nivel · 23=Litología · 24=UCS[MPa] · 25=RMR · 26=RQD · 27=GSI
+GEO_COL = {"caseron":2, "nivel":3, "litologia":23, "ucs":24, "rmr":25, "rqd":26, "gsi":27}
+GEO_SHEET = "BUDGET_S_2026_V02"
+GEO_HEADER_ROW = 2   # 0-indexado; datos desde GEO_HEADER_ROW+1
+
+def _norm_txt(s):
+    """Normaliza texto para matching: minúsculas, sin acentos, sin espacios extra."""
+    if s is None: return ""
+    s = str(s).strip().lower()
+    trans = str.maketrans("áàäâãéèëêíìïîóòöôõúùüûñ", "aaaaaeeeeiiiiooooouuuun")
+    return " ".join(s.translate(trans).split())
+
+def _parse_band(raw):
+    """
+    Parsea un rango geomecánico tolerante a 'lo - hi', 'lo a hi' o valor único.
+    Devuelve (lo, mid, hi) o None si no hay número. UCS/RMR/RQD/GSI son no
+    negativos, así que se ignoran signos (un '-' es separador, no negativo).
+    """
+    if raw is None: return None
+    s = str(raw).strip()
+    if not s or s.lower() in ("nan", "none", "-", "—", "s/i", "sin dato"):
+        return None
+    nums = re.findall(r"\d+(?:[.,]\d+)?", s)
+    if not nums: return None
+    vals = [float(n.replace(",", ".")) for n in nums]
+    lo, hi = (vals[0], vals[0]) if len(vals) == 1 else (min(vals[0], vals[1]), max(vals[0], vals[1]))
+    return lo, (lo + hi) / 2.0, hi
+
+def parse_geomech_excel(path, sheet=GEO_SHEET):
+    """
+    Parsea el Excel geomecánico caserón×litología. Devuelve una lista de
+    registros {caseron, litologia, ucs_lo, ucs_mid, ucs_hi, rmr_raw,
+    rqd_lo, rqd_mid, rqd_hi, gsi_raw}. Salta filas sin litología.
+    Lee por índice de columna (header=None) para no depender de los nombres.
+    """
+    try:
+        xls = pd.ExcelFile(path)
+        sh = sheet if sheet in xls.sheet_names else xls.sheet_names[0]
+        df = pd.read_excel(path, sheet_name=sh, header=None)
+    except Exception as e:
+        raise RuntimeError(f"Excel geomecánico ilegible: {e}")
+
+    def cell(row, key):
+        j = GEO_COL[key]
+        if j >= df.shape[1]: return None
+        v = row.iloc[j]
+        return v if pd.notna(v) else None
+
+    records = []
+    for i in range(GEO_HEADER_ROW + 1, df.shape[0]):
+        row = df.iloc[i]
+        lito = cell(row, "litologia")
+        caseron = cell(row, "caseron")
+        if lito is None or not str(lito).strip():
+            continue  # fila sin litología → se salta
+        ucs_b = _parse_band(cell(row, "ucs"))
+        rqd_b = _parse_band(cell(row, "rqd"))
+        rec = {
+            "caseron": str(caseron).strip() if caseron is not None else "",
+            "litologia": str(lito).strip(),
+            "ucs_lo":  ucs_b[0] if ucs_b else None,
+            "ucs_mid": ucs_b[1] if ucs_b else None,
+            "ucs_hi":  ucs_b[2] if ucs_b else None,
+            "rmr_raw": None if cell(row, "rmr") is None else str(cell(row, "rmr")).strip(),
+            "rqd_lo":  rqd_b[0] if rqd_b else None,
+            "rqd_mid": rqd_b[1] if rqd_b else None,
+            "rqd_hi":  rqd_b[2] if rqd_b else None,
+            "gsi_raw": None if cell(row, "gsi") is None else str(cell(row, "gsi")).strip(),
+        }
+        records.append(rec)
+    return records
+
+def index_geomech_bands(records):
+    """Reconstruye los índices globales geomech_bands a partir de los registros."""
+    geomech_bands["by_pair"].clear()
+    geomech_bands["by_lito"].clear()
+    geomech_bands["by_caseron"].clear()
+    geomech_bands["records"] = list(records)
+    for rec in records:
+        cn, ln = _norm_txt(rec["caseron"]), _norm_txt(rec["litologia"])
+        geomech_bands["by_pair"][(cn, ln)] = rec
+        geomech_bands["by_lito"].setdefault(ln, []).append(rec)
+        if cn:
+            geomech_bands["by_caseron"].setdefault(cn, []).append(rec)
+
+def excel_caserones():
+    """Lista ordenada de caserones presentes en el Excel geomecánico."""
+    seen = []
+    for rec in geomech_bands["records"]:
+        c = rec["caseron"]
+        if c and c not in seen: seen.append(c)
+    return sorted(seen)
+
+def excel_litologias():
+    """Lista ordenada de litologías presentes en el Excel geomecánico."""
+    seen = []
+    for rec in geomech_bands["records"]:
+        l = rec["litologia"]
+        if l and l not in seen: seen.append(l)
+    return sorted(seen)
+
+def lookup_band(caseron, litologia):
+    """
+    Banda de una caserón×litología. Requiere caserón (decisión D1: la unidad de
+    etiquetado es la intersección, no la litología global). Devuelve el record
+    o None. Matching por texto normalizado (sin acentos/mayúsculas).
+    """
+    if not caseron or not litologia: return None
+    return geomech_bands["by_pair"].get((_norm_txt(caseron), _norm_txt(litologia)))
+
+def bands_for_caseron(caseron):
+    """Todas las bandas (por litología) de un caserón dado."""
+    if not caseron: return []
+    return geomech_bands["by_caseron"].get(_norm_txt(caseron), [])
+
+def apply_layer_band(layer):
+    """
+    Autocompleta la banda [ucs_lo, ucs_hi] y ucs_mid de una Layer si tiene
+    caserón asignado y su nombre (o lito_alias) matchea una litología del Excel.
+    Solo fija ucs_lab = ucs_mid si el usuario no lo había puesto a mano
+    (comportamiento manual intacto). Devuelve True si autocompletó.
+    """
+    lito = layer.lito_alias or layer.name
+    band = lookup_band(layer.caseron, lito)
+    if band is None or band.get("ucs_mid") is None:
+        return False
+    layer.ucs_lo, layer.ucs_mid, layer.ucs_hi = band["ucs_lo"], band["ucs_mid"], band["ucs_hi"]
+    if layer.ucs_lab is None:
+        layer.ucs_lab = round(float(band["ucs_mid"]), 1)
+    return True
+
 # ─── MOTOR GEOMECÁNICO ────────────────────────────────────────────────────────
 def _moller_trumbore_batch(origins, direction, tris, eps=1e-7):
     v0, v1, v2 = tris[:,0,:], tris[:,1,:], tris[:,2,:]
@@ -764,8 +916,18 @@ def predict_all_wells():
     pts = list(all_points())
     if not pts: return
     X = np.array([[getattr(p, k) for k in ML_FEATURES] for p in pts], dtype=np.float64)
-    preds = rf_model.predict(X)
-    for p, v in zip(pts, preds): p.ucs_ml = round(float(v), 1)
+    # Intervalo de predicción a partir de los árboles individuales del RF:
+    # matriz (n_arboles, n_puntos) y percentiles por columna (VECTORIZADO, sin
+    # loop por punto). ucs_ml pasa a ser la MEDIANA de los árboles (p50).
+    all_tree = np.stack([est.predict(X) for est in rf_model.estimators_])  # (T, N)
+    p10 = np.percentile(all_tree, 10, axis=0)
+    p50 = np.percentile(all_tree, 50, axis=0)
+    p90 = np.percentile(all_tree, 90, axis=0)
+    for i, p in enumerate(pts):
+        p.ucs_ml     = round(float(p50[i]), 1)
+        p.ucs_ml_p10 = round(float(p10[i]), 1)
+        p.ucs_ml_p90 = round(float(p90[i]), 1)
+        p.ucs_ml_prelim = False
     for well in wells.values():
         last_stable = None
         for p in well.points:
@@ -775,6 +937,65 @@ def predict_all_wells():
                 p.ucs_confiable = p.ucs_ml
             else:
                 p.ucs_confiable = last_stable
+    # Verificación de consistencia banda↔intervalo (si hay bandas cargadas).
+    band_consistency()
+
+# ─── VERIFICACIÓN DE BANDA (consistencia laboratorio ↔ intervalo ML) (T3) ─────
+def _resolve_caseron(lito):
+    """
+    Resuelve el caserón de una litología a partir de la Layer DXF que la
+    representa (por nombre o lito_alias). Si varias capas comparten esa
+    litología con distinto caserón, es ambiguo y se devuelve None.
+    """
+    if not lito: return None
+    ln = _norm_txt(lito)
+    caserones = set()
+    for layer in layers.values():
+        lay_lito = _norm_txt(layer.lito_alias or layer.name)
+        if lay_lito == ln and layer.caseron:
+            caserones.add(layer.caseron)
+    if len(caserones) == 1:
+        return next(iter(caserones))
+    return None  # 0 → sin caserón asignado; ≥2 → ambiguo, no resoluble
+
+def band_consistency():
+    """
+    Para cada punto con litología (DXF o inferida) y caserón resoluble, compara
+    su intervalo [p10, p90] contra la banda [ucs_lo, ucs_hi] de laboratorio de
+    esa caserón×litología. Guarda p.band_check ∈ {compatible, incompatible,
+    ambiguo} o None si no evaluable. No lanza excepciones por punto.
+    """
+    if not geomech_bands["records"]:
+        for p in all_points(): p.band_check = None
+        return
+    for p in all_points():
+        p.band_check = None
+        try:
+            lito = p.lito or p.lito_inferida
+            if not lito or p.ucs_ml is None:
+                continue
+            caseron = _resolve_caseron(lito)
+            band = lookup_band(caseron, lito)
+            if band is None or band.get("ucs_lo") is None or band.get("ucs_hi") is None:
+                continue
+            lo, hi = band["ucs_lo"], band["ucs_hi"]
+            med = p.ucs_ml
+            p10 = p.ucs_ml_p10 if p.ucs_ml_p10 is not None else med
+            p90 = p.ucs_ml_p90 if p.ucs_ml_p90 is not None else med
+            intersecta = not (p90 < lo or p10 > hi)
+            dentro = lo <= med <= hi
+            # ¿La mediana cae en ≥2 bandas de litologías del mismo caserón?
+            n_contienen = sum(1 for b in bands_for_caseron(caseron)
+                              if b.get("ucs_lo") is not None and b.get("ucs_hi") is not None
+                              and b["ucs_lo"] <= med <= b["ucs_hi"])
+            if not intersecta:
+                p.band_check = "incompatible"
+            elif dentro and n_contienen < 2:
+                p.band_check = "compatible"
+            else:
+                p.band_check = "ambiguo"
+        except Exception:
+            p.band_check = None
 
 def run_cross_ml(ucs_min=None, ucs_max=None):
     classify_all_wells()
@@ -910,6 +1131,8 @@ def predict_unclassified(tol_ucs=20.0, tol_di=0.15, interval_m=2.0):
                     p.grupo_confianza = float(1/(1+best_d**0.5))
                     assigned += 1
     wz_state['step5']['predicted'] = True
+    # Reevaluar consistencia de banda incluyendo litologías inferidas.
+    band_consistency()
     return {"assigned":assigned,"total":total,"no_model":no_model}
 
 def _segments_by_domain(group_id, min_len=5):
@@ -999,8 +1222,10 @@ def export_predictions_csv():
                 "vel":p.vel,"pp":p.pp,"pr":p.pr,"pa":p.pa,"pd":p.pd,"pf":p.pf,"se":p.se,
                 "dominio":p.dominio or "","lito":p.lito or p.lito_inferida or "",
                 "estructura":p.estructura or p.estructura_inferida or "",
-                "ucs_ml":p.ucs_ml,"ucs_confiable":p.ucs_confiable,"di":p.di,
+                "ucs_ml":p.ucs_ml,"ucs_ml_p10":p.ucs_ml_p10,"ucs_ml_p90":p.ucs_ml_p90,
+                "ucs_confiable":p.ucs_confiable,"di":p.di,
                 "grupo":p.grupo or "","entrenable":int(p.entrenable),
+                "band_check":p.band_check or "",
             })
     return pd.DataFrame(rows)
 
@@ -1013,7 +1238,20 @@ COLOR_FIELDS = {
     "ucs_confiable":("UCS confiable [MPa]",0,270,False),"di":("DI",0,3,False),
     "lito":("Litología DXF",None,None,True),"grupo":("Dominio agrupado",None,None,True),
     "lito_inferida":("Litología inferida",None,None,True),
+    "band_check":("Consistencia de banda",None,None,True),
 }
+
+# Colores fijos para la consistencia de banda (categórico con semántica).
+BAND_COLORS = {"compatible":"#2ECC71", "incompatible":"#E74C3C",
+               "ambiguo":"#F1C40F", "—":"#7F8C8D"}
+
+def _fmt_ucs_interval(p):
+    """'182 [155–213] MPa' si hay intervalo; '182 MPa' o 'sin calcular'."""
+    if p.ucs_ml is None:
+        return "sin calcular"
+    if p.ucs_ml_p10 is not None and p.ucs_ml_p90 is not None:
+        return f"{p.ucs_ml:.0f} [{p.ucs_ml_p10:.0f}–{p.ucs_ml_p90:.0f}] MPa"
+    return f"{p.ucs_ml:.0f} MPa"
 
 REPORT_VARS = {
     "vel": "ROP [m/min]", "pp": "Percusión [bar]", "pa": "Avance [bar]",
@@ -1095,7 +1333,11 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
     cat_map = {}
     if categorical:
         all_cats = sorted({getattr(p, color_by) or "—" for well in wells.values() for p in well.points})
-        cat_map = {c: PALETTE[i%len(PALETTE)] for i,c in enumerate(all_cats)}
+        if color_by == "band_check":
+            # Colores semánticos fijos (verde/rojo/amarillo/gris), no la paleta.
+            cat_map = {c: BAND_COLORS.get(c, "#7F8C8D") for c in all_cats}
+        else:
+            cat_map = {c: PALETTE[i%len(PALETTE)] for i,c in enumerate(all_cats)}
     for idx, (name, layer) in enumerate(layers.items()):
         tris = layer.triangles
         if len(tris) == 0: continue
@@ -1123,7 +1365,7 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
             vals = [getattr(p, color_by) or "—" for p in pts]
             colors = [cat_map.get(v, "#888") for v in vals]
             hover = [f"<b>{wn}</b><br>{p.largo:.2f}m<br>{label}: {v}"
-                     f"<br>UCS ML: {f'{p.ucs_ml:.0f} MPa' if p.ucs_ml is not None else 'sin calcular'}"
+                     f"<br>UCS ML: {_fmt_ucs_interval(p)}"
                      f"<br>E={p.este:.1f} N={p.norte:.1f} Z={p.cota:.1f}"
                      for p,v in zip(pts,vals)]
             fig.add_trace(go.Scatter3d(x=xs,y=ys,z=zs,mode="lines+markers",name=wn,
@@ -1139,7 +1381,7 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
             hover = [f"<b>{wn}</b><br>{p.largo:.2f}m<br>{label}: "
                      f"{f'{vd:.2f}' if vd is not None else 'sin calcular'}"
                      f"<br>DI: {f'{p.di:.2f}' if p.di is not None else '—'}"
-                     f"<br>UCS ML: {f'{p.ucs_ml:.0f} MPa' if p.ucs_ml is not None else 'sin calcular'}"
+                     f"<br>UCS ML: {_fmt_ucs_interval(p)}"
                      f"<br>E={p.este:.1f} N={p.norte:.1f} Z={p.cota:.1f}"
                      for p,vd in zip(pts,raw_vals_display)]
             fig.add_trace(go.Scatter3d(x=xs,y=ys,z=zs,mode="lines+markers",name=wn,
@@ -1239,6 +1481,7 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
     dcc.Upload(id="up-dxf", multiple=True, children=html.Div(), style={"display":"none"}),
     dcc.Upload(id="up-xml", multiple=True, children=html.Div(), style={"display":"none"}),
     dcc.Upload(id="up-excel", multiple=False, children=html.Div(), style={"display":"none"}),
+    dcc.Upload(id="up-geomech", multiple=False, children=html.Div(), style={"display":"none"}),
     dcc.Download(id="download"),
     dcc.Store(id="refresh", data=0),
     dcc.Store(id="active-step", data=1),
@@ -1312,20 +1555,38 @@ def render_viewport(_, color_by, layer_vis_vals, well_vis_vals, layer_ids, well_
 
 def _layer_tree():
     items = []
+    caseron_opts = [{"label": c, "value": c} for c in excel_caserones()]
+    lito_opts = [{"label": l, "value": l} for l in excel_litologias()]
     for i, (name, layer) in enumerate(layers.items()):
         ucs_badge = dbc.Badge(f"{layer.ucs_lab} MPa", color="success", className="ms-1") \
                     if layer.ucs_lab else dbc.Badge("sin UCS", color="secondary", className="ms-1")
-        items.append(dbc.ListGroupItem([
+        band_badge = dbc.Badge(f"banda {layer.ucs_lo:.0f}–{layer.ucs_hi:.0f}", color="info",
+                               className="ms-1") if layer.ucs_lo is not None and layer.ucs_hi is not None else None
+        layer_children = [
             html.Div([
                 dbc.Checkbox(id={"type":"vis-layer","index":name}, value=True,
                              style={"display":"inline-block","marginRight":"6px"}),
                 html.Small([html.Span("●",style={"color":PALETTE[i%len(PALETTE)],"marginRight":"4px"}),
-                            f"{layer.kind[:4]}: ", name, ucs_badge], style={"fontSize":"11px"}),
+                            f"{layer.kind[:4]}: ", name, ucs_badge, band_badge], style={"fontSize":"11px"}),
             ], style={"display":"flex","alignItems":"center"}),
             dbc.Input(id={"type":"ucs-in","index":name}, type="number", placeholder="UCS [MPa]",
                       value=layer.ucs_lab, min=UCS_CONFIG["physical_min"], max=UCS_CONFIG["physical_max"],
                       step=1, size="sm", debounce=True, style={"fontSize":"10px","marginTop":"3px"}),
-        ], style={"padding":"5px 8px","background":"transparent","border":"none","borderBottom":"1px solid #222"}))
+        ]
+        # Etiquetado caserón×litología (T2). Los dropdowns solo se muestran si
+        # hay Excel geomecánico cargado. Ids pattern-matching (contenido
+        # regenerado) → nunca ids fijos.
+        if caseron_opts:
+            layer_children.append(dbc.Row([
+                dbc.Col(dcc.Dropdown(id={"type":"caseron-sel","index":name}, options=caseron_opts,
+                        value=layer.caseron, placeholder="Caserón…", clearable=True,
+                        style={"fontSize":"10px"}), width=6),
+                dbc.Col(dcc.Dropdown(id={"type":"lito-alias","index":name}, options=lito_opts,
+                        value=layer.lito_alias, placeholder="Litología (alias)…", clearable=True,
+                        style={"fontSize":"10px"}), width=6),
+            ], className="g-1", style={"marginTop":"3px"}))
+        items.append(dbc.ListGroupItem(layer_children,
+            style={"padding":"5px 8px","background":"transparent","border":"none","borderBottom":"1px solid #222"}))
     for wn, well in wells.items():
         badge = ""
         if well.origin == "fallback_hole": badge = " ⚠ collar por fallback"
@@ -1377,6 +1638,46 @@ def update_ucs(values, ids, ref):
         return ref+1
     return no_update
 
+@app.callback(
+    Output("refresh","data",allow_duplicate=True),
+    Output("toast","children",allow_duplicate=True),
+    Output("toast","is_open",allow_duplicate=True),
+    Input({"type":"caseron-sel","index":ALL},"value"),
+    Input({"type":"lito-alias","index":ALL},"value"),
+    State({"type":"caseron-sel","index":ALL},"id"),
+    State({"type":"lito-alias","index":ALL},"id"),
+    State("refresh","data"), prevent_initial_call=True,
+)
+def on_layer_meta(caseron_vals, alias_vals, caseron_ids, alias_ids, ref):
+    """
+    Asigna caserón / alias de litología a las capas DXF y autocompleta su banda
+    UCS desde el Excel geomecánico. Ids pattern-matching → sobrevive a la
+    regeneración del árbol; no toca la figura 3D (eso es de render_viewport).
+    """
+    ctx = callback_context
+    if not ctx.triggered: return no_update, no_update, no_update
+    # Solo actuar ante un cambio REAL de valor. Al regenerarse el árbol los
+    # dropdowns se remontan y este callback se dispara con los mismos valores;
+    # si no filtramos, cada disparo devolvería ref+1 y entraría en bucle.
+    changed = False
+    for val, id_d in zip(caseron_vals, caseron_ids):
+        name = id_d["index"]
+        if name in layers and layers[name].caseron != (val or None):
+            layers[name].caseron = val or None; changed = True
+    for val, id_d in zip(alias_vals, alias_ids):
+        name = id_d["index"]
+        if name in layers and layers[name].lito_alias != (val or None):
+            layers[name].lito_alias = val or None; changed = True
+    if not changed:
+        return no_update, no_update, no_update
+    filled = []
+    for name, layer in layers.items():
+        if layer.caseron and apply_layer_band(layer):
+            filled.append(f"{name}→{layer.ucs_lo:.0f}–{layer.ucs_hi:.0f}")
+    build_domain_index()
+    if filled:
+        return ref+1, "✅ Banda autocompletada: " + ", ".join(filled), True
+    return ref+1, "Caserón/litología actualizado (sin banda coincidente).", True
 
 @app.callback(
     Output("active-step","data"),
@@ -1503,6 +1804,33 @@ def on_excel(content, fname, ref):
     Output("refresh","data",allow_duplicate=True),
     Output("toast","children",allow_duplicate=True),
     Output("toast","is_open",allow_duplicate=True),
+    Input("up-geomech","contents"), State("up-geomech","filename"),
+    State("refresh","data"), prevent_initial_call=True,
+)
+def on_geomech(content, fname, ref):
+    """Carga el Excel geomecánico caserón×litología y reconstruye geomech_bands."""
+    if not content: return no_update, no_update, no_update
+    try:
+        _, b64 = content.split(",", 1)
+        raw = base64.b64decode(b64)
+        with tempfile.NamedTemporaryFile(suffix=Path(fname).suffix, delete=False) as f:
+            f.write(raw); tmp = f.name
+        records = parse_geomech_excel(tmp); os.unlink(tmp)
+        index_geomech_bands(records)
+        # Reaplicar bandas a las capas que ya tengan caserón asignado.
+        for layer in layers.values():
+            if layer.caseron: apply_layer_band(layer)
+        build_domain_index()
+        n_cas, n_lit = len(excel_caserones()), len(excel_litologias())
+        return ref+1, (f"✅ Excel geomecánico: {len(records)} bandas "
+                       f"({n_cas} caserones, {n_lit} litologías)."), True
+    except Exception as e:
+        return no_update, f"❌ Excel geomecánico: {e}", True
+
+@app.callback(
+    Output("refresh","data",allow_duplicate=True),
+    Output("toast","children",allow_duplicate=True),
+    Output("toast","is_open",allow_duplicate=True),
     Input("btn-preview-cross","n_clicks"),
     State("refresh","data"), prevent_initial_call=True,
 )
@@ -1524,7 +1852,8 @@ def do_preview_cross(n, ref):
     n_dom = sum(1 for p in all_pts if p.dominio)
     return ref+1, f"✅ Cruce ejecutado: {n_dom}/{len(all_pts)} pts dentro de alguna malla, {n_ucs} con UCS asignado.", True
 
-for btn_id, upload_id in [("btn-dxf","up-dxf"),("btn-xml","up-xml"),("btn-excel","up-excel")]:
+for btn_id, upload_id in [("btn-dxf","up-dxf"),("btn-xml","up-xml"),("btn-excel","up-excel"),
+                          ("btn-geomech","up-geomech")]:
     app.clientside_callback(
         f"""function(n){{if(n){{var e=document.querySelector('#{upload_id} input[type=file]');if(e)e.click();}}return window.dash_clientside.no_update;}}""",
         Output(btn_id,"n_clicks"), Input(btn_id,"n_clicks"), prevent_initial_call=True,
@@ -1956,6 +2285,14 @@ def _step1():
             dbc.Button([f"📈 Cargar Excel ({n_excel} tiros)"], id="btn-excel",
                        color="secondary", outline=True, size="sm"),
         ]),
+        card("Excel geomecánico caserón×litología (bandas UCS/RMR/RQD/GSI)", [
+            html.Small("Rangos de laboratorio por caserón×litología. Alimenta las "
+                       "bandas [UCS_lo, UCS_hi] de las capas DXF y la verificación de "
+                       "consistencia (Paso 5).",
+                       style={"color":"#aaa","display":"block","marginBottom":"8px"}),
+            dbc.Button([f"🧪 Cargar Excel geomecánico ({len(geomech_bands['records'])} bandas)"],
+                       id="btn-geomech", color="secondary", outline=True, size="sm"),
+        ]),
         dbc.Row([
             dbc.Col(dbc.Alert("Carga al menos un XML MWD.", color="warning",
                               style={"fontSize":"11px","padding":"5px 10px"}) if n_wells == 0 else html.Div()),
@@ -2131,13 +2468,26 @@ def _domain_report_table():
         return dbc.Alert("Aún no se han agrupado dominios. Usa 'Agrupar dominios' primero.",
                           color="secondary", style={"fontSize":"11px","padding":"6px 10px"})
     rows = [gw_row for gw_row in sorted(domain_groups, key=lambda g: -g["count"])]
+    def pct_compat(g):
+        """% de puntos del dominio con banda compatible (sobre los evaluables)."""
+        pts = g.get("pts", [])
+        evaluados = [p for p in pts if p.band_check is not None]
+        if not evaluados: return None
+        comp = sum(1 for p in evaluados if p.band_check == "compatible")
+        return 100.0 * comp / len(evaluados)
+    def pct_cell(v):
+        if v is None:
+            return html.Small("—", style={"color":"#666"})
+        color = "#2ECC71" if v >= 70 else ("#F1C40F" if v >= 40 else "#E74C3C")
+        return html.Small(f"{v:.0f}%", style={"color":color, "fontWeight":700})
     header = dbc.Row([
         dbc.Col(html.Small("Dominio", style={"color":"#888","fontWeight":700}), width=1),
         dbc.Col(html.Small("Litología", style={"color":"#888","fontWeight":700}), width=2),
         dbc.Col(html.Small("Estructura", style={"color":"#888","fontWeight":700}), width=2),
         dbc.Col(html.Small("UCS-ML medio", style={"color":"#888","fontWeight":700}), width=2),
         dbc.Col(html.Small("DI medio", style={"color":"#888","fontWeight":700}), width=2),
-        dbc.Col(html.Small("N tramos", style={"color":"#888","fontWeight":700}), width=2),
+        dbc.Col(html.Small("N tramos", style={"color":"#888","fontWeight":700}), width=1),
+        dbc.Col(html.Small("% compat.", style={"color":"#888","fontWeight":700}), width=2),
     ], className="mb-1")
     body = [dbc.Row([
         dbc.Col(html.Small(g["id"], style={"color":"#3B8BD4","fontWeight":700}), width=1),
@@ -2145,7 +2495,8 @@ def _domain_report_table():
         dbc.Col(html.Small(g["estructura"] or "—", style={"color":"#ccc"}), width=2),
         dbc.Col(html.Small(f"{g['ucsMean']:.1f} MPa", style={"color":"#2ECC71"}), width=2),
         dbc.Col(html.Small(f"{g['diMean']:.3f}", style={"color":"#EF9F27"}), width=2),
-        dbc.Col(html.Small(str(g["count"]), style={"color":"#aaa"}), width=2),
+        dbc.Col(html.Small(str(g["count"]), style={"color":"#aaa"}), width=1),
+        dbc.Col(pct_cell(pct_compat(g)), width=2),
     ], className="mb-1 py-1", style={"borderBottom":"1px solid #1a1a1a"}) for g in rows]
     return card(f"Dominios detectados ({len(domain_groups)})", [header] + body)
 
