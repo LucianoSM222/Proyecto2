@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 import ezdxf, ezdxf.recover
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import cross_val_score, KFold
+from sklearn.model_selection import cross_val_score, GroupKFold
 from sklearn.inspection import permutation_importance
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -192,6 +192,8 @@ def run_ml_task(ucs_min, ucs_max):
             with task_lock:
                 task_state.update(running=False, done=True, error=stats["error"])
             return
+        if stats.get("cv_warning"):
+            task_log(f"⚠ {stats['cv_warning']}")
 
         task_log("Generando predicciones UCS para todos los pozos...", "Prediciendo UCS", 90)
         predict_all_wells()
@@ -841,27 +843,123 @@ def _moving_variance(arr, half):
     mean = sums/counts
     return np.maximum(sums2/counts - mean**2, 0.0)
 
+def di_profile(points, window, params=None, weights=None):
+    """
+    (T7b) Calcula el perfil DI de una lista de puntos MWD SIN efectos
+    laterales: no lee ni escribe p.di, solo usa las variables MWD (pp/pr/etc.)
+    de cada punto. Función pura extraída de compute_di (que ahora delega en
+    ésta) para poder recalcular el DI con otras ventanas/parámetros —p.ej. el
+    análisis de sensibilidad del Paso 3— sin sobrescribir el DI oficial de los
+    puntos. Misma fórmula exacta que antes del refactor (regresión: idénticos
+    p.di para ventana=14, ver test_di_rqd.py / test suite T7).
+
+    Devuelve un array (len(points),) con el DI, o None si len(points) < window.
+    """
+    params = params if params is not None else di_config["params"]
+    weights = weights if weights is not None else di_config["weights"]
+    half = window // 2
+    n = len(points)
+    if n < window:
+        return None
+    total_w = sum(weights.get(k, 0) for k in params) or 1.0
+    norm_w = {k: weights.get(k, 0) / total_w for k in params}
+    total = np.zeros(n)
+    for k in params:
+        arr = np.array([getattr(p, k) for p in points], dtype=np.float64)
+        mv = _moving_variance(arr, half)
+        std = mv.std() or 1e-9
+        z = (mv - mv.mean()) / std
+        total += norm_w[k] * z**2
+    return np.sqrt(total)
+
 def compute_di():
-    cfg = di_config; half = cfg["window"]//2
-    params = cfg["params"]
-    total_w = sum(cfg["weights"].get(k,0) for k in params) or 1.0
-    norm_w = {k: cfg["weights"].get(k,0)/total_w for k in params}
+    cfg = di_config
     for wn, well in wells.items():
         pts = well.points; n = len(pts)
         if n < cfg["window"]:
             log_warn(f'DI "{wn}": {n} pts, mín={cfg["window"]}.'); continue
         try:
-            total = np.zeros(n)
-            for k in params:
-                arr = np.array([getattr(p, k) for p in pts], dtype=np.float64)
-                mv = _moving_variance(arr, half)
-                std = mv.std() or 1e-9
-                z = (mv - mv.mean())/std
-                total += norm_w[k] * z**2
-            di = np.sqrt(total)
+            di = di_profile(pts, cfg["window"], cfg["params"], cfg["weights"])
+            if di is None: continue
             for i, p in enumerate(pts): p.di = float(di[i])
         except Exception as e:
             log_warn(f'DI "{wn}": {e}')
+
+# ─── SENSIBILIDAD DE LA VENTANA DEL DI (T7) ────────────────────────────────────
+DI_SENSITIVITY_WINDOWS = (10, 14, 20)
+
+def _count_fused_peaks(largos, di_arr, threshold, min_gap_m=0.5):
+    """
+    (T7c) Cuenta picos DI > threshold sobre un array (largos, di) arbitrario
+    —no ligado a p.di ni a Well—, fusionando eventos consecutivos separados
+    menos de min_gap_m en un solo pico (mismo criterio de agrupación que
+    di_peaks, T4b, pero aplicado a un perfil recalculado en memoria).
+    """
+    idx = [i for i in range(len(di_arr)) if di_arr[i] > threshold]
+    if not idx: return 0
+    count = 1
+    last_l = largos[idx[0]]
+    for i in idx[1:]:
+        l = largos[i]
+        if l - last_l >= min_gap_m: count += 1
+        last_l = l
+    return count
+
+def di_sensitivity_analysis(well, windows=DI_SENSITIVITY_WINDOWS):
+    """
+    (T7b) Recalcula el DI de `well` con cada ventana de `windows` usando la
+    función PURA di_profile (sin tocar p.di). Devuelve
+    {"largos":[...], "profiles":{window: array|None}, "rows":[{ventana,
+    n_picos, pct_sobre_umbral}, ...]} — insumo tanto del gráfico como de la
+    tabla del análisis de sensibilidad del Paso 3.
+    """
+    pts = well.points
+    largos = [p.largo for p in pts]
+    profiles, rows = {}, []
+    for w in windows:
+        di = di_profile(pts, w, di_config["params"], di_config["weights"])
+        profiles[w] = di
+        if di is None:
+            rows.append({"ventana": w, "n_picos": None, "pct_sobre_umbral": None})
+            continue
+        n_picos = _count_fused_peaks(largos, di, di_threshold)
+        pct = 100.0 * float(np.sum(di > di_threshold)) / len(di)
+        rows.append({"ventana": w, "n_picos": n_picos, "pct_sobre_umbral": round(pct, 1)})
+    return {"largos": largos, "profiles": profiles, "rows": rows}
+
+def build_di_sensitivity_figure(result):
+    """(T7c) Perfiles DI superpuestos (uno por ventana) + línea de umbral."""
+    fig = go.Figure()
+    colors = {10: "#3B8BD4", 14: "#5DCAA5", 20: "#EF9F27"}
+    largos = result["largos"]
+    for w, di in result["profiles"].items():
+        if di is None: continue
+        fig.add_trace(go.Scatter(x=largos, y=di, mode="lines", name=f"ventana={w}",
+                                 line=dict(color=colors.get(w, "#888"), width=1.3)))
+    fig.add_hline(y=di_threshold, line_dash="dash", line_color="#E74C3C",
+                 annotation_text=f"Umbral={di_threshold}")
+    fig.update_layout(template="plotly_dark", paper_bgcolor="#0d0d1a", plot_bgcolor="#0d0d1a",
+                      height=280, margin=dict(l=45, r=15, t=15, b=40),
+                      xaxis_title="Profundidad [m]", yaxis_title="DI",
+                      legend=dict(font=dict(size=10)))
+    return fig
+
+def build_di_sensitivity_content(well):
+    """(T7c) Gráfico + tabla corta (n picos, % sobre umbral) por ventana."""
+    result = di_sensitivity_analysis(well)
+    fig = build_di_sensitivity_figure(result)
+    table = dbc.Table([
+        html.Thead(html.Tr([html.Th("Ventana"), html.Th("N picos"), html.Th("% sobre umbral")])),
+        html.Tbody([html.Tr([
+            html.Td(str(r["ventana"])),
+            html.Td(str(r["n_picos"]) if r["n_picos"] is not None else "— (pozo corto)"),
+            html.Td(f"{r['pct_sobre_umbral']}%" if r["pct_sobre_umbral"] is not None else "—"),
+        ]) for r in result["rows"]]),
+    ], bordered=False, size="sm", style={"fontSize":"11px", "color":"#ccc", "marginTop":"6px"})
+    return html.Div([
+        dcc.Graph(figure=fig, config={"displayModeBar": False}),
+        table,
+    ])
 
 # ─── VALIDACIÓN MULTIPOZO DE POSICIÓN DE MALLAS DXF (T4) ──────────────────────
 # Un pico DI aislado en un pozo no prueba nada; la evidencia de que una malla
@@ -1081,23 +1179,33 @@ def export_validation_csv():
     return pd.DataFrame(rows)
 
 def _get_train_data(ucs_min, ucs_max):
-    X, y, n_excl = [], [], 0
-    for p in all_points():
-        if not p.entrenable or not p.dominio: continue
-        dom = domains.get(p.dominio)
-        if not dom or dom.get("ucs_lab") is None: continue
-        ucs = dom["ucs_lab"]
-        if ucs < ucs_min or ucs > ucs_max: continue
-        if p.di is not None and p.di > di_threshold: n_excl += 1; continue
-        X.append([getattr(p, k) for k in ML_FEATURES])
-        y.append(ucs)
-    return np.array(X, dtype=np.float64), np.array(y, dtype=np.float64), n_excl
+    """
+    (T6a) Además de X e y, devuelve `groups`: el well_name de cada punto de
+    entrenamiento, para poder agrupar la validación cruzada por pozo
+    (GroupKFold) y evitar que muestras vecinas del mismo tiro —a 2 cm entre
+    sí y fuertemente autocorrelacionadas— terminen repartidas entre train y
+    test, lo que infla artificialmente el R².
+    """
+    X, y, groups, n_excl = [], [], [], 0
+    for wn, well in wells.items():
+        for p in well.points:
+            if not p.entrenable or not p.dominio: continue
+            dom = domains.get(p.dominio)
+            if not dom or dom.get("ucs_lab") is None: continue
+            ucs = dom["ucs_lab"]
+            if ucs < ucs_min or ucs > ucs_max: continue
+            if p.di is not None and p.di > di_threshold: n_excl += 1; continue
+            X.append([getattr(p, k) for k in ML_FEATURES])
+            y.append(ucs)
+            groups.append(wn)
+    return (np.array(X, dtype=np.float64), np.array(y, dtype=np.float64),
+            np.array(groups), n_excl)
 
 def train_rf(ucs_min=None, ucs_max=None):
     global rf_model, rf_stats
     ucs_min = ucs_min or ucs_range["ucs_min"]
     ucs_max = ucs_max or ucs_range["ucs_max"]
-    X, y, n_excl = _get_train_data(ucs_min, ucs_max)
+    X, y, groups, n_excl = _get_train_data(ucs_min, ucs_max)
     if len(X) < 10:
         return {"error": f"Insuficientes puntos ({len(X)} < 10)."}
     model = RandomForestRegressor(n_estimators=200, max_depth=8, min_samples_split=6,
@@ -1109,13 +1217,25 @@ def train_rf(ucs_min=None, ucs_max=None):
     ss_tot = np.sum((y-y.mean())**2) or 1
     r2_tr = float(1 - np.sum((y-y_pred)**2)/ss_tot)
     rmsea = float(rmse_tr/np.sqrt(len(X)))
-    k = max(2, min(5, len(X)//10))
+    # (T6b) CV AGRUPADA POR POZO (GroupKFold): las muestras MWD distan 2 cm
+    # entre sí dentro de un mismo tiro y están fuertemente autocorrelacionadas;
+    # un KFold aleatorio mezcla puntos del mismo pozo entre train y test y
+    # produce fuga espacial que infla el R². GroupKFold garantiza que todo un
+    # pozo cae entero en un solo lado del split. Con <3 pozos distintos no hay
+    # forma de armar >=2 grupos de test razonables, así que se omite (n_grupos
+    # < n_splits mínimo de 2 haría GroupKFold fallar igualmente).
+    n_grupos = len(set(groups.tolist())) if groups.size else 0
     cv_scores = np.array([])
-    if k >= 2:
+    cv_warning = None
+    if n_grupos >= 3:
+        k = min(5, n_grupos)
         try:
-            kf = KFold(n_splits=k, shuffle=True, random_state=42)
-            cv_scores = cross_val_score(model, X, y, cv=kf, scoring="r2")
-        except: pass
+            gkf = GroupKFold(n_splits=k)
+            cv_scores = cross_val_score(model, X, y, cv=gkf, groups=groups, scoring="r2")
+        except Exception as e:
+            cv_warning = f"CV agrupada falló: {e}"
+    else:
+        cv_warning = (f"CV agrupada requiere ≥3 pozos con etiqueta (hay {n_grupos}).")
     n_tr = int(len(X)*0.7); rmse_te = None
     if n_tr >= 5 and len(X)-n_tr >= 3:
         m2 = RandomForestRegressor(n_estimators=100, max_depth=8, n_jobs=-1, random_state=0)
@@ -1134,6 +1254,7 @@ def train_rf(ucs_min=None, ucs_max=None):
         "rmsea": round(rmsea, 4),
         "cv_r2_mean": round(float(cv_scores.mean()), 3) if cv_scores.size else None,
         "cv_r2_std": round(float(cv_scores.std()), 3) if cv_scores.size else None,
+        "cv_n_grupos": n_grupos, "cv_warning": cv_warning,
         "rmse_test": round(rmse_te, 1) if rmse_te else None,
         "overfit": round(rmse_te-rmse_tr, 1) if rmse_te else None,
         "feat_imp": feat_imp,
@@ -2360,6 +2481,34 @@ def do_di(n, window, thresh, ref):
     return ref+1, f"✅ DI: {n_di} pts · {n_disc} discontinuidades", True
 
 @app.callback(
+    Output({"type":"sens-output","index":ALL},"children"),
+    Input({"type":"sens-btn","index":ALL},"n_clicks"),
+    State({"type":"sens-well-sel","index":ALL},"value"),
+    State({"type":"sens-output","index":ALL},"id"),
+    prevent_initial_call=True,
+)
+def do_di_sensitivity(n_clicks_list, well_sel_list, out_ids):
+    """
+    (T7b/c) Análisis de sensibilidad del DI (ventanas 10/14/20) para el pozo
+    seleccionado. Callback normal (no hilo): un solo pozo, cálculo rápido con
+    la función pura di_profile — no toca p.di ni bloquea la UI. El dropdown,
+    botón y contenedor de salida viven en wz-content (contenido regenerado al
+    navegar de paso) → todos con ids pattern-matching.
+    """
+    n_out = len(out_ids)
+    ctx = callback_context
+    tid = ctx.triggered_id
+    if not isinstance(tid, dict) or not ctx.triggered[0]["value"]:
+        return [no_update] * n_out
+    wn = well_sel_list[0] if well_sel_list else None
+    well = wells.get(wn)
+    if not well or not well.points:
+        return [dbc.Alert("Selecciona un pozo válido.", color="warning",
+                          style={"fontSize":"11px","padding":"6px 10px"})] * n_out
+    content = build_di_sensitivity_content(well)
+    return [content] * n_out
+
+@app.callback(
     Output("ml-task-poll","disabled"),
     Input("btn-ml","n_clicks"),
     State("ucs-min","value"), State("ucs-max","value"),
@@ -2414,7 +2563,14 @@ def poll_ml_task(_, ref):
         return progress, f"{progress}%", stage, log_box, True, no_update, \
                dbc.Alert(error, color="warning"), f"⚠ {error}", True
 
-    cv_display = f"{result['cv_r2_mean']}±{result['cv_r2_std']}" if result.get('cv_r2_mean') is not None else "—"
+    # (T6c) CV agrupada por pozo: si se omitió (< 3 pozos), mostrar el motivo
+    # en vez de un "—" mudo, para que quede claro por qué falta la métrica.
+    if result.get('cv_r2_mean') is not None:
+        cv_display = f"{result['cv_r2_mean']}±{result['cv_r2_std']}"
+    elif result.get('cv_warning'):
+        cv_display = "sin CV"
+    else:
+        cv_display = "—"
     badges = html.Div([
         dbc.Row([
             dbc.Col(dbc.Card(dbc.CardBody([html.Div(str(v),style={"fontSize":"17px","fontWeight":700}),
@@ -2422,19 +2578,23 @@ def poll_ml_task(_, ref):
                 color="dark"), width="auto")
             for k,v in [("R² in-sample",result["r2_train"]),("RMSE in-sample",f"{result['rmse_train']} MPa"),
                         ("RMSEA",result["rmsea"]),
-                        ("R² CV (5-fold)",cv_display),
+                        ("R² CV agrupada (por pozo)",cv_display),
                         ("N",result["n_train"]),("Excl. caídas",result["n_excl_disc"])]
         ], className="g-1 mt-2"),
         dbc.Alert([
             html.Small([
                 html.B("R² in-sample"), " mide el ajuste sobre los mismos datos usados para entrenar ",
                 "(equivalente a evaluar con predict(X) sobre el 100% de los datos, sin holdout separado). ",
-                html.B("R² CV (5-fold)"), " es la métrica honesta de generalización: cada fold se evalúa ",
-                "con datos que el modelo nunca vio en ese pliegue. Para reportar en la memoria, usar la métrica CV.",
-            ], style={"color":"#aaa","lineHeight":"1.5"})
+                html.B("R² CV agrupada (por pozo)"), " es la métrica honesta de generalización: usa "
+                "GroupKFold, que mantiene TODO un pozo del mismo lado del split train/test. Evita la fuga "
+                "espacial entre muestras vecinas de un mismo tiro (a 2 cm entre sí y fuertemente "
+                "autocorrelacionadas), que un KFold aleatorio mezclaría e infla artificialmente el R². "
+                "Para reportar en la memoria, usar esta métrica.",
+            ] + ([html.Br(), html.Br(), f"⚠ {result['cv_warning']}"] if result.get('cv_warning') else []),
+            style={"color":"#aaa","lineHeight":"1.5"})
         ], color="dark", style={"fontSize":"10px","padding":"6px 10px","marginTop":"6px"}),
     ])
-    msg = f"✅ R² in-sample={result['r2_train']} | R² CV={cv_display} | RMSE={result['rmse_train']} MPa | N={result['n_train']}"
+    msg = f"✅ R² in-sample={result['r2_train']} | R² CV agrupada={cv_display} | RMSE={result['rmse_train']} MPa | N={result['n_train']}"
     return progress, f"{progress}%", stage, log_box, True, ref+1, badges, msg, True
 
 # ─── Callbacks de la validación multipozo (T4e) ───────────────────────────────
@@ -2868,6 +3028,35 @@ def _di_rqd_card():
                    color="secondary", outline=True, size="sm", className="mt-2"),
     ])
 
+def _di_sensitivity_card():
+    """
+    (T7a) Card "Análisis de sensibilidad" del Paso 3: recalcula el DI de un
+    pozo con ventanas 10/14/20 (sin sobrescribir el DI oficial) para justificar
+    la elección de ventana=14. Dropdown y botón viven en contenido regenerado
+    (wz-content) → ids pattern-matching, nunca fijos. El resultado se calcula
+    en un callback normal (rápido, un solo pozo) y no requiere hilo de fondo.
+    """
+    well_opts = [{"label": wn, "value": wn} for wn in wells.keys()]
+    if not well_opts:
+        return card("Análisis de sensibilidad (ventanas 10/14/20)", [
+            dbc.Alert("Carga y matchea pozos primero.", color="secondary",
+                      style={"fontSize":"11px","padding":"6px 10px"}),
+        ])
+    return card("Análisis de sensibilidad (ventanas 10/14/20)", [
+        html.Small("Recalcula el DI del pozo elegido con ventanas 10, 14 y 20 muestras "
+                   "SIN sobrescribir el DI oficial de los puntos — útil para justificar "
+                   "en la memoria la elección de ventana=14.",
+                   style={"color":"#aaa","display":"block","marginBottom":"8px"}),
+        dbc.Row([
+            dbc.Col(dcc.Dropdown(id={"type":"sens-well-sel","index":0}, options=well_opts,
+                    value=well_opts[0]["value"], clearable=False,
+                    style={"fontSize":"11px"}), width=8),
+            dbc.Col(dbc.Button("Analizar", id={"type":"sens-btn","index":0},
+                    color="info", outline=True, size="sm"), width=4),
+        ], className="g-2 mb-2"),
+        html.Div(id={"type":"sens-output","index":0}),
+    ])
+
 def _step3():
     all_pts = list(all_points())
     n_di = sum(1 for p in all_pts if p.di is not None)
@@ -2893,6 +3082,7 @@ def _step3():
         ]),
         dbc.Badge(f"DI: {n_di} pts · {n_disc} discontinuidades", color="success",
                   className="mb-2") if n_di else None,
+        _di_sensitivity_card(),
         _di_rqd_card(),
         dbc.Row([
             dbc.Col(dbc.Button("← Atrás", id={"type":"pill","index":2}, color="secondary", outline=True, size="sm"), width="auto"),
