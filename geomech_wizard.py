@@ -21,8 +21,13 @@ from xml.etree import ElementTree as ET
 import numpy as np
 import pandas as pd
 import ezdxf, ezdxf.recover
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import cross_val_score, GroupKFold
+from sklearn.ensemble import RandomForestRegressor, HistGradientBoostingRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.neural_network import MLPRegressor
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
+from sklearn.model_selection import cross_val_score, cross_val_predict, GroupKFold, LeaveOneGroupOut
 from sklearn.inspection import permutation_importance
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -1098,7 +1103,12 @@ class MWDPoint:
     raw_pd: float = 0.0; raw_pr: float = 0.0; raw_pf: float = 0.0
     entrenable: bool = True; norm_excluded: bool = False
     dominio: Optional[str] = None; lito: Optional[str] = None; estructura: Optional[str] = None
-    ucs_ml: Optional[float] = None; ucs_confiable: Optional[float] = None
+    ucs_ml: Optional[float] = None
+    # (P3-3.4) Antes "ucs_confiable": el nombre era engañoso — no mide
+    # confianza, arrastra el último valor de ucs_ml estable en los tramos
+    # donde DI supera el umbral (discontinuidad detectada). Renombrado a
+    # "UCS matriz" porque es la UCS de la matriz rocosa SIN discontinuidades.
+    ucs_matriz: Optional[float] = None
     ucs_ml_prelim: bool = False
     # Intervalo de predicción del RF (percentiles 10/90 sobre los árboles).
     ucs_ml_p10: Optional[float] = None; ucs_ml_p90: Optional[float] = None
@@ -1145,6 +1155,12 @@ wells: Dict[str, Well] = {}
 domains: Dict[str, Dict] = {}
 domain_groups: List[Dict] = []
 clean_filters: List[Dict] = []
+# (P3-3.8) Corte de emboquillado VIGENTE. Antes vivía solo como el parámetro
+# `cut_m` de apply_inicio_filter() y se perdía: recompute_filters() (llamada
+# al borrar un filtro de limpieza) lo reseteaba EN SILENCIO a un default
+# hardcodeado de 2.0 m, aunque el usuario hubiera fijado otro valor. Ahora se
+# recuerda aquí, y recompute_filters() lo reaplica en vez de un literal.
+inicio_cut_m: float = 2.0
 excel_data: List[Dict] = []
 # Bandas geomecánicas de laboratorio (T2): registros por caserón×litología.
 #   by_pair    : {(caseron_norm, lito_norm): band}
@@ -1160,8 +1176,37 @@ parse_warnings: List[str] = []
 rf_model = None
 rf_stats: Optional[Dict] = None
 prelim_model = None
-di_config = {"params":["pp","pr","pd","pf"],"weights":{"pp":0.35,"pr":0.20,"pd":0.25,"pf":0.20},"window":14}
-di_threshold: float = 1.5
+# (P3-3.7) Valores de Fernández et al. 2023 (doi:10.1016/j.ijmst.2023.02.004),
+# predeterminados. Se exponen en la UI como editables, con botón de
+# restauración a estos mismos valores.
+DI_DEFAULTS = {"window": 14, "threshold": 1.5,
+              "weights": {"pp": 0.35, "pr": 0.20, "pd": 0.25, "pf": 0.20}}
+di_config = {"params": ["pp","pr","pd","pf"], "weights": dict(DI_DEFAULTS["weights"]),
+            "window": DI_DEFAULTS["window"]}
+di_threshold: float = DI_DEFAULTS["threshold"]
+
+
+def di_config_is_default() -> bool:
+    return (di_config["window"] == DI_DEFAULTS["window"]
+            and di_threshold == DI_DEFAULTS["threshold"]
+            and di_config["weights"] == DI_DEFAULTS["weights"])
+
+
+def di_config_summary() -> str:
+    """
+    (P3-3.7) Línea de una sola línea con los parámetros DI vigentes, para
+    anteponer a las exportaciones que dependen de ellos (predicciones,
+    dominios, DI↔RQD, resumen del kit): cualquier cambio respecto a
+    Fernández et al. 2023 altera todo aguas abajo (DI, UCS matriz, agrupación
+    de dominios) y debe quedar declarado en lo que se exporta, no solo en la
+    pantalla donde se cambió.
+    """
+    w = di_config["weights"]
+    linea = (f"DI: ventana={di_config['window']} umbral={di_threshold:g} "
+            f"pesos(PP={w.get('pp')},DP={w.get('pd')},FP={w.get('pf')},RP={w.get('pr')})")
+    linea += (" [valores por defecto, Fernández et al. 2023]" if di_config_is_default()
+              else " [MODIFICADO respecto a Fernández et al. 2023]")
+    return linea
 group_interval_m: float = 2.0
 ucs_range = dict(ucs_min=UCS_CONFIG["default_min"], ucs_max=UCS_CONFIG["default_max"])
 cal_factors = {k: 1.0 for k in ("vel","pp","pa","pd","pr","pf","se")}
@@ -2657,6 +2702,10 @@ def apply_seteo_from_excel():
             if spa is not None: p.seteo_pa = spa
 
 def apply_inicio_filter(cut_m):
+    """(P3-3.8) Recuerda el corte vigente en `inicio_cut_m`, para que
+    recompute_filters() pueda reaplicarlo sin caer a un default hardcodeado."""
+    global inicio_cut_m
+    inicio_cut_m = float(cut_m)
     for well in wells.values():
         for p in well.points:
             if p.largo < cut_m: p.entrenable = False
@@ -3052,39 +3101,128 @@ def export_validation_csv():
             })
     return pd.DataFrame(rows)
 
+# (P3-3.1) Guardia contra entrenamiento degenerado. Un R²=1,0 con una sola
+# etiqueta distinta (o con clases de un puñado de muestras que el modelo
+# memoriza) es síntoma de degeneración, no de éxito.
+MIN_DISTINCT_LABELS = 2
+MIN_SAMPLES_PER_LABEL = 5
+
+def _degenerate_training_check(y: np.ndarray) -> Optional[str]:
+    """None si el conjunto es entrenable; si no, el motivo del bloqueo."""
+    if y.size == 0:
+        return "sin puntos de entrenamiento."
+    vals, counts = np.unique(y, return_counts=True)
+    if vals.size < MIN_DISTINCT_LABELS:
+        return (f"una sola etiqueta de UCS distinta en todo el conjunto "
+                f"({vals[0]:g} MPa, n={counts[0]}). El modelo no tendría "
+                f"variabilidad que aprender.")
+    pocas = [(v, c) for v, c in zip(vals, counts) if c < MIN_SAMPLES_PER_LABEL]
+    if pocas:
+        detalle = " · ".join(f"{v:g} MPa: {c}" for v, c in pocas)
+        return (f"{len(pocas)} etiqueta(s) de UCS con menos de "
+                f"{MIN_SAMPLES_PER_LABEL} muestras cada una ({detalle}). "
+                f"Reúne más puntos o excluye esas litologías.")
+    return None
+
+
+# (P3-3.2/3.8) Orden canónico del embudo de entrenamiento. Una sola función
+# recorre los puntos UNA vez y produce X/y/groups Y el reporte de composición
+# en el MISMO pase, con las MISMAS condiciones en el MISMO orden — así el
+# reporte que ve el usuario no puede divergir en silencio de lo que el modelo
+# realmente entrena. Incluye el corte de emboquillado (vía p.entrenable, que
+# ya lo codifica), que antes se aplicaba sin figurar en ningún reporte.
+TRAINING_FUNNEL_STAGES = [
+    "total", "entrenable", "con_dominio", "sin_ambiguedad",
+    "banda_ucs", "no_excluido", "rango_ucs", "roca_intacta",
+]
+
+def _training_funnel(ucs_min, ucs_max):
+    """
+    Devuelve (X, y, groups, n_excl_di, funnel). `funnel` es una lista de
+    {"etapa","label","quedan","perdidos"} en el orden de TRAINING_FUNNEL_STAGES.
+    """
+    pts = list(all_points())
+    labels = {
+        "total": "Total de puntos MWD",
+        "entrenable": f"Entrenable (emboquillado <{inicio_cut_m:g} m + filtros de limpieza)",
+        "con_dominio": "Con dominio asignado (dentro de alguna malla)",
+        "sin_ambiguedad": "Sin ambigüedad de traslape (A.5)",
+        "banda_ucs": "Dominio con banda de UCS asignada",
+        "no_excluido": "Atributo no excluido explícitamente (T1.5)",
+        "rango_ucs": f"Etiqueta de UCS dentro de [{ucs_min:g}, {ucs_max:g}] MPa",
+        "roca_intacta": f"DI ≤ umbral ({di_threshold:g}) — roca intacta",
+    }
+    X, y, groups = [], [], []
+    n = {k: 0 for k in TRAINING_FUNNEL_STAGES}
+    n["total"] = len(pts)
+    for wn, well in wells.items():
+        for p in well.points:
+            if not p.entrenable: continue
+            n["entrenable"] += 1
+            if not p.dominio: continue
+            n["con_dominio"] += 1
+            # (P1-T1.4) Punto excluido por traslape irresoluble: ya
+            # contabilizado en overlap_stats, no puede etiquetar nada.
+            if getattr(p, "ambiguo", False): continue
+            n["sin_ambiguedad"] += 1
+            dom = domains.get(p.dominio)
+            if not dom or dom.get("ucs_lab") is None: continue
+            n["banda_ucs"] += 1
+            # (P1-T1.5) Atributo excluido explícitamente por el usuario.
+            if dom.get("atributo_id") in attribute_exclusions: continue
+            n["no_excluido"] += 1
+            ucs = dom["ucs_lab"]
+            if ucs < ucs_min or ucs > ucs_max: continue
+            n["rango_ucs"] += 1
+            if p.di is not None and p.di > di_threshold: continue
+            n["roca_intacta"] += 1
+            X.append([getattr(p, k) for k in ML_FEATURES])
+            y.append(ucs)
+            groups.append(wn)
+    funnel, prev = [], n["total"]
+    for st in TRAINING_FUNNEL_STAGES:
+        funnel.append({"etapa": st, "label": labels[st], "quedan": n[st],
+                       "perdidos": prev - n[st]})
+        prev = n[st]
+    n_excl_di = n["rango_ucs"] - n["roca_intacta"]
+    return (np.array(X, dtype=np.float64), np.array(y, dtype=np.float64),
+            np.array(groups), n_excl_di, funnel)
+
+
 def _get_train_data(ucs_min, ucs_max):
     """
-    (T6a) Además de X e y, devuelve `groups`: el well_name de cada punto de
-    entrenamiento, para poder agrupar la validación cruzada por pozo
+    (T6a) Envoltorio de compatibilidad sobre _training_funnel: solo X/y/
+    groups/n_excl. `groups` permite agrupar la validación cruzada por pozo
     (GroupKFold) y evitar que muestras vecinas del mismo tiro —a 2 cm entre
     sí y fuertemente autocorrelacionadas— terminen repartidas entre train y
     test, lo que infla artificialmente el R².
     """
-    X, y, groups, n_excl = [], [], [], 0
-    for wn, well in wells.items():
-        for p in well.points:
-            if not p.entrenable or not p.dominio: continue
-            # (P1-T1.4) Punto excluido por traslape irresoluble: ya contabilizado
-            # en overlap_stats, no puede etiquetar nada.
-            if getattr(p, "ambiguo", False): continue
-            dom = domains.get(p.dominio)
-            if not dom or dom.get("ucs_lab") is None: continue
-            # (P1-T1.5) Atributo excluido explícitamente por el usuario.
-            if dom.get("atributo_id") in attribute_exclusions: continue
-            ucs = dom["ucs_lab"]
-            if ucs < ucs_min or ucs > ucs_max: continue
-            if p.di is not None and p.di > di_threshold: n_excl += 1; continue
-            X.append([getattr(p, k) for k in ML_FEATURES])
-            y.append(ucs)
-            groups.append(wn)
-    return (np.array(X, dtype=np.float64), np.array(y, dtype=np.float64),
-            np.array(groups), n_excl)
+    X, y, groups, n_excl, _ = _training_funnel(ucs_min, ucs_max)
+    return X, y, groups, n_excl
+
+
+def training_composition_report(ucs_min=None, ucs_max=None):
+    """
+    (P3-3.2) De dónde salen los datos de entrenamiento: total disponible,
+    cuántos sobreviven cada filtro y por qué. Un entrenamiento con N=1.260
+    sobre 12.000 puntos disponibles no puede aparecer sin esta explicación.
+    """
+    ucs_min = ucs_range["ucs_min"] if ucs_min is None else ucs_min
+    ucs_max = ucs_range["ucs_max"] if ucs_max is None else ucs_max
+    _, _, _, _, funnel = _training_funnel(ucs_min, ucs_max)
+    return {"funnel": funnel,
+            "n_total": funnel[0]["quedan"] if funnel else 0,
+            "n_final": funnel[-1]["quedan"] if funnel else 0}
 
 def train_rf(ucs_min=None, ucs_max=None):
     """
     (P1-T1.5) Antes de entrenar, verifica que ningún atributo presente en los
     datos quede sin banda de UCS y sin exclusión explícita. El bloqueo es
     ruidoso: nombra los atributos faltantes y cuánto representan.
+
+    (P3-3.1) Después, verifica que el conjunto no sea degenerado: una sola
+    etiqueta distinta de UCS, o clases con un puñado de muestras que el
+    modelo memorizaría. Un R²=1,0 ahí es síntoma de degeneración, no de éxito.
     """
     global rf_model, rf_stats
     # `or` sería un default silencioso si llega 0.0 (un mínimo legítimo ahora
@@ -3094,9 +3232,12 @@ def train_rf(ucs_min=None, ucs_max=None):
     bloqueo = training_block_message()
     if bloqueo:
         return {"error": bloqueo, "blockers": training_blockers()}
-    X, y, groups, n_excl = _get_train_data(ucs_min, ucs_max)
+    X, y, groups, n_excl, funnel = _training_funnel(ucs_min, ucs_max)
     if len(X) < 10:
-        return {"error": f"Insuficientes puntos ({len(X)} < 10)."}
+        return {"error": f"Insuficientes puntos ({len(X)} < 10).", "funnel": funnel}
+    degenerado = _degenerate_training_check(y)
+    if degenerado:
+        return {"error": f"Entrenamiento degenerado: {degenerado}", "funnel": funnel}
     model = RandomForestRegressor(n_estimators=200, max_depth=8, min_samples_split=6,
                                     min_samples_leaf=3, max_features="sqrt", n_jobs=-1, random_state=42)
     model.fit(X, y)
@@ -3138,7 +3279,7 @@ def train_rf(ucs_min=None, ucs_max=None):
         feat_imp = {ML_LABELS[i]: round(float(perm.importances_mean[i]), 4) for i in range(len(ML_FEATURES))}
     except: pass
     stats = {
-        "n_train": len(X), "n_excl_disc": n_excl,
+        "n_train": len(X), "n_excl_disc": n_excl, "funnel": funnel,
         # (A.6) El contador de ambiguos por Conflicto de traslape es parte del
         # reporte de composición del entrenamiento: sin él, los puntos que las
         # reglas descartaron desaparecerían de la vista.
@@ -3157,6 +3298,220 @@ def train_rf(ucs_min=None, ucs_max=None):
     }
     rf_stats = stats
     return stats
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  P3-3.9 — ARMAZÓN DEL REPORTE DE JUSTIFICACIÓN DE VARIABLES             ║
+# ║                                                                          ║
+# ║  Cada función calcula sobre los datos vigentes y devuelve un resultado  ║
+# ║  REAL en cuanto hay datos suficientes. Donde no los hay (p.ej. un solo  ║
+# ║  caserón etiquetado para LOCO-CV), lo declara explícitamente — nunca    ║
+# ║  inventa un número. Es el mismo principio que el resto del proyecto:    ║
+# ║  nunca un default silencioso.                                          ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+MULTICOLLINEARITY_THRESHOLD = 0.85
+# Lineal/KNN/RF/HistGB son candidatos; MLP entra como CONTROL de complejidad
+# (referencia de cuánto puede sobreajustar un modelo no lineal denso), no
+# como candidato de producción.
+COMPARISON_MODELS = ["Lineal", "KNN", "Random Forest", "HistGradientBoosting", "MLP (control)"]
+
+
+def correlation_matrix_report(ucs_min=None, ucs_max=None):
+    """
+    Matriz de correlación de Pearson entre predictores (ML_FEATURES) sobre el
+    conjunto de entrenamiento vigente, con detección de multicolinealidad
+    (|r| > MULTICOLLINEARITY_THRESHOLD). Ante un par colineal, SUGIERE cuál
+    quitar (el de menor correlación con la etiqueta UCS, se conserva el más
+    predictivo) pero mantiene AMBAS variables por defecto: la exclusión es
+    una decisión manual del usuario, no automática.
+    """
+    ucs_min = ucs_range["ucs_min"] if ucs_min is None else ucs_min
+    ucs_max = ucs_range["ucs_max"] if ucs_max is None else ucs_max
+    X, y, groups, _ = _get_train_data(ucs_min, ucs_max)
+    if len(X) < 10:
+        return {"status": "sin_datos",
+                "motivo": f"Insuficientes puntos de entrenamiento ({len(X)} < 10)."}
+    with np.errstate(invalid="ignore"):
+        corr = np.corrcoef(X, rowvar=False)
+        corr_y = np.array([np.corrcoef(X[:, i], y)[0, 1] for i in range(X.shape[1])])
+    pairs = []
+    for i in range(len(ML_FEATURES)):
+        for j in range(i + 1, len(ML_FEATURES)):
+            r = corr[i, j]
+            if not np.isfinite(r) or abs(r) < MULTICOLLINEARITY_THRESHOLD: continue
+            peor = ML_LABELS[i] if abs(corr_y[i]) < abs(corr_y[j]) else ML_LABELS[j]
+            pairs.append({"a": ML_LABELS[i], "b": ML_LABELS[j], "r": round(float(r), 3),
+                         "sugerencia_quitar": peor})
+    return {"status": "ok", "n_samples": len(X), "features": ML_LABELS,
+            "matrix": corr.tolist(), "corr_con_y": corr_y.tolist(),
+            "pairs_flagged": pairs, "threshold": MULTICOLLINEARITY_THRESHOLD}
+
+
+def _make_comparison_model(name):
+    if name == "Lineal":
+        return make_pipeline(StandardScaler(), LinearRegression())
+    if name == "KNN":
+        return make_pipeline(StandardScaler(), KNeighborsRegressor(n_neighbors=7))
+    if name == "Random Forest":
+        return RandomForestRegressor(n_estimators=200, max_depth=8, min_samples_split=6,
+                                     min_samples_leaf=3, max_features="sqrt", n_jobs=-1,
+                                     random_state=42)
+    if name == "HistGradientBoosting":
+        return HistGradientBoostingRegressor(max_depth=6, random_state=42)
+    if name == "MLP (control)":
+        return make_pipeline(StandardScaler(),
+                             MLPRegressor(hidden_layer_sizes=(32, 16), max_iter=2000,
+                                          random_state=42, early_stopping=True))
+    raise ValueError(f"Modelo desconocido: {name}")
+
+
+def model_comparison_report(with_se=True, ucs_min=None, ucs_max=None):
+    """
+    Compara Lineal, KNN, Random Forest, HistGradientBoosting y MLP (control)
+    con la MISMA validación cruzada agrupada por pozo (GroupKFold) que usa
+    train_rf, para que la comparación sea metodológicamente consistente con
+    el modelo de producción. `with_se` decide si el proxy de energía
+    específica de reacción entra como predictor.
+    """
+    ucs_min = ucs_range["ucs_min"] if ucs_min is None else ucs_min
+    ucs_max = ucs_range["ucs_max"] if ucs_max is None else ucs_max
+    X_full, y, groups, _ = _get_train_data(ucs_min, ucs_max)
+    if len(X_full) < 10:
+        return {"status": "sin_datos",
+                "motivo": f"Insuficientes puntos de entrenamiento ({len(X_full)} < 10)."}
+    feat_idx = list(range(len(ML_FEATURES))) if with_se else \
+               [i for i, f in enumerate(ML_FEATURES) if f != "se"]
+    X = X_full[:, feat_idx]
+    n_grupos = len(set(groups.tolist())) if groups.size else 0
+    if n_grupos < 3:
+        return {"status": "sin_grupos",
+                "motivo": f"CV agrupada por pozo requiere ≥3 pozos con etiqueta (hay {n_grupos})."}
+    k = min(5, n_grupos)
+    gkf = GroupKFold(n_splits=k)
+    rows = []
+    for name in COMPARISON_MODELS:
+        try:
+            model = _make_comparison_model(name)
+            r2 = cross_val_score(model, X, y, cv=gkf, groups=groups, scoring="r2")
+            rmse = -cross_val_score(model, X, y, cv=gkf, groups=groups,
+                                    scoring="neg_root_mean_squared_error")
+            rows.append({"modelo": name, "r2_mean": round(float(r2.mean()), 3),
+                        "r2_std": round(float(r2.std()), 3),
+                        "rmse_mean": round(float(rmse.mean()), 1),
+                        "rmse_std": round(float(rmse.std()), 1), "error": None})
+        except Exception as e:
+            rows.append({"modelo": name, "r2_mean": None, "r2_std": None,
+                        "rmse_mean": None, "rmse_std": None, "error": str(e)})
+    return {"status": "ok", "with_se": with_se, "n_samples": len(X),
+            "n_grupos": n_grupos, "k_splits": k, "rows": rows}
+
+
+def _point_caseron_map(pts):
+    """{id(punto): caserón|None}, vía _resolve_caseron (cacheado por litología)."""
+    cache, out = {}, {}
+    for p in pts:
+        lito = p.lito or p.lito_inferida
+        if lito not in cache:
+            cache[lito] = _resolve_caseron(lito)
+        out[id(p)] = cache[lito]
+    return out
+
+
+def cota_ablation_report(ucs_min=None, ucs_max=None):
+    """
+    Ablación EXPLÍCITA de la cota como predictor — nunca en el modelo de
+    producción (train_rf/ML_FEATURES), prohibido por diseño porque el
+    yacimiento es estratiforme y la cota es casi un proxy directo de la
+    litología. Compara desempeño DENTRO-DEL-CASERÓN (GroupKFold por pozo,
+    igual que siempre) contra LOCO-CV (dejando un caserón completo fuera),
+    con y sin cota. Si "con cota" degrada mucho más en LOCO-CV que "sin
+    cota", es evidencia de que el modelo memorizaba la posición en vez de
+    leer el MWD — la razón de la prohibición.
+
+    Requiere ≥2 caserones distintos con puntos etiquetados; si no los hay, lo
+    declara en vez de fingir un resultado.
+    """
+    ucs_min = ucs_range["ucs_min"] if ucs_min is None else ucs_min
+    ucs_max = ucs_range["ucs_max"] if ucs_max is None else ucs_max
+    candidatos = []
+    for wn, well in wells.items():
+        for p in well.points:
+            if not p.entrenable or not p.dominio: continue
+            if getattr(p, "ambiguo", False): continue
+            dom = domains.get(p.dominio)
+            if not dom or dom.get("ucs_lab") is None: continue
+            if dom.get("atributo_id") in attribute_exclusions: continue
+            ucs = dom["ucs_lab"]
+            if ucs < ucs_min or ucs > ucs_max: continue
+            if p.di is not None and p.di > di_threshold: continue
+            candidatos.append((p, wn, ucs))
+    if len(candidatos) < 10:
+        return {"status": "sin_datos",
+                "motivo": f"Insuficientes puntos de entrenamiento ({len(candidatos)} < 10)."}
+    caseron_map = _point_caseron_map([c[0] for c in candidatos])
+    caserones = sorted({c for c in caseron_map.values() if c})
+    if len(caserones) < 2:
+        return {"status": "sin_caserones",
+                "motivo": ("LOCO-CV (dejando-un-caserón-fuera) requiere ≥2 caserones "
+                          f"distintos con puntos etiquetados; hay {len(caserones)}"
+                          + (f" ({caserones[0]})" if caserones else "") + ". Esta ablación "
+                          "queda lista para correr en cuanto haya un segundo caserón con "
+                          "datos etiquetados.")}
+    X_rows, y, groups_pozo, caseron_groups = [], [], [], []
+    for p, wn, ucs in candidatos:
+        c = caseron_map[id(p)]
+        if not c: continue
+        X_rows.append([getattr(p, k) for k in ML_FEATURES] + [p.cota])
+        y.append(ucs); groups_pozo.append(wn); caseron_groups.append(c)
+    X = np.array(X_rows, dtype=np.float64); y = np.array(y, dtype=np.float64)
+    groups_pozo = np.array(groups_pozo); caseron_groups = np.array(caseron_groups)
+    idx_sin_cota = list(range(len(ML_FEATURES)))
+    idx_con_cota = list(range(len(ML_FEATURES) + 1))
+
+    def _cv(X_sub, groups_arr, splitter):
+        model = RandomForestRegressor(n_estimators=150, max_depth=8, n_jobs=-1, random_state=42)
+        try:
+            scores = cross_val_score(model, X_sub, y, cv=splitter, groups=groups_arr, scoring="r2")
+            return round(float(scores.mean()), 3), None
+        except Exception as e:
+            return None, str(e)
+
+    n_grupos_pozo = len(set(groups_pozo.tolist()))
+    resultado = {"status": "ok", "n_samples": len(X), "caserones": caserones,
+                "n_grupos_pozo": n_grupos_pozo}
+    if n_grupos_pozo >= 3:
+        gkf = GroupKFold(n_splits=min(5, n_grupos_pozo))
+        resultado["dentro_caseron_sin_cota"] = _cv(X[:, idx_sin_cota], groups_pozo, gkf)
+        resultado["dentro_caseron_con_cota"] = _cv(X[:, idx_con_cota], groups_pozo, gkf)
+    else:
+        motivo = f"requiere ≥3 pozos con etiqueta (hay {n_grupos_pozo})"
+        resultado["dentro_caseron_sin_cota"] = (None, motivo)
+        resultado["dentro_caseron_con_cota"] = (None, motivo)
+    logo = LeaveOneGroupOut()
+    resultado["loco_sin_cota"] = _cv(X[:, idx_sin_cota], caseron_groups, logo)
+    resultado["loco_con_cota"] = _cv(X[:, idx_con_cota], caseron_groups, logo)
+
+    r2_dc, _ = resultado["dentro_caseron_con_cota"]
+    r2_lc, _ = resultado["loco_con_cota"]
+    r2_ds, _ = resultado["dentro_caseron_sin_cota"]
+    r2_ls, _ = resultado["loco_sin_cota"]
+    if None not in (r2_dc, r2_lc, r2_ds, r2_ls):
+        resultado["memorizacion_espacial_sospechosa"] = bool((r2_dc - r2_lc) > (r2_ds - r2_ls) + 0.1)
+    else:
+        resultado["memorizacion_espacial_sospechosa"] = None
+    return resultado
+
+
+def variable_justification_report():
+    """Orquesta las cuatro secciones del reporte (P3-3.9) en una sola llamada."""
+    return {
+        "correlacion": correlation_matrix_report(),
+        "importancia": (rf_stats or {}).get("feat_imp"),
+        "comparacion_con_se": model_comparison_report(with_se=True),
+        "comparacion_sin_se": model_comparison_report(with_se=False),
+        "ablacion_cota": cota_ablation_report(),
+    }
+
 
 def predict_all_wells():
     if rf_model is None: return
@@ -3194,15 +3549,17 @@ def predict_all_wells():
         log_warn(f"Intervalo de predicción: {n_recortados} punto(s) con extremos "
                  f"acotados al rango físico [{lo_f:g}, {hi_f:g}] MPa tras el "
                  f"ensanche por calidad del ancla.")
+    # (P3-3.4) "UCS matriz": arrastra el último ucs_ml estable en los tramos
+    # con discontinuidad (DI > umbral). No es una medida de confianza.
     for well in wells.values():
         last_stable = None
         for p in well.points:
             is_drop = p.di is not None and p.di > di_threshold
             if not is_drop:
                 last_stable = p.ucs_ml
-                p.ucs_confiable = p.ucs_ml
+                p.ucs_matriz = p.ucs_ml
             else:
-                p.ucs_confiable = last_stable
+                p.ucs_matriz = last_stable
     # Verificación de consistencia banda↔intervalo (si hay bandas cargadas).
     band_consistency()
 
@@ -3426,14 +3783,19 @@ def train_prelim_from_excel():
             p.ucs_ml = round(float(v),1); p.ucs_ml_prelim = True
     return {"n_train": len(X), "r2": round(r2,3), "rmse": round(rmse,1)}
 
-def recompute_filters(cut_m=2.0):
+def recompute_filters(cut_m=None):
     """
     Resetea 'entrenable' de todos los puntos y reaplica: corte de emboquillado
     + todos los filtros de clean_filters vigentes (en orden). Se usa al borrar
     un filtro individual, ya que los filtros son acumulativos y no se puede
     simplemente "des-marcar" un punto sin saber si otro filtro también lo
     excluía.
+
+    (P3-3.8) `cut_m=None` reaplica el corte VIGENTE (`inicio_cut_m`), no un
+    default hardcodeado: antes, borrar un filtro de limpieza reseteaba en
+    silencio el corte de emboquillado del usuario a 2.0 m.
     """
+    cut_m = inicio_cut_m if cut_m is None else cut_m
     for p in all_points():
         p.entrenable = True
         p.norm_excluded = False
@@ -3628,11 +3990,91 @@ def export_predictions_csv():
                 "dominio":p.dominio or "","lito":p.lito or p.lito_inferida or "",
                 "estructura":p.estructura or p.estructura_inferida or "",
                 "ucs_ml":p.ucs_ml,"ucs_ml_p10":p.ucs_ml_p10,"ucs_ml_p90":p.ucs_ml_p90,
-                "ucs_confiable":p.ucs_confiable,"di":p.di,
+                "ucs_matriz":p.ucs_matriz,"di":p.di,
                 "grupo":p.grupo or "","entrenable":int(p.entrenable),
                 "band_check":p.band_check or "",
             })
     return pd.DataFrame(rows)
+
+# ─── P3-3.3 · EXPORTACIONES DISTINGUIBLES CON CONFIRMACIÓN ───────────────────
+# Antes: seis exportaciones (dominios.csv, predicciones.csv,
+# validacion_mallas.csv, di_vs_rqd_por_caseron.csv, proyecto.gwz,
+# kit_cap5.zip) con nombres indistinguibles entre sí de una sesión a otra, y
+# sin ninguna confirmación antes de descargar. Ahora cada nombre incluye
+# sitio + caserón(es) + fecha, y un diálogo muestra qué se exporta y cuántos
+# registros antes de disparar la descarga.
+
+def _slug(s: str) -> str:
+    """Texto seguro para nombre de archivo: sin espacios ni acentos."""
+    s = _norm_txt(s).replace(" ", "_")
+    s = re.sub(r"[^a-z0-9_-]", "", s)
+    return s or "x"
+
+def _export_caseron_tag() -> str:
+    casos = sorted({lay.caseron for lay in layers.values() if lay.caseron})
+    if not casos: return "sin_caseron"
+    if len(casos) == 1: return _slug(casos[0])
+    return f"{len(casos)}caserones"
+
+def export_filename(base: str, ext: str) -> str:
+    """sitio + caserón(es) + fecha — para diferenciar las seis exportaciones
+    en una misma carpeta de descargas."""
+    site = active_site()["id"]
+    stamp = time.strftime("%Y%m%d_%H%M")
+    return f"{base}_{site}_{_export_caseron_tag()}_{stamp}.{ext}"
+
+def _csv_with_metadata(df: pd.DataFrame, extra_lines: List[str]) -> str:
+    """CSV con líneas de metadatos '#' antepuestas (parámetros DI vigentes:
+    P3-3.7 exige que cualquier cambio quede registrado en lo que se exporta)."""
+    encabezado = "\n".join(f"# {l}" for l in extra_lines)
+    return encabezado + "\n" + df.to_csv(index=False)
+
+def _export_descriptor(kind: str) -> Optional[Dict]:
+    """
+    Qué se va a exportar y cuántos registros, para el diálogo de confirmación.
+    None si no hay nada que exportar — el llamador debe avisar en vez de
+    abrir un diálogo vacío.
+    """
+    if kind == "dominios":
+        n = len(domains)
+        if n == 0: return None
+        return {"kind": kind, "n": n, "unidad": "dominios",
+                "filename": export_filename("dominios", "csv"),
+                "desc": "Tabla resumen por dominio geomecánico (UCS/DI medios)."}
+    if kind == "predicciones":
+        n = len(list(all_points()))
+        if n == 0: return None
+        return {"kind": kind, "n": n, "unidad": "puntos MWD",
+                "filename": export_filename("predicciones", "csv"),
+                "desc": "Predicción de UCS punto a punto de todos los pozos cargados."}
+    if kind == "validacion":
+        df = export_validation_csv()
+        if df.empty: return None
+        return {"kind": kind, "n": len(df), "unidad": "pares cruce↔pico",
+                "filename": export_filename("validacion_mallas", "csv"),
+                "desc": "Validación multipozo de posición de mallas (T4)."}
+    if kind == "di_rqd":
+        df = export_di_rqd_csv()
+        if df.empty: return None
+        return {"kind": kind, "n": len(df), "unidad": "caserones",
+                "filename": export_filename("di_vs_rqd", "csv"),
+                "desc": "Correlación DI↔RQD por caserón (T5), validación externa del DI."}
+    if kind == "proyecto":
+        if not wells: return None
+        n = len(wells)
+        n_pts = sum(len(w.points) for w in wells.values())
+        return {"kind": kind, "n": n, "unidad": "pozos",
+                "filename": export_filename("proyecto", "gwz"),
+                "desc": f"Sesión completa ({n_pts} puntos MWD, {len(layers)} mallas DXF, "
+                       f"{len(drillholes)} sondajes). El modelo RF no se guarda."}
+    if kind == "kit":
+        if not wells: return None
+        n = len(list(all_points()))
+        return {"kind": kind, "n": n, "unidad": "puntos MWD",
+                "filename": export_filename("kit_cap5", "zip"),
+                "desc": f"Kit completo para el Capítulo 5: CSVs, figuras HTML y resumen "
+                       f"({len(domains)} dominios, {len(wells)} pozos)."}
+    return None
 
 # ─── T10: PERSISTENCIA DE SESIÓN (save / load project) ───────────────────────
 # El ZIP contiene:
@@ -3654,7 +4096,7 @@ def _point_to_dict(p):
         "raw_pd":p.raw_pd,"raw_pr":p.raw_pr,"raw_pf":p.raw_pf,
         "entrenable":p.entrenable,"norm_excluded":p.norm_excluded,
         "dominio":p.dominio,"lito":p.lito,"estructura":p.estructura,
-        "ucs_ml":p.ucs_ml,"ucs_confiable":p.ucs_confiable,
+        "ucs_ml":p.ucs_ml,"ucs_matriz":p.ucs_matriz,
         "ucs_ml_prelim":p.ucs_ml_prelim,
         "ucs_ml_p10":p.ucs_ml_p10,"ucs_ml_p90":p.ucs_ml_p90,
         "di":p.di,"grupo":p.grupo,
@@ -3674,11 +4116,15 @@ def _point_from_dict(d):
         raw_pd=d.get("raw_pd",0.0),raw_pr=d.get("raw_pr",0.0),raw_pf=d.get("raw_pf",0.0),
         entrenable=d.get("entrenable",True),norm_excluded=d.get("norm_excluded",False),
     )
-    for attr in ("dominio","lito","estructura","ucs_ml","ucs_confiable","ucs_ml_prelim",
+    for attr in ("dominio","lito","estructura","ucs_ml","ucs_matriz","ucs_ml_prelim",
                  "ucs_ml_p10","ucs_ml_p90","di","grupo","lito_inferida",
                  "estructura_inferida","grupo_confianza","band_check","seteo_pp","seteo_pa",
                  "atributos","alteracion","ambiguo","ambiguo_motivo"):
         if attr in d: setattr(p, attr, d[attr])
+    # (P3-3.4) Compatibilidad: un .gwz anterior al renombre trae la clave
+    # vieja "ucs_confiable" en vez de "ucs_matriz".
+    if "ucs_matriz" not in d and "ucs_confiable" in d:
+        p.ucs_matriz = d["ucs_confiable"]
     return p
 
 # ─── P2 · PERSISTENCIA DE SONDAJES DENTRO DEL PROYECTO ───────────────────────
@@ -3762,6 +4208,7 @@ def save_project(path):
         "domains": domains,
         "domain_groups": domain_groups,
         "clean_filters": clean_filters,
+        "inicio_cut_m": inicio_cut_m,
         "cal_factors": cal_factors,
         "di_config": di_config,
         "di_threshold": di_threshold,
@@ -3793,7 +4240,7 @@ def load_project(path):
     Carga un proyecto desde `path` (.gwz). Limpia el estado global y lo
     reconstruye. El modelo RF NO se restaura (se muestra advertencia en la UI).
     """
-    global di_threshold, group_interval_m, global_center
+    global di_threshold, group_interval_m, global_center, inicio_cut_m
     with _zipfile.ZipFile(path, "r") as zf:
         proj = json.loads(zf.read("project.json"))
         npz_data = np.load(_io.BytesIO(zf.read("triangles.npz")), allow_pickle=False)
@@ -3834,6 +4281,7 @@ def load_project(path):
     domains.update(proj.get("domains", {}))
     domain_groups.extend(proj.get("domain_groups", []))
     clean_filters.extend(proj.get("clean_filters", []))
+    inicio_cut_m = proj.get("inicio_cut_m", inicio_cut_m)
     cal_factors.update(proj.get("cal_factors", {}))
     di_config.update(proj.get("di_config", {}))
     di_threshold = proj.get("di_threshold", di_threshold)
@@ -3981,6 +4429,9 @@ def import_vocabulary(data, replace: bool = True) -> Dict:
 kit_task_state = {
     "running": False, "progress": 0, "stage": "",
     "error": None, "bytes": None, "done": False,
+    # (P3-3.3) Nombre descriptivo fijado al confirmar, usado al entregar el
+    # ZIP cuando el hilo de fondo termina.
+    "filename": "kit_cap5.zip",
 }
 
 def _build_kit_zip():
@@ -4052,6 +4503,11 @@ def _build_kit_zip():
 
         # 3. Resumen
         lines = ["MWD GeoMech Wizard — Resumen Cap. 5", "="*50]
+        # (P3-3.7) Los parámetros DI vigentes se declaran SIEMPRE, no solo
+        # cuando difieren del default: alteran DI, UCS matriz y agrupación de
+        # dominios aguas abajo, y el kit debe decir con cuáles se generó.
+        lines.append(di_config_summary())
+        lines.append(f"Emboquillado: corte < {inicio_cut_m:g} m")
         lines.append(f"Pozos: {len(wells)}")
         lines.append(f"Puntos MWD: {sum(len(w.points) for w in wells.values())}")
         all_pts = list(all_points())
@@ -4090,7 +4546,7 @@ COLOR_FIELDS = {
     "pp":("Percusión [bar]",0,230,False),"pa":("Avance [bar]",0,150,False),
     "pr":("Rotación [bar]",0,100,False),"pd":("Damper [bar]",0,150,False),
     "pf":("Flujo [bar]",0,25,False),"ucs_ml":("UCS ML [MPa]",0,270,False),
-    "ucs_confiable":("UCS confiable [MPa]",0,270,False),"di":("DI",0,3,False),
+    "ucs_matriz":("UCS matriz (sin discontinuidades) [MPa]",0,270,False),"di":("DI",0,3,False),
     "lito":("Litología DXF",None,None,True),"grupo":("Dominio agrupado",None,None,True),
     "lito_inferida":("Litología inferida",None,None,True),
     "band_check":("Consistencia de banda",None,None,True),
@@ -4112,8 +4568,12 @@ REPORT_VARS = {
     "vel": "ROP [m/min]", "pp": "Percusión [bar]", "pa": "Avance [bar]",
     "pr": "Rotación [bar]", "pd": "Damper [bar]", "pf": "Flujo [bar]",
     "se": "SE [bar·min/m]", "di": "DI (discontinuidad)",
-    "ucs_ml": "UCS ML [MPa]",
+    "ucs_ml": "UCS ML [MPa]", "ucs_matriz": "UCS matriz (sin discontinuidades) [MPa]",
 }
+# (P3-3.6) Variables cuyo histograma se recorta EN LA VISTA a percentiles
+# 1-99 (nunca se filtran ni se borran datos). SE se aplasta con valores
+# extremos cuando ROP tiende a cero (P_percusión+P_rotación+P_avance)/ROP.
+REPORT_HIST_CLIP_VARS = {"se"}
 
 def well_basic_stats(well_name):
     """Estadísticas descriptivas básicas de un pozo: media, mediana, std, min, max por variable."""
@@ -4131,14 +4591,22 @@ def well_basic_stats(well_name):
         }
     return stats
 
-def build_well_report_figure(well_name, hist_vars=None):
+def build_well_report_figure(well_name, hist_vars=None, profile_var="di"):
     """
-    Reporte gráfico de un pozo: perfil DI vs profundidad (con línea de umbral) +
-    histogramas de hasta 3 variables MWD seleccionadas por el usuario.
+    Reporte gráfico de un pozo: perfil de UNA variable elegida vs profundidad
+    (P3-3.5: antes fijo en DI; ahora cualquier variable de REPORT_VARS, cruda
+    o calculada) + histogramas de hasta 3 variables MWD seleccionadas por el
+    usuario.
+
+    (P3-3.6) El histograma de variables en REPORT_HIST_CLIP_VARS (SE: se
+    aplasta cuando ROP tiende a cero) se recorta EN LA VISTA a los percentiles
+    1-99 — los datos no se filtran ni se borran, solo cambia el rango visible
+    del eje, y el subtítulo lo declara.
     """
     well = wells.get(well_name)
     if not well or not well.points:
         return go.Figure()
+    profile_var = profile_var if profile_var in REPORT_VARS else "di"
     hist_vars = hist_vars or ["se", "pp", "vel"]
     hist_vars = [v for v in hist_vars if v in REPORT_VARS][:3]
     n_hist = len(hist_vars)
@@ -4146,7 +4614,12 @@ def build_well_report_figure(well_name, hist_vars=None):
     specs = [[{"colspan": max(n_hist,1)}] + [None]*(max(n_hist,1)-1)]
     if n_hist:
         specs.append([{"type":"xy"}]*n_hist)
-    titles = ["DI vs. Profundidad"] + [f"Histograma {REPORT_VARS[v]}" for v in hist_vars]
+    hist_titles = []
+    for v in hist_vars:
+        t = f"Histograma {REPORT_VARS[v]}"
+        if v in REPORT_HIST_CLIP_VARS: t += " (vista: P1–P99)"
+        hist_titles.append(t)
+    titles = [f"{REPORT_VARS[profile_var]} vs. Profundidad"] + hist_titles
     fig = make_subplots(
         rows=2 if n_hist else 1, cols=max(n_hist,1),
         specs=specs, subplot_titles=titles,
@@ -4154,13 +4627,14 @@ def build_well_report_figure(well_name, hist_vars=None):
     )
 
     largos = [p.largo for p in well.points]
-    dis = [p.di if p.di is not None else None for p in well.points]
-    fig.add_trace(go.Scatter(x=largos, y=dis, mode="lines", name="DI",
+    prof_vals = [getattr(p, profile_var, None) for p in well.points]
+    fig.add_trace(go.Scatter(x=largos, y=prof_vals, mode="lines", name=REPORT_VARS[profile_var],
                               line=dict(color="#3B8BD4", width=1.5)), row=1, col=1)
-    fig.add_hline(y=di_threshold, line_dash="dash", line_color="#E74C3C",
-                  annotation_text=f"Umbral={di_threshold}", row=1, col=1)
+    if profile_var == "di":
+        fig.add_hline(y=di_threshold, line_dash="dash", line_color="#E74C3C",
+                      annotation_text=f"Umbral={di_threshold}", row=1, col=1)
     fig.update_xaxes(title_text="Profundidad [m]", row=1, col=1)
-    fig.update_yaxes(title_text="DI", row=1, col=1)
+    fig.update_yaxes(title_text=REPORT_VARS[profile_var], row=1, col=1)
 
     for i, v in enumerate(hist_vars):
         vals = [getattr(p, v) for p in well.points
@@ -4168,6 +4642,10 @@ def build_well_report_figure(well_name, hist_vars=None):
         fig.add_trace(go.Histogram(x=vals, marker_color=PALETTE[i % len(PALETTE)],
                                      name=REPORT_VARS[v], nbinsx=30), row=2, col=i+1)
         fig.update_xaxes(title_text=REPORT_VARS[v], row=2, col=i+1)
+        if v in REPORT_HIST_CLIP_VARS and len(vals) >= 2:
+            p1, p99 = np.percentile(vals, [1, 99])
+            if p99 > p1:
+                fig.update_xaxes(range=[p1, p99], row=2, col=i+1)
 
     fig.update_layout(
         template="plotly_dark", paper_bgcolor="#0d0d1a", plot_bgcolor="#0d0d1a",
@@ -4368,6 +4846,13 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
         dbc.ModalHeader(dbc.ModalTitle(id="well-report-title", children="Reporte de pozo")),
         dbc.ModalBody([
             html.Div([
+                # (P3-3.5) Antes fijo en DI. Cualquier variable de REPORT_VARS
+                # (cruda o calculada) puede graficarse a lo largo del pozo.
+                html.Small("Perfil vs. profundidad:", style={"color":"#aaa","marginRight":"8px"}),
+                dcc.Dropdown(id="well-report-profile-var",
+                             options=[{"label":v,"value":k} for k,v in REPORT_VARS.items()],
+                             value="di", clearable=False,
+                             style={"fontSize":"11px","width":"260px","display":"inline-block","marginRight":"16px"}),
                 html.Small("Variables para histograma (máx. 3):", style={"color":"#aaa","marginRight":"8px"}),
                 dcc.Dropdown(id="well-report-vars", options=[{"label":v,"value":k} for k,v in REPORT_VARS.items()],
                              value=["se","pp","vel"], multi=True, style={"fontSize":"11px","width":"420px","display":"inline-block"}),
@@ -4391,6 +4876,26 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
         dbc.ModalBody(id="drillhole-modal-body", style={"maxHeight":"75vh","overflowY":"auto"}),
         dbc.ModalFooter(dbc.Button("Cerrar", id="close-drillhole", size="sm", color="secondary")),
     ], id="drillhole-modal", size="xl", is_open=False, scrollable=True),
+    # (P3-3.3) Confirmación de exportación: qué se exporta y cuántos
+    # registros, antes de disparar cualquiera de las seis descargas.
+    dcc.Store(id="export-pending", data=None),
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("Confirmar exportación")),
+        dbc.ModalBody(id="export-confirm-body"),
+        dbc.ModalFooter([
+            dbc.Button("Cancelar", id="btn-export-cancel", size="sm", color="secondary"),
+            dbc.Button("Confirmar y descargar", id="btn-export-confirm", size="sm", color="primary"),
+        ]),
+    ], id="export-confirm-modal", is_open=False),
+    # (P3-3.9) Reporte de justificación de variables: armazón que muestra
+    # correlación/multicolinealidad, importancia, comparación de modelos
+    # con/sin SE y ablación de cota (LOCO-CV), con resultados en cuanto
+    # existan datos suficientes.
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("Reporte de justificación de variables")),
+        dbc.ModalBody(id="varjust-modal-body", style={"maxHeight": "75vh", "overflowY": "auto"}),
+        dbc.ModalFooter(dbc.Button("Cerrar", id="close-varjust", size="sm", color="secondary")),
+    ], id="varjust-modal", size="xl", is_open=False, scrollable=True),
 ])
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -4691,6 +5196,18 @@ def _vocab_panel_body():
 @app.callback(Output("vocab-badge", "children"), Input("refresh", "data"))
 def render_vocab_badge(_):
     return _vocab_badge_children()
+
+
+@app.callback(Output("varjust-modal", "is_open"), Output("varjust-modal-body", "children"),
+              Input("btn-open-varjust", "n_clicks"), Input("close-varjust", "n_clicks"),
+              State("varjust-modal", "is_open"), prevent_initial_call=True)
+def toggle_varjust_modal(open_c, close_c, is_open):
+    trig = callback_context.triggered_id
+    if trig == "btn-open-varjust":
+        return True, _varjust_panel_body()
+    if trig == "close-varjust":
+        return False, no_update
+    return no_update, no_update
 
 
 @app.callback(Output("vocab-modal", "is_open"), Output("vocab-modal-body", "children"),
@@ -5661,13 +6178,24 @@ def do_prelim(n, ref):
     return ref+1, f"✅ Prelim: R²={s['r2']}, RMSE={s['rmse']} MPa", True
 
 @app.callback(Output("refresh","data",allow_duplicate=True),
+    Output("toast","children",allow_duplicate=True),
+    Output("toast","is_open",allow_duplicate=True),
     Input("btn-cut","n_clicks"), State("val-cut","value"),
     State("refresh","data"), prevent_initial_call=True)
 def do_cut(n, cut, ref):
-    if not n: return no_update
-    apply_inicio_filter(float(cut or 2.0))
+    if not n: return no_update, no_update, no_update
+    # (P3-3.8) `float(cut or 2.0)` habría sustituido en silencio un 0.0
+    # explícito (corte desactivado) por el default. Un valor no numérico o
+    # negativo se rechaza con mensaje, nunca se sustituye.
+    try:
+        cut_v = float(cut)
+    except (TypeError, ValueError):
+        return no_update, f"🚫 Corte de emboquillado inválido: «{cut}».", True
+    if cut_v < 0:
+        return no_update, f"🚫 El corte de emboquillado no puede ser negativo ({cut_v:g} m).", True
+    apply_inicio_filter(cut_v)
     wz_state['step2']['cleaned'] = True
-    return ref+1
+    return ref+1, no_update, no_update
 
 @app.callback(Output("refresh","data",allow_duplicate=True),
     Input("btn-add-filt","n_clicks"),
@@ -5747,19 +6275,78 @@ def on_assign_dq(values, ids, ref):
     Output("toast","is_open",allow_duplicate=True),
     Input("btn-di","n_clicks"),
     State("di-window","value"), State("di-thresh","value"),
+    State("di-w-pp","value"), State("di-w-pd","value"),
+    State("di-w-pf","value"), State("di-w-pr","value"),
     State("refresh","data"), prevent_initial_call=True,
 )
-def do_di(n, window, thresh, ref):
+def do_di(n, window, thresh, w_pp, w_pd, w_pf, w_pr, ref):
+    """
+    (P3-3.7) Pesos y umbral del DI, configurables desde la interfaz. `or
+    default` habría sustituido en silencio un 0 explícito (peso desactivado)
+    o un umbral 0.0; cada campo se valida por separado y un valor inválido
+    aborta con mensaje, sin tocar la configuración vigente.
+    """
     if not n: return no_update, no_update, no_update
-    di_config["window"] = int(window or 14)
+    def _num(v, etiqueta, lo=None):
+        if v is None or v == "":
+            return None, f"{etiqueta} vacío."
+        try: x = float(v)
+        except (TypeError, ValueError):
+            return None, f"{etiqueta}: «{v}» no es un número."
+        if not np.isfinite(x):
+            return None, f"{etiqueta}: valor no finito."
+        if lo is not None and x < lo:
+            return None, f"{etiqueta}: {x:g} < {lo:g}."
+        return x, None
+    campos = [(window, "Ventana", 3), (thresh, "Umbral", 0.0),
+             (w_pp, "Peso PP", 0.0), (w_pd, "Peso DP", 0.0),
+             (w_pf, "Peso FP", 0.0), (w_pr, "Peso RP", 0.0)]
+    valores, errores = [], []
+    for v, etq, lo in campos:
+        x, e = _num(v, etq, lo)
+        valores.append(x)
+        if e: errores.append(e)
+    if errores:
+        return no_update, "🚫 " + " · ".join(errores), True
+    window_v, thresh_v, wpp, wpd, wpf, wpr = valores
     global di_threshold
-    di_threshold = float(thresh or 1.5)
+    di_config["window"] = int(window_v)
+    di_threshold = float(thresh_v)
+    di_config["weights"] = {"pp": wpp, "pd": wpd, "pf": wpf, "pr": wpr}
+    suma = wpp + wpd + wpf + wpr
+    aviso_suma = ""
+    if abs(suma - 1.0) > 0.02:
+        aviso_suma = f" ⚠ los pesos suman {suma:.3f} (no 1,0)."
     compute_di()
     wz_state['step3']['di_computed'] = True
     all_pts = list(all_points())
     n_di = sum(1 for p in all_pts if p.di is not None)
     n_disc = sum(1 for p in all_pts if p.di is not None and p.di > di_threshold)
-    return ref+1, f"✅ DI: {n_di} pts · {n_disc} discontinuidades", True
+    modif = "" if di_config_is_default() else " · configuración MODIFICADA respecto a Fernández et al. 2023"
+    return ref+1, f"✅ DI: {n_di} pts · {n_disc} discontinuidades{modif}.{aviso_suma}", True
+
+@app.callback(
+    Output("refresh","data",allow_duplicate=True),
+    Output("di-window","value"), Output("di-thresh","value"),
+    Output("di-w-pp","value"), Output("di-w-pd","value"),
+    Output("di-w-pf","value"), Output("di-w-pr","value"),
+    Output("toast","children",allow_duplicate=True),
+    Output("toast","is_open",allow_duplicate=True),
+    Input("btn-di-reset","n_clicks"),
+    State("refresh","data"), prevent_initial_call=True,
+)
+def do_di_reset(n, ref):
+    """(P3-3.7) Restaura ventana, umbral y pesos a Fernández et al. 2023. Solo
+    cambia la configuración; no recalcula el DI hasta que se pulse Calcular."""
+    if not n: return (no_update,)*8
+    global di_threshold
+    di_config["window"] = DI_DEFAULTS["window"]
+    di_threshold = DI_DEFAULTS["threshold"]
+    di_config["weights"] = dict(DI_DEFAULTS["weights"])
+    w = di_config["weights"]
+    return (ref+1, di_config["window"], di_threshold, w["pp"], w["pd"], w["pf"], w["pr"],
+           "↺ Configuración DI restaurada a Fernández et al. 2023. Pulsa «Calcular DI» "
+           "para recalcular con estos valores.", True)
 
 @app.callback(
     Output({"type":"sens-output","index":ALL},"children"),
@@ -5968,33 +6555,103 @@ def poll_mesh_validation(_, prog_ids, ref):
     return no_update, [prog]*n, [f"{prog}%"]*n, [stage]*n, no_update, no_update, no_update
 
 @app.callback(
-    Output("download","data",allow_duplicate=True),
+    Output("export-pending","data"),
+    Output("export-confirm-modal","is_open"),
+    Output("export-confirm-body","children"),
+    Output("toast","children",allow_duplicate=True),
+    Output("toast","is_open",allow_duplicate=True),
+    Input("btn-exp-dom","n_clicks"), Input("btn-exp-pred","n_clicks"),
     Input({"type":"val-export-btn","index":ALL},"n_clicks"),
+    Input({"type":"di-rqd-export-btn","index":ALL},"n_clicks"),
+    Input("btn-save-project","n_clicks"), Input("btn-kit-cap5","n_clicks"),
     prevent_initial_call=True,
 )
-def do_export_validation(n_clicks_list):
-    ctx = callback_context
-    tid = ctx.triggered_id
-    if not isinstance(tid, dict) or not ctx.triggered[0]["value"]:
-        return no_update
-    df = export_validation_csv()
-    if df.empty: return no_update
-    return dcc.send_data_frame(df.to_csv, "validacion_mallas.csv", index=False)
+def on_export_trigger(n_dom, n_pred, n_val, n_rqd, n_proj, n_kit):
+    """
+    (P3-3.3) Punto de entrada ÚNICO de las seis exportaciones. Nunca descarga
+    directo: arma el descriptor (qué se exporta, cuántos registros, nombre de
+    archivo) y abre el diálogo de confirmación. Sin datos que exportar, avisa
+    en vez de abrir un diálogo vacío.
+    """
+    trig = callback_context.triggered_id
+    trig_val = callback_context.triggered[0]["value"]
+    if not trig_val: return no_update, no_update, no_update, no_update, no_update
+    if isinstance(trig, dict):
+        kind = "validacion" if trig.get("type") == "val-export-btn" else "di_rqd"
+    else:
+        kind = {"btn-exp-dom":"dominios", "btn-exp-pred":"predicciones",
+               "btn-save-project":"proyecto", "btn-kit-cap5":"kit"}.get(trig)
+    if kind is None: return no_update, no_update, no_update, no_update, no_update
+    desc = _export_descriptor(kind)
+    if desc is None:
+        return no_update, no_update, no_update, "⚠ No hay datos para exportar.", True
+    body = html.Div([
+        html.P(desc["desc"], style={"fontSize":"12px"}),
+        html.P([html.B(f"{desc['n']} "), desc["unidad"]], style={"fontSize":"13px"}),
+        html.Small(f"Archivo: {desc['filename']}",
+                  style={"color":"#888","fontFamily":"monospace","display":"block"}),
+    ])
+    return desc, True, body, no_update, no_update
+
+@app.callback(Output("export-confirm-modal","is_open",allow_duplicate=True),
+              Input("btn-export-cancel","n_clicks"), prevent_initial_call=True)
+def on_export_cancel(n):
+    return False if n else no_update
 
 @app.callback(
     Output("download","data",allow_duplicate=True),
-    Input({"type":"di-rqd-export-btn","index":ALL},"n_clicks"),
+    Output("download-project","data",allow_duplicate=True),
+    Output("kit-interval","disabled",allow_duplicate=True),
+    Output("export-confirm-modal","is_open",allow_duplicate=True),
+    Output("toast","children",allow_duplicate=True),
+    Output("toast","is_open",allow_duplicate=True),
+    Input("btn-export-confirm","n_clicks"),
+    State("export-pending","data"),
     prevent_initial_call=True,
 )
-def do_export_di_rqd(n_clicks_list):
-    """(T5c) Export CSV de di_vs_rqd_by_caseron(). Botón en contenido regenerado → id pattern-matching."""
-    ctx = callback_context
-    tid = ctx.triggered_id
-    if not isinstance(tid, dict) or not ctx.triggered[0]["value"]:
-        return no_update
-    df = export_di_rqd_csv()
-    if df.empty: return no_update
-    return dcc.send_data_frame(df.to_csv, "di_vs_rqd_por_caseron.csv", index=False)
+def on_export_confirm(n, pending):
+    """(P3-3.3) Ejecuta la exportación confirmada. Los CSV que dependen de DI
+    (predicciones, dominios, DI↔RQD) llevan los parámetros DI vigentes como
+    encabezado '#' (P3-3.7): cualquier cambio altera todo aguas abajo."""
+    if not n or not pending:
+        return (no_update,)*6
+    kind, fname = pending["kind"], pending["filename"]
+    meta = [di_config_summary()]
+    if kind == "dominios":
+        csv = _csv_with_metadata(export_domain_csv(), meta)
+        return dcc.send_string(csv, fname), no_update, no_update, False, no_update, no_update
+    if kind == "predicciones":
+        csv = _csv_with_metadata(export_predictions_csv(), meta)
+        return dcc.send_string(csv, fname), no_update, no_update, False, no_update, no_update
+    if kind == "validacion":
+        return (dcc.send_data_frame(export_validation_csv().to_csv, fname, index=False),
+               no_update, no_update, False, no_update, no_update)
+    if kind == "di_rqd":
+        csv = _csv_with_metadata(export_di_rqd_csv(), meta)
+        return dcc.send_string(csv, fname), no_update, no_update, False, no_update, no_update
+    if kind == "proyecto":
+        if not wells:
+            return no_update, no_update, no_update, False, "⚠ No hay datos cargados para guardar.", True
+        try:
+            tmp = tempfile.NamedTemporaryFile(suffix=".gwz", delete=False)
+            tmp.close()
+            save_project(tmp.name)
+            with open(tmp.name, "rb") as f: data = f.read()
+            os.unlink(tmp.name)
+            return (no_update, dcc.send_bytes(data, fname), no_update, False,
+                   f"✅ Guardado — {len(wells)} pozos.", True)
+        except Exception as e:
+            return no_update, no_update, no_update, False, f"❌ Error al guardar: {e}", True
+    if kind == "kit":
+        if not wells:
+            return no_update, no_update, no_update, False, "⚠ No hay datos para exportar.", True
+        with task_lock:
+            if kit_task_state["running"]:
+                return no_update, no_update, no_update, False, "⏳ Ya está generando el kit…", True
+        kit_task_state["filename"] = fname
+        threading.Thread(target=run_kit_task, daemon=True).start()
+        return no_update, no_update, False, False, "⏳ Generando kit Cap.5…", True
+    return no_update, no_update, no_update, False, no_update, no_update
 
 @app.callback(
     Output("refresh","data",allow_duplicate=True),
@@ -6066,44 +6723,10 @@ def do_topn(n, group_id, method):
         header, *body,
     ])
 
-@app.callback(
-    Output("download","data"),
-    Input("btn-exp-dom","n_clicks"), Input("btn-exp-pred","n_clicks"),
-    prevent_initial_call=True,
-)
-def do_export(*args):
-    ctx = callback_context
-    if not ctx.triggered: return no_update
-    tid = ctx.triggered[0]["prop_id"].split(".")[0]
-    if tid == "btn-exp-dom":
-        return dcc.send_data_frame(export_domain_csv().to_csv, "dominios.csv", index=False)
-    elif tid == "btn-exp-pred":
-        return dcc.send_data_frame(export_predictions_csv().to_csv, "predicciones.csv", index=False)
-    return no_update
 
 # ─── T10: callbacks de guardar / cargar proyecto ──────────────────────────────
-@app.callback(
-    Output("download-project","data"),
-    Output("toast","children",allow_duplicate=True),
-    Output("toast","is_open",allow_duplicate=True),
-    Input("btn-save-project","n_clicks"),
-    prevent_initial_call=True,
-)
-def on_save_project(n):
-    if not n: return no_update, no_update, no_update
-    if not wells:
-        return no_update, "⚠ No hay datos cargados para guardar.", True
-    try:
-        tmp = tempfile.NamedTemporaryFile(suffix=".gwz", delete=False)
-        tmp.close()
-        save_project(tmp.name)
-        with open(tmp.name, "rb") as f:
-            data = f.read()
-        os.unlink(tmp.name)
-        return dcc.send_bytes(data, "proyecto.gwz"), f"✅ Guardado — {len(wells)} pozos.", True
-    except Exception as e:
-        return no_update, f"❌ Error al guardar: {e}", True
-
+# (P3-3.3) "Guardar proyecto" (btn-save-project) ahora pasa por el diálogo de
+# confirmación único: on_export_trigger / on_export_confirm más arriba.
 @app.callback(
     Output("refresh","data",allow_duplicate=True),
     Output("toast","children",allow_duplicate=True),
@@ -6138,23 +6761,9 @@ def trigger_load_project(n):
     return {"display":"block"} if n else no_update
 
 # ─── T11: callbacks de exportar kit Cap.5 ─────────────────────────────────────
-@app.callback(
-    Output("kit-interval","disabled"),
-    Output("toast","children",allow_duplicate=True),
-    Output("toast","is_open",allow_duplicate=True),
-    Input("btn-kit-cap5","n_clicks"),
-    prevent_initial_call=True,
-)
-def on_kit_start(n):
-    if not n: return no_update, no_update, no_update
-    if not wells:
-        return True, "⚠ No hay datos para exportar.", True
-    with task_lock:
-        if kit_task_state["running"]:
-            return no_update, "⏳ Ya está generando el kit…", True
-    threading.Thread(target=run_kit_task, daemon=True).start()
-    return False, "⏳ Generando kit Cap.5…", True
-
+# (P3-3.3) "Exportar kit" (btn-kit-cap5) ahora pasa por el diálogo de
+# confirmación único: on_export_trigger inicia el diálogo, on_export_confirm
+# lanza el hilo de fondo (rama kind == "kit"). Solo queda el polling aquí.
 @app.callback(
     Output("download-kit","data"),
     Output("toast","children",allow_duplicate=True),
@@ -6170,12 +6779,13 @@ def on_kit_poll(n):
         data = kit_task_state["bytes"]
         stage = kit_task_state["stage"]
         pct = kit_task_state["progress"]
+        fname = kit_task_state.get("filename", "kit_cap5.zip")
     if not done:
         return no_update, f"⏳ Kit: {stage} ({pct}%)", True, False
     if err:
         return no_update, f"❌ Kit: {err}", True, True
     kit_task_state["bytes"] = None
-    return dcc.send_bytes(data, "kit_cap5.zip"), "✅ Kit Cap.5 listo — descargando.", True, True
+    return dcc.send_bytes(data, fname), "✅ Kit Cap.5 listo — descargando.", True, True
 
 @app.callback(
     Output("well-report-modal","is_open"),
@@ -6204,11 +6814,12 @@ def toggle_well_report(open_clicks, close_click, is_open):
     Output("well-report-stats-table","children"),
     Input("report-well-name","data"),
     Input("well-report-vars","value"),
+    Input("well-report-profile-var","value"),
 )
-def update_well_report(well_name, hist_vars):
+def update_well_report(well_name, hist_vars, profile_var):
     if not well_name or well_name not in wells:
         return go.Figure(), html.Div()
-    fig = build_well_report_figure(well_name, hist_vars)
+    fig = build_well_report_figure(well_name, hist_vars, profile_var or "di")
     stats = well_basic_stats(well_name)
     rows = [dbc.Row([
         dbc.Col(html.Small(s["label"], style={"color":"#ccc"}), width=3),
@@ -6383,7 +6994,19 @@ def _step2():
                                style={"fontSize":"11px"}), width=3),
             dbc.Col(html.Small(rng, style={"color":"#555","fontSize":"10px"}), width=6),
         ], className="g-1 mb-1")
+    # (P3-3.8) El corte de emboquillado se APLICA (apply_inicio_filter) pero
+    # antes no figuraba en ninguna lista de filtros. Se antepone como entrada
+    # sintética de solo lectura — no es removible aquí porque no es un filtro
+    # de clean_filters, es el corte base que recompute_filters() siempre
+    # reaplica primero.
+    n_cut = sum(1 for p in all_pts if p.largo < inicio_cut_m)
     filter_items = [dbc.ListGroupItem([
+        html.Small(f"Emboquillado — largo < {inicio_cut_m:g} m",
+                   style={"fontSize":"11px","marginRight":"6px","flex":1}),
+        dbc.Badge(f"-{n_cut} pts", color="danger", className="me-2"),
+        html.Small("fijo", style={"color":"#555","fontSize":"9px","padding":"0 7px"}),
+    ], className="d-flex align-items-center py-1 px-2")]
+    filter_items += [dbc.ListGroupItem([
         html.Small(f"{f['varName']} — {f['label']} [{f['lo']}, {f['hi']}]",
                    style={"fontSize":"11px","marginRight":"6px","flex":1}),
         dbc.Badge(f"-{f['removed']} pts", color="danger", className="me-2"),
@@ -6416,7 +7039,7 @@ def _step2():
                       color="info", style={"fontSize":"11px","padding":"4px 8px"}, className="mb-2"),
             dbc.Row([
                 dbc.Col(html.Small("Corte emboquillado (m):", style={"color":"#aaa"}), width=5),
-                dbc.Col(dbc.Input(id="val-cut", type="number", value=2.0, step=0.1,
+                dbc.Col(dbc.Input(id="val-cut", type="number", value=inicio_cut_m, step=0.1,
                                    min=0, size="sm", style={"fontSize":"11px"}), width=3),
                 dbc.Col(dbc.Button("Aplicar", id="btn-cut", size="sm",
                                     color="secondary", outline=True), width=4),
@@ -6434,8 +7057,7 @@ def _step2():
                 dbc.Col(dbc.Button("+", id="btn-add-filt", size="sm",
                                     color="secondary", outline=True), width=3),
             ], className="g-1 mb-2"),
-            dbc.ListGroup(filter_items, flush=True) if filter_items else
-                html.Small("Sin filtros activos.", style={"color":"#555"}),
+            dbc.ListGroup(filter_items, flush=True),
         ]),
         dbc.Row([
             dbc.Col(dbc.Button("← Atrás", id={"type":"pill","index":1}, color="secondary", outline=True, size="sm"), width="auto"),
@@ -6524,19 +7146,44 @@ def _step3():
         card("Fórmula", [
             html.Small("DIᵢ = √(Σⱼ βⱼ · zⱼ(i)²), ventana 14 muestras ≈ 26 cm.", style={"color":"#ccc"}),
             html.Br(), html.Br(),
-            html.Small("Pesos Pucobre: PP=0.35, DP=0.25, FP=0.20, RP=0.20", style={"color":"#666"}),
+            html.Small("Pesos Fernández et al. 2023: PP=0.35, DP=0.25, FP=0.20, RP=0.20",
+                       style={"color":"#666"}),
         ]),
         card("Configuración", [
+            html.Small(di_config_summary(), style={
+                "color": "#2ECC71" if di_config_is_default() else "#F39C12",
+                "display": "block", "marginBottom": "8px", "fontFamily": "monospace"}),
             dbc.Row([
                 dbc.Col([html.Small("Ventana", style={"color":"#aaa","display":"block"}),
+                          # (P1-T1.6) Sin min/max en el componente: un valor
+                          # fuera de rango llegaría como None y se perdería en
+                          # silencio. La validación vive en do_di.
                           dbc.Input(id="di-window", type="number", value=di_config["window"],
-                                     min=3, step=1, size="sm", style={"fontSize":"11px"})], width=3),
+                                     step=1, size="sm", style={"fontSize":"11px"})], width=3),
                 dbc.Col([html.Small("Umbral", style={"color":"#aaa","display":"block"}),
                           dbc.Input(id="di-thresh", type="number", value=di_threshold,
-                                     min=0.1, step=0.1, size="sm", style={"fontSize":"11px"})], width=3),
+                                     step=0.1, size="sm", style={"fontSize":"11px"})], width=3),
                 dbc.Col(dbc.Button("🌀 Calcular DI", id="btn-di", color="info", size="sm",
-                                    className="mt-3"), width=6),
+                                    className="mt-3"), width=3),
+                dbc.Col(dbc.Button("↺ Restaurar Fernández et al. 2023", id="btn-di-reset",
+                                    color="secondary", outline=True, size="sm",
+                                    className="mt-3"), width=3),
             ], className="g-2 mb-2"),
+            html.Small("Pesos (P3-3.7):", style={"color":"#aaa","display":"block","marginBottom":"4px"}),
+            dbc.Row([
+                dbc.Col([html.Small("PP", style={"color":"#666","display":"block"}),
+                          dbc.Input(id="di-w-pp", type="number", value=di_config["weights"]["pp"],
+                                     step=0.01, size="sm", style={"fontSize":"11px"})], width=3),
+                dbc.Col([html.Small("DP", style={"color":"#666","display":"block"}),
+                          dbc.Input(id="di-w-pd", type="number", value=di_config["weights"]["pd"],
+                                     step=0.01, size="sm", style={"fontSize":"11px"})], width=3),
+                dbc.Col([html.Small("FP", style={"color":"#666","display":"block"}),
+                          dbc.Input(id="di-w-pf", type="number", value=di_config["weights"]["pf"],
+                                     step=0.01, size="sm", style={"fontSize":"11px"})], width=3),
+                dbc.Col([html.Small("RP", style={"color":"#666","display":"block"}),
+                          dbc.Input(id="di-w-pr", type="number", value=di_config["weights"]["pr"],
+                                     step=0.01, size="sm", style={"fontSize":"11px"})], width=3),
+            ], className="g-2"),
         ]),
         dbc.Badge(f"DI: {n_di} pts · {n_disc} discontinuidades", color="success",
                   className="mb-2") if n_di else None,
@@ -6549,16 +7196,173 @@ def _step3():
         ], className="mt-3"),
     ])
 
+def _training_composition_card():
+    """
+    (P3-3.2) De dónde salen los datos de entrenamiento, ANTES de entrenar:
+    total disponible y cuántos sobreviven cada filtro, incluido el corte de
+    emboquillado (P3-3.8), que antes se aplicaba sin figurar aquí.
+    """
+    rep = training_composition_report()
+    rows = [html.Tr([
+        html.Td(html.Small(st["label"], style={"fontSize":"10px"})),
+        html.Td(html.Small(f"{st['quedan']:,}".replace(",", "."), style={"fontSize":"10px"})),
+        html.Td(html.Small(f"-{st['perdidos']:,}".replace(",", ".") if st["perdidos"] else "",
+                          style={"fontSize":"10px","color":"#E74C3C"})),
+    ]) for st in rep["funnel"]]
+    return card("Composición del entrenamiento", [
+        html.Small(f"{rep['n_total']:,} puntos MWD disponibles → {rep['n_final']:,} entrenables."
+                   .replace(",", "."),
+                   style={"color":"#aaa","display":"block","marginBottom":"6px"}),
+        dbc.Table([
+            html.Thead(html.Tr([html.Th("Etapa"), html.Th("Quedan"), html.Th("Perdidos")])),
+            html.Tbody(rows),
+        ], bordered=False, size="sm", style={"marginBottom":0}),
+    ])
+
+
+def _varjust_section_alert(rep):
+    """Alerta uniforme para un estado 'sin_datos'/'sin_grupos'/'sin_caserones'."""
+    return dbc.Alert(rep.get("motivo", "Sin datos suficientes todavía."),
+                     color="secondary", style={"fontSize": "11px"})
+
+
+def _varjust_panel_body():
+    """
+    (P3-3.9) Renderiza las cuatro secciones del reporte de justificación de
+    variables. Cada sección se calcula al abrir el modal, sobre los datos
+    vigentes: cuando no alcanzan, muestra el motivo en vez de un gráfico
+    vacío o un número inventado.
+    """
+    rep = variable_justification_report()
+    sections = []
+
+    # 1) Correlación / multicolinealidad -------------------------------
+    corr = rep["correlacion"]
+    body = []
+    if corr["status"] != "ok":
+        body.append(_varjust_section_alert(corr))
+    else:
+        feats = corr["features"]
+        fig = go.Figure(data=go.Heatmap(
+            z=corr["matrix"], x=feats, y=feats, zmin=-1, zmax=1,
+            colorscale="RdBu_r", reversescale=False,
+            text=[[f"{v:.2f}" for v in row] for row in corr["matrix"]],
+            texttemplate="%{text}", colorbar=dict(title="r")))
+        fig.update_layout(template="plotly_dark", height=360,
+                          margin=dict(l=40, r=10, t=10, b=30),
+                          paper_bgcolor="#111", plot_bgcolor="#111")
+        body.append(dcc.Graph(figure=fig, config={"displayModeBar": False}))
+        corr_y_rows = [html.Tr([html.Td(html.Small(f, style={"fontSize":"10px"})),
+                                html.Td(html.Small(f"{r:.3f}", style={"fontSize":"10px"}))])
+                      for f, r in zip(feats, corr["corr_con_y"])]
+        body.append(dbc.Table([
+            html.Thead(html.Tr([html.Th("Variable"), html.Th("r con UCS")])),
+            html.Tbody(corr_y_rows),
+        ], bordered=False, size="sm", className="mt-2"))
+        if corr["pairs_flagged"]:
+            body.append(dbc.Alert([
+                html.Small(f"Multicolinealidad (|r| > {corr['threshold']}): se conservan "
+                          "ambas variables por defecto; la exclusión es una decisión manual.",
+                          style={"display":"block","marginBottom":"4px"}),
+                html.Ul([html.Li(html.Small(
+                    f"{pr['a']} ↔ {pr['b']} (r={pr['r']}) — sugerencia: quitar {pr['sugerencia_quitar']}",
+                    style={"fontSize":"10px"})) for pr in corr["pairs_flagged"]]),
+            ], color="warning", className="mt-2"))
+        else:
+            body.append(html.Small("Sin pares con |r| por sobre el umbral.",
+                                   style={"color":"#5cb85c","fontSize":"10px"}))
+    sections.append(card("1. Correlación entre predictores y multicolinealidad", body))
+
+    # 2) Importancia de variables ---------------------------------------
+    imp = rep["importancia"]
+    if not imp:
+        body = [dbc.Alert("Entrena el modelo (Paso 4) para calcular la importancia de "
+                          "variables por permutación.", color="secondary", style={"fontSize":"11px"})]
+    else:
+        ordered = sorted(imp.items(), key=lambda kv: -kv[1])
+        body = [dbc.Table([
+            html.Thead(html.Tr([html.Th("Variable"), html.Th("Importancia (permutación)")])),
+            html.Tbody([html.Tr([html.Td(html.Small(k, style={"fontSize":"10px"})),
+                                 html.Td(html.Small(f"{v:.4f}", style={"fontSize":"10px"}))])
+                       for k, v in ordered]),
+        ], bordered=False, size="sm")]
+    sections.append(card("2. Importancia de variables (modelo entrenado)", body))
+
+    # 3) Comparación de modelos, con / sin SE ----------------------------
+    def _cmp_table(cmp_rep):
+        if cmp_rep["status"] != "ok":
+            return _varjust_section_alert(cmp_rep)
+        rows = []
+        for r in cmp_rep["rows"]:
+            if r["error"]:
+                rows.append(html.Tr([html.Td(html.Small(r["modelo"], style={"fontSize":"10px"})),
+                                     html.Td(html.Small(f"error: {r['error']}",
+                                                        style={"fontSize":"10px","color":"#E74C3C"}),
+                                            colSpan=2)]))
+            else:
+                rows.append(html.Tr([
+                    html.Td(html.Small(r["modelo"], style={"fontSize":"10px"})),
+                    html.Td(html.Small(f"{r['r2_mean']:.3f} ± {r['r2_std']:.3f}", style={"fontSize":"10px"})),
+                    html.Td(html.Small(f"{r['rmse_mean']:.1f} ± {r['rmse_std']:.1f}", style={"fontSize":"10px"})),
+                ]))
+        return dbc.Table([
+            html.Thead(html.Tr([html.Th("Modelo"), html.Th("R² (CV por pozo)"), html.Th("RMSE")])),
+            html.Tbody(rows),
+        ], bordered=False, size="sm")
+
+    sections.append(card("3. Comparación de modelos", [
+        html.Small("Con proxy SE:", style={"color":"#aaa","display":"block","marginBottom":"4px"}),
+        _cmp_table(rep["comparacion_con_se"]),
+        html.Small("Sin proxy SE:", style={"color":"#aaa","display":"block","margin":"10px 0 4px"}),
+        _cmp_table(rep["comparacion_sin_se"]),
+    ]))
+
+    # 4) Ablación de cota (LOCO-CV) ---------------------------------------
+    abl = rep["ablacion_cota"]
+    if abl["status"] != "ok":
+        body = [_varjust_section_alert(abl)]
+    else:
+        def _fmt(pair):
+            r2, err = pair
+            return f"{r2:.3f}" if r2 is not None else f"— ({err})"
+        rows = [
+            html.Tr([html.Td(html.Small("Dentro del caserón (GroupKFold por pozo)", style={"fontSize":"10px"})),
+                    html.Td(html.Small(_fmt(abl["dentro_caseron_sin_cota"]), style={"fontSize":"10px"})),
+                    html.Td(html.Small(_fmt(abl["dentro_caseron_con_cota"]), style={"fontSize":"10px"}))]),
+            html.Tr([html.Td(html.Small("LOCO-CV (deja un caserón fuera)", style={"fontSize":"10px"})),
+                    html.Td(html.Small(_fmt(abl["loco_sin_cota"]), style={"fontSize":"10px"})),
+                    html.Td(html.Small(_fmt(abl["loco_con_cota"]), style={"fontSize":"10px"}))]),
+        ]
+        body = [
+            html.Small(f"{abl['n_samples']} puntos · caserones: {', '.join(abl['caserones'])}",
+                       style={"color":"#aaa","display":"block","marginBottom":"6px"}),
+            dbc.Table([
+                html.Thead(html.Tr([html.Th("Validación"), html.Th("R² sin cota"), html.Th("R² con cota")])),
+                html.Tbody(rows),
+            ], bordered=False, size="sm"),
+        ]
+        if abl["memorizacion_espacial_sospechosa"] is True:
+            body.append(dbc.Alert(
+                "La cota mejora mucho más el desempeño dentro-del-caserón que en LOCO-CV: "
+                "señal de que el modelo memoriza posición en vez de leer el MWD. Confirma "
+                "que ML_FEATURES nunca incluya coordenadas en producción.",
+                color="danger", className="mt-2", style={"fontSize":"11px"}))
+        elif abl["memorizacion_espacial_sospechosa"] is False:
+            body.append(html.Small("Sin señal de memorización espacial con este umbral.",
+                                   style={"color":"#5cb85c","fontSize":"10px","display":"block","marginTop":"6px"}))
+    sections.append(card("4. Ablación de cota — prueba de memorización espacial (LOCO-CV)", body))
+
+    return html.Div(sections)
+
+
 def _step4():
     all_pts = list(all_points())
-    n_ucs = sum(1 for p in all_pts if p.dominio and domains.get(p.dominio, {}).get("ucs_lab"))
-    n_intact = sum(1 for p in all_pts if p.di is not None and p.di <= di_threshold
-                   and p.entrenable and p.dominio and domains.get(p.dominio, {}).get("ucs_lab"))
-    n_drops = sum(1 for p in all_pts if p.di is not None and p.di > di_threshold)
     return html.Div([
         html.H6("Paso 4 — Modelo ML (UCS)", className="mb-3"),
-        dbc.Alert([f"Con UCS lab: {n_ucs}  ·  Roca intacta (DI≤{di_threshold}): {n_intact} → RF  ·  Caídas excluidas: {n_drops}"],
-                  color="info", style={"fontSize":"11px","padding":"5px 10px"}, className="mb-2"),
+        _training_composition_card(),
+        dbc.Button("📐 Reporte de justificación de variables", id="btn-open-varjust",
+                   color="link", size="sm", className="mb-2",
+                   style={"padding":"0","fontSize":"11px"}),
         dbc.Row([
             # (P1-T1.6) Sin min/max en el componente: con ellos un valor fuera
             # de rango llega como None y `float(v or default)` lo sustituía en

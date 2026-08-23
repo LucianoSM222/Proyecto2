@@ -146,14 +146,25 @@ def test_sensitivity_analysis(well):
 
 
 # ─── TEST 3 (T6): GroupKFold con 1 pozo → CV omitida sin excepción ────────────
-def _make_synthetic_well(wn, n, ucs_lab, dominio="DomX", seed=0):
+def _make_synthetic_well(wn, n, ucs_labels, dominio_prefix="DomX", seed=0):
+    """
+    `ucs_labels`: uno o varios valores de UCS, repartidos en partes iguales
+    entre los puntos del pozo (cada uno con su propio dominio DomX0, DomX1...).
+    Con un solo valor el conjunto sería de etiqueta única y el guardián de
+    entrenamiento degenerado (3.1) bloquearía train_rf() antes de que estos
+    tests lleguen a ejercitar el conteo de grupos de GroupKFold, que es lo que
+    en realidad verifican.
+    """
+    if isinstance(ucs_labels, (int, float)):
+        ucs_labels = [ucs_labels]
     rng = np.random.default_rng(seed)
     pts = []
+    k = len(ucs_labels)
     for i in range(n):
         p = gw.MWDPoint(largo=i*0.02, vel=1.0+rng.normal(0,0.1), pp=80+rng.normal(0,5),
                         pa=60+rng.normal(0,5), pd=40+rng.normal(0,5), pr=30+rng.normal(0,5),
                         pf=8.0, se=100+rng.normal(0,5), t=0.0)
-        p.dominio = dominio; p.di = 0.1; p.entrenable = True
+        p.dominio = f"{dominio_prefix}{i % k}"; p.di = 0.1; p.entrenable = True
         pts.append(p)
     gw.wells[wn] = gw.Well(well_name=wn, plan_id="P", hole_id=wn, points=pts)
     return gw.wells[wn]
@@ -161,8 +172,9 @@ def _make_synthetic_well(wn, n, ucs_lab, dominio="DomX", seed=0):
 def test_groupkfold_single_well():
     _reset_state()
     gw.domains.clear()
-    gw.domains["DomX"] = {"count": 0, "ucs_lab": 120.0}
-    _make_synthetic_well("W1", 60, 120.0)
+    gw.domains["DomX0"] = {"count": 0, "ucs_lab": 120.0}
+    gw.domains["DomX1"] = {"count": 0, "ucs_lab": 150.0}
+    _make_synthetic_well("W1", 60, [120.0, 150.0])
     stats = gw.train_rf(50.0, 280.0)
     print(f"[TEST GKF 1-pozo] cv_r2_mean={stats.get('cv_r2_mean')} "
           f"cv_n_grupos={stats.get('cv_n_grupos')} warning={stats.get('cv_warning')}")
@@ -177,9 +189,10 @@ def test_groupkfold_two_wells():
     """Con 2 pozos también se omite (< 3), advertencia con el conteo correcto."""
     _reset_state()
     gw.domains.clear()
-    gw.domains["DomX"] = {"count": 0, "ucs_lab": 120.0}
-    _make_synthetic_well("W1", 60, 120.0, seed=1)
-    _make_synthetic_well("W2", 60, 120.0, seed=2)
+    gw.domains["DomX0"] = {"count": 0, "ucs_lab": 120.0}
+    gw.domains["DomX1"] = {"count": 0, "ucs_lab": 150.0}
+    _make_synthetic_well("W1", 60, [120.0, 150.0], seed=1)
+    _make_synthetic_well("W2", 60, [120.0, 150.0], seed=2)
     stats = gw.train_rf(50.0, 280.0)
     print(f"[TEST GKF 2-pozos] cv_r2_mean={stats.get('cv_r2_mean')} "
           f"cv_n_grupos={stats.get('cv_n_grupos')}")

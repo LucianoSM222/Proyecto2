@@ -340,9 +340,19 @@ def contador_en_reporte():
     gw.attr_registry["Bht"].calidad = 3
     mk_layer("caja_Kfa", BOX_GRANDE, {"litologia": "Kfa"})
     mk_layer("caja_Bht", BOX_CRUZADA, {"litologia": "Bht"})
-    # Un punto en conflicto + varios limpios dentro de solo una caja.
-    limpios = [(E0 + 1.0, N0 + 2.0, Z0 + 1.0 + i * 0.01) for i in range(30)]
-    clasificar([DENTRO] + limpios)
+    # Un punto en conflicto + varios limpios dentro de solo una caja. Repartidos
+    # entre las DOS litologías (Kfa/Bht, con bandas UCS distintas) para que el
+    # conjunto de entrenamiento tenga variabilidad real de etiqueta — con una
+    # sola litología limpia, el guardián de entrenamiento degenerado (3.1)
+    # bloquearía train_rf() antes de llegar a exponer n_excl_ambiguo, que es
+    # lo que este test verifica.
+    limpios_kfa = [(E0 + 1.0, N0 + 2.0, Z0 + 1.0 + i * 0.01) for i in range(20)]
+    # Offsets desiguales (no la diagonal x=y=z del cubo): sobre esa diagonal el
+    # rayo vertical del ray casting roza exactamente la arista compartida por
+    # los dos triángulos de una cara lateral y el punto queda fuera por el
+    # empate numérico, aunque esté geométricamente dentro de la caja.
+    limpios_bht = [(E0 + 25.0, N0 + 27.0, Z0 + 24.0 + i * 0.01) for i in range(10)]
+    clasificar([DENTRO] + limpios_kfa + limpios_bht)
     check(gw.overlap_stats["n_ambiguos"] >= 1, "hay al menos un ambiguo",
           gw.overlap_stats["n_ambiguos"])
     st = gw.train_rf(0.0, 450.0)
