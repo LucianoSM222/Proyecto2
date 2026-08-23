@@ -34,6 +34,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import geomech_wizard as gw
+from test_support import require_real_data, SkipTest, fixture, skipped_banner
 
 
 # ─── Localización de los archivos de datos ────────────────────────────────────
@@ -53,9 +54,12 @@ def _find(env_var, patterns):
                 return hits[0]
     return None
 
-DQ_PATH  = _find("GEOMECH_DQ",  ["*DQ*P40*.xml", "*DQMGN*.xml", "*DQ*.xml"])
-MW_PATH  = _find("GEOMECH_MW",  ["*MW*P41*H5*.xml", "*MWMGN*.xml", "*MW*.xml"])
-DXF_PATH = _find("GEOMECH_DXF", ["*Metandesitas*.dxf", "*.dxf"])
+# (A.8) Patrones ESTRICTOS: sin el comodín de reserva, que hacía tomar
+# cualquier DXF/XML presente y fallar con un mensaje confuso en vez de
+# omitir el test por falta del fixture correcto.
+DQ_PATH  = _find("GEOMECH_DQ",  ["DQMGN_3025_PR01_TH_P40_*.xml", "*DQ*P40*.xml"])
+MW_PATH  = _find("GEOMECH_MW",  ["MWMGN_3025_PR01_TH_P41H5_*.xml", "*MW*P41H5*.xml"])
+DXF_PATH = _find("GEOMECH_DXF", ["*Metandesitas*.dxf"])
 
 
 def _reset_state():
@@ -69,8 +73,7 @@ def _reset_state():
 
 # ─── TEST (c): multi-DQ hermanos ──────────────────────────────────────────────
 def test_multi_dq_hermanos():
-    assert DQ_PATH and os.path.exists(DQ_PATH), "No se encontró el DQ real."
-    assert MW_PATH and os.path.exists(MW_PATH), "No se encontró el MW real."
+    require_real_data(DQ=DQ_PATH, MW=MW_PATH)
     _reset_state()
 
     dq = gw.parse_dq(DQ_PATH, os.path.basename(DQ_PATH))
@@ -133,11 +136,7 @@ def test_multi_dq_hermanos():
 
 # ─── TEST end-to-end con los archivos reales ──────────────────────────────────
 def test_end_to_end():
-    assert DQ_PATH and MW_PATH, "Faltan XML reales."
-    if not (DXF_PATH and os.path.exists(DXF_PATH)):
-        print("[TEST e2e] OMITIDO — no se encontró el DXF Metandesitas "
-              "(define GEOMECH_DXF o colócalo en ./test_data).")
-        return None
+    require_real_data(DQ=DQ_PATH, MW=MW_PATH, DXF=DXF_PATH)
     _reset_state()
 
     # DXF
@@ -218,6 +217,10 @@ def _have_real_hermanos():
 
 def test_real_hermanos_exact():
     """Con los 4 DQ hermanos cargados, MW P41H5 debe matchear el DQ P41 EXACTO."""
+    if not _have_real_hermanos():
+        raise SkipTest(
+            "Faltan los DQ hermanos P39/P40/P41/P42 o el MW P41H5. "
+            "Test de hermanos reales omitido.")
     _reset_state()
     dq_results = _load_dq_results(["P39", "P40", "P41", "P42"])
     mw = gw.parse_mw(os.path.join(_HDIR, _MW_P41H5), _MW_P41H5)
@@ -237,6 +240,10 @@ def test_real_hermanos_exact():
 
 def test_real_fallback_no_exact():
     """Sin el DQ P41, MW P41H5 cae a un hermano COHERENTE (no ambiguo)."""
+    if not _have_real_hermanos():
+        raise SkipTest(
+            "Faltan los DQ hermanos P39/P40/P41/P42 o el MW P41H5. "
+            "Test de hermanos reales omitido.")
     _reset_state()
     dq_results = _load_dq_results(["P39", "P40", "P42"])  # sin P41
     mw = gw.parse_mw(os.path.join(_HDIR, _MW_P41H5), _MW_P41H5)
@@ -259,6 +266,10 @@ def test_real_coherence_rejection():
     muy corta). La coherencia debe RECHAZAR ese exacto (err ~46%) y caer a un
     hermano coherente. origin pasa a fallback_hole y el collar NO es el corrupto.
     """
+    if not _have_real_hermanos():
+        raise SkipTest(
+            "Faltan los DQ hermanos P39/P40/P41/P42 o el MW P41H5. "
+            "Test de hermanos reales omitido.")
     _reset_state()
     dq_results = _load_dq_results(["P39", "P40", "P41", "P42"])
     mw = gw.parse_mw(os.path.join(_HDIR, _MW_P41H5), _MW_P41H5)
@@ -298,6 +309,10 @@ def test_real_all_p41_holes_no_wrong_fan():
         (caso legítimo: MWD más corto que el hole planificado, p.ej. H6 = 31.3 m
         de un hole de ~36 m → todos los hermanos > 5%).
     """
+    if not _have_real_hermanos():
+        raise SkipTest(
+            "Faltan los DQ hermanos P39/P40/P41/P42 o el MW P41H5. "
+            "Test de hermanos reales omitido.")
     _reset_state()
     dq_results = _load_dq_results(["P39", "P40", "P41", "P42"])
     p41 = dq_results["MGN_3025_PR01_TH_P41"]
@@ -352,11 +367,13 @@ if __name__ == "__main__":
     print(f"  DXF: {DXF_PATH}")
     print(f"  Hermanos reales: {'sí' if _have_real_hermanos() else 'no'} ({_HDIR})")
     print("-" * 70)
-    ok = True
+    ok = True; n_skip = 0
     def _run(fn, tag):
-        global ok
+        global ok, n_skip
         try:
             fn()
+        except SkipTest as e:
+            n_skip += 1; print(skipped_banner(tag, str(e)))
         except AssertionError as e:
             ok = False; print(f"[{tag}] FALLÓ: {e}")
 
@@ -370,5 +387,6 @@ if __name__ == "__main__":
     else:
         print("Tests de hermanos reales OMITIDOS (faltan DQ P39/P40/P41/P42 o MW P41H5).")
     print("-" * 70)
-    print("RESULTADO:", "✅ TODOS LOS TESTS PASARON" if ok else "❌ HAY TESTS FALLIDOS")
+    print("RESULTADO:", ("✅ TODOS LOS TESTS PASARON" if ok else "❌ HAY TESTS FALLIDOS")
+          + (f"  ({n_skip} omitido(s) por falta de datos)" if n_skip else ""))
     sys.exit(0 if ok else 1)

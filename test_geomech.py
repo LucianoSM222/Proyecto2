@@ -27,6 +27,7 @@ sys.path.insert(0, HERE)
 import numpy as np
 import pandas as pd
 import geomech_wizard as gw
+from test_support import require_real_data, SkipTest, fixture, skipped_banner
 
 
 def _find(env_var, patterns):
@@ -41,9 +42,12 @@ def _find(env_var, patterns):
                 return hits[0]
     return None
 
-DQ_PATH   = _find("GEOMECH_DQ",   ["*DQ*P40*.xml", "*DQMGN*.xml", "*DQ*.xml"])
-MW_PATH   = _find("GEOMECH_MW",   ["*MW*P41*H5*.xml", "*MWMGN*.xml", "*MW*.xml"])
-DXF_PATH  = _find("GEOMECH_DXF",  ["*Metandesitas*.dxf", "*.dxf"])
+# (A.8) Patrones ESTRICTOS: sin el comodín de reserva, que hacía tomar
+# cualquier DXF/XML presente y fallar con un mensaje confuso en vez de
+# omitir el test por falta del fixture correcto.
+DQ_PATH   = _find("GEOMECH_DQ",   ["DQMGN_3025_PR01_TH_P40_*.xml", "*DQ*P40*.xml"])
+MW_PATH   = _find("GEOMECH_MW",   ["MWMGN_3025_PR01_TH_P41H5_*.xml", "*MW*P41H5*.xml"])
+DXF_PATH  = _find("GEOMECH_DXF",  ["*Metandesitas*.dxf"])
 # Solo el XLSX geomecánico REAL (no el fixture sintético, que tiene otro nombre).
 XLSX_PATH = _find("GEOMECH_XLSX", ["geomecanica_de_caserones.xlsx", "*caserones*.xlsx"])
 SYNTH_PATH = os.path.join(HERE, "test_data", "synthetic_bands.xlsx")
@@ -150,9 +154,7 @@ def _norm(s):
 
 # ─── TEST 2: end-to-end con archivos reales ───────────────────────────────────
 def test_end_to_end_bands():
-    if not (DXF_PATH and DQ_PATH and MW_PATH):
-        print("[TEST e2e] OMITIDO — faltan archivos reales (DXF/DQ/MW).")
-        return None
+    require_real_data(DXF=DXF_PATH, DQ=DQ_PATH, MW=MW_PATH)
     _reset_state()
 
     # Cargar bandas (reales o sintéticas) para tener la banda de Metandesitas
@@ -340,13 +342,16 @@ if __name__ == "__main__":
     print(f"  DXF : {DXF_PATH}")
     print(f"  XLSX: {XLSX_PATH or '(sintético)'}")
     print("-" * 72)
-    ok = True
+    ok = True; n_skip = 0
     for fn in (test_parse_geomech, test_end_to_end_bands,
                test_band_consistency_categories, test_interval_widens):
         try:
             fn()
+        except SkipTest as e:
+            n_skip += 1; print(skipped_banner(fn.__name__, str(e)))
         except AssertionError as e:
             ok = False; print(f"❌ {fn.__name__} FALLÓ: {e}")
         print("-" * 72)
-    print("RESULTADO:", "✅ TODOS LOS TESTS PASARON" if ok else "❌ HAY TESTS FALLIDOS")
+    print("RESULTADO:", ("✅ TODOS LOS TESTS PASARON" if ok else "❌ HAY TESTS FALLIDOS")
+          + (f"  ({n_skip} omitido(s) por falta de datos)" if n_skip else ""))
     sys.exit(0 if ok else 1)

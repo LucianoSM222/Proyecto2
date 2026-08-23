@@ -31,6 +31,7 @@ sys.path.insert(0, HERE)
 
 import numpy as np
 import geomech_wizard as gw
+from test_support import require_real_data, SkipTest, fixture, skipped_banner
 
 
 def _find(env_var, patterns):
@@ -118,7 +119,7 @@ def _inject_di(well, l_peak):
 
 # ─── TEST 1: e2e real (clasificación exacta + DI) ─────────────────────────────
 def test_e2e_real():
-    assert DXF_PATH and DQ_PATH and MW_PATH, "Faltan archivos reales."
+    require_real_data(DXF=DXF_PATH, DQ=DQ_PATH, MW=MW_PATH)
     _reset_state()
     well = _load_real_h5()
     assert len(well.points) == 1743
@@ -136,6 +137,14 @@ def test_e2e_real():
     assert len(crossings) >= 1, "H5 cruza Metandesitas (1437 dentro) → debe haber cruces."
     print("[TEST e2e] OK — 1437/1743, DI 1743, cruces detectados.")
     return well
+
+
+# (A.8) Fixture para pytest: los tests sintéticos parten del pozo real. Si el
+# fixture del canario no está, test_e2e_real omite y estos se omiten con él,
+# en vez de aparecer como error de fixture no resuelto.
+@fixture(name="well_h5")
+def _well_h5_fixture():
+    return test_e2e_real()
 
 
 # ─── TEST 2 (T4f): malla desplazada — offset ≈ +2.0 m ────────────────────────
@@ -227,23 +236,30 @@ if __name__ == "__main__":
     print(f"  MW : {MW_PATH}")
     print(f"  DXF: {DXF_PATH}")
     print("-" * 72)
-    ok = True
+    ok = True; n_skip = 0
     well_h5 = None
     try:
         well_h5 = test_e2e_real()
+    except SkipTest as e:
+        n_skip += 1; print(skipped_banner('test_e2e_real', str(e)))
     except AssertionError as e:
         ok = False; print(f"❌ test_e2e_real FALLÓ: {e}")
     print("-" * 72)
     if well_h5 is not None:
         try:
             test_synthetic_displacement(well_h5)
+        except SkipTest as e:
+            n_skip += 1; print(skipped_banner('test_synthetic_displacement', str(e)))
         except AssertionError as e:
             ok = False; print(f"❌ test_synthetic_displacement FALLÓ: {e}")
         print("-" * 72)
         try:
             test_synthetic_consistent(well_h5)
+        except SkipTest as e:
+            n_skip += 1; print(skipped_banner('test_synthetic_consistent', str(e)))
         except AssertionError as e:
             ok = False; print(f"❌ test_synthetic_consistent FALLÓ: {e}")
         print("-" * 72)
-    print("RESULTADO:", "✅ TODOS LOS TESTS PASARON" if ok else "❌ HAY TESTS FALLIDOS")
+    print("RESULTADO:", ("✅ TODOS LOS TESTS PASARON" if ok else "❌ HAY TESTS FALLIDOS")
+          + (f"  ({n_skip} omitido(s) por falta de datos)" if n_skip else ""))
     sys.exit(0 if ok else 1)

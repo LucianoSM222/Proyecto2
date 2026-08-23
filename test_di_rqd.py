@@ -22,6 +22,7 @@ sys.path.insert(0, HERE)
 
 import numpy as np
 import geomech_wizard as gw
+from test_support import require_real_data, SkipTest, fixture, skipped_banner
 
 
 def _find(env_var, patterns):
@@ -208,7 +209,7 @@ def test_insufficient_caserones():
 
 # ─── TEST 5: e2e real (clasificación + DI intactos) ───────────────────────────
 def test_e2e_real():
-    assert DXF_PATH and DQ_PATH and MW_PATH, "Faltan archivos reales."
+    require_real_data(DXF=DXF_PATH, DQ=DQ_PATH, MW=MW_PATH)
     _reset_state()
     tris, _ = gw.parse_dxf(DXF_PATH, os.path.basename(DXF_PATH))
     bmin = tris.reshape(-1, 3).min(0); bmax = tris.reshape(-1, 3).max(0)
@@ -240,13 +241,16 @@ if __name__ == "__main__":
     print(f"  DXF : {DXF_PATH}")
     print(f"  XLSX: {XLSX_PATH}")
     print("-" * 72)
-    ok = True
+    ok = True; n_skip = 0
     for fn in (test_spearman_known_cases, test_synthetic_anticorrelation,
                test_min_puntos_threshold, test_insufficient_caserones, test_e2e_real):
         try:
             fn()
+        except SkipTest as e:
+            n_skip += 1; print(skipped_banner(fn.__name__, str(e)))
         except AssertionError as e:
             ok = False; print(f"❌ {fn.__name__} FALLÓ: {e}")
         print("-" * 72)
-    print("RESULTADO:", "✅ TODOS LOS TESTS PASARON" if ok else "❌ HAY TESTS FALLIDOS")
+    print("RESULTADO:", ("✅ TODOS LOS TESTS PASARON" if ok else "❌ HAY TESTS FALLIDOS")
+          + (f"  ({n_skip} omitido(s) por falta de datos)" if n_skip else ""))
     sys.exit(0 if ok else 1)

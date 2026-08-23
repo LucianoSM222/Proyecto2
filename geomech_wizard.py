@@ -86,6 +86,41 @@ site_pending_confirms: List[Dict] = []
 # Tokens que el usuario confirmó explícitamente ("sí, cárgalo igual").
 site_confirmed_tokens: set = set()
 
+# (A.7) EXENCIONES DE FIXTURE — explícitas y declaradas, nunca implícitas.
+#
+# Bht_Fk.dxf pertenece a Mina Granate (MGN 3025), a ~3,05 km del centroide de
+# MPC. Cargarlo por el FLUJO NORMAL debe disparar la advertencia de T1.1: eso
+# es una buena prueba del guardián y se verifica como tal. Pero los tests que
+# lo usan como fixture geométrico necesitan cargarlo sin fricción.
+#
+# La exención se declara aquí, por token, con su razón. Si un fixture de otro
+# sitio pudiera cargarse sin declararlo, el guardián estaría silenciosamente
+# roto — que es exactamente lo que esta capa existe para impedir. Por eso la
+# exención NO se aplica sola: hay que activarla con allow_site_fixtures().
+SITE_FIXTURE_EXEMPTIONS: Dict[str, str] = {
+    "dxf:Bht_Fk": ("Fixture geométrico de test. Pertenece a Mina Granate (MGN 3025), "
+                   "no a MPC. Se usa solo para verificar ray casting y reglas de "
+                   "traslape; jamás debe entrar a un análisis de Punta del Cobre."),
+}
+# Interruptor de las exenciones. False en la aplicación: un usuario nunca debe
+# saltarse el guardián por una lista interna. Los tests lo encienden a mano.
+site_fixtures_allowed: bool = False
+
+
+def allow_site_fixtures(enabled: bool = True):
+    """
+    Activa/desactiva las exenciones declaradas en SITE_FIXTURE_EXEMPTIONS.
+    Pensado para los tests: la aplicación corre siempre con esto en False.
+    """
+    global site_fixtures_allowed
+    site_fixtures_allowed = bool(enabled)
+
+
+def site_fixture_exempt(token: str) -> Optional[str]:
+    """Razón de la exención si aplica y está habilitada; None en caso contrario."""
+    if not site_fixtures_allowed: return None
+    return SITE_FIXTURE_EXEMPTIONS.get(token)
+
 
 def active_site() -> Dict:
     """Config del sitio activo. Falla ruidosamente si el id no existe."""
@@ -127,6 +162,13 @@ def site_guard(este: float, norte: float, etiqueta: str, tipo: str = "objeto",
                             f"No se puede verificar pertenencia al sitio {s['display']}.")}
     cx, cy = site_centroid()
     dist = float(np.hypot(este - cx, norte - cy))
+    # (A.7) Exención de fixture: explícita, declarada y habilitada a mano.
+    razon = site_fixture_exempt(tok)
+    if razon is not None and dist > s["margen_m"]:
+        return {"ok": True, "dist_m": round(dist, 1), "umbral_m": s["margen_m"],
+                "sitio": s["id"], "token": tok, "confirmado": True, "fixture": True,
+                "mensaje": (f'"{etiqueta}" a {_num_cl(dist)} m: EXENTO como fixture '
+                            f"declarado. {razon}")}
     if dist <= s["margen_m"]:
         return {"ok": True, "dist_m": round(dist, 1), "umbral_m": s["margen_m"],
                 "sitio": s["id"], "token": tok, "confirmado": False, "mensaje": ""}
@@ -196,12 +238,34 @@ QUALITY_PI_FACTOR = {0: None, 1: 1.00, 2: 1.30, 3: 1.60, 4: 2.00}
 SINGLE_SPECIMEN_PI_FACTOR = 1.35
 
 
+# (A.1) Roles del vocabulario. Enumeración EXTENSIBLE: agregar un rol nuevo es
+# añadirlo aquí; las reglas de traslape (A.5) operan sobre el rol, no sobre una
+# lista cerrada de casos. `estructura` predomina sobre todo lo demás.
+ATTR_ROLES = ("litologia", "alteracion", "estructura")
+
+# LA BANDA DE UCS ES PROPIEDAD DE LA LITOLOGÍA.
+# Karzulovic reporta por litología, no por litología×alteración. Por eso los
+# campos de banda (ucs_*, fuente, calidad) SOLO aplican a rol="litologia"; en
+# los demás roles quedan nulos y la interfaz no los ofrece.
+#   Bht+Fk y Bht+otra alteración son dominios DISTINTOS que heredan la MISMA
+#   banda como valor previo. Si el MWD muestra que difieren, eso es un
+#   hallazgo, no un error.
+ROLES_CON_BANDA_UCS = ("litologia",)
+
+
 @dataclass
 class Attribute:
-    """Atributo canónico de vocabulario (unidad o subunidad litológica)."""
+    """
+    Atributo canónico de vocabulario.
+
+    `rol` decide qué significa el atributo y cómo se compone con otros en un
+    punto (ver resolve_overlap_by_role). `nivel`/`padre` describen la jerarquía
+    unidad→subunidad, que solo tiene sentido dentro de un mismo rol.
+    """
     id: str
     nombre_oficial: str
     sitio: str = ACTIVE_SITE
+    rol: str = "litologia"                   # ver ATTR_ROLES
     nivel: str = "unidad"                    # "unidad" | "subunidad"
     padre: Optional[str] = None              # id de la unidad que la contiene
     ucs_min: Optional[float] = None
@@ -218,8 +282,17 @@ class Attribute:
     densidad: Optional[float] = None         # t/m³
     notas: str = ""
 
+    def usa_banda_ucs(self) -> bool:
+        """
+        (A.1/A.4) ¿A este rol le corresponde tener banda de UCS? Solo la
+        litología. Una alteración nunca tendrá ensayo uniaxial propio, así que
+        exigirle banda la convertiría en un bloqueo permanente e insalvable.
+        """
+        return self.rol in ROLES_CON_BANDA_UCS
+
     def tiene_banda_ucs(self) -> bool:
         """True si hay un ancla de UCS utilizable como etiqueta de entrenamiento."""
+        if not self.usa_banda_ucs(): return False
         return any(v is not None for v in (self.ucs_media, self.ucs_min, self.ucs_max))
 
     def ucs_ancla(self) -> Optional[float]:
@@ -245,7 +318,15 @@ class Attribute:
         return round(f, 4)
 
     def entrenable(self) -> Tuple[bool, str]:
-        """(puede entrenar, motivo si no)."""
+        """
+        (puede entrenar, motivo si no).
+
+        (A.4) Los roles sin banda de UCS quedan EXENTOS del chequeo: no
+        bloquean, porque nunca van a tener ensayo. Se registran, componen
+        dominio, y no participan.
+        """
+        if not self.usa_banda_ucs():
+            return True, ""
         if self.calidad == 0:
             return False, "calidad 0 (sin_asignar)"
         if not self.tiene_banda_ucs():
@@ -255,6 +336,20 @@ class Attribute:
 
 attr_registry: Dict[str, Attribute] = {}
 
+# ─── COLISIÓN DE NOMENCLATURA Fk ↔ Kfa ───────────────────────────────────────
+# Registrada en las notas de AMBOS atributos, no solo en un comentario: el
+# registro de vocabulario es lo que se publica como anexo de la memoria, y esta
+# es exactamente la clase de confusión que ese anexo existe para evitar.
+COLISION_FK_KFA = (
+    "⚠ COLISIÓN DE NOMENCLATURA Fk ↔ Kfa: 'Fk' es feldespato potásica, una "
+    "ALTERACIÓN; 'Kfa' es Albitófiro, una LITOLOGÍA. Son strings casi "
+    "invertidos con roles OPUESTOS. Esta colisión originó una confusión que "
+    "estuvo a punto de invalidar el 66% del metraje de sondaje (los 1.176,3 m "
+    "de Albitófiro). El campo `rol` existe en buena medida por este caso: "
+    "distingue los dos aunque el texto se parezca, y hace que un traslape "
+    "entre ellos sea composición (roles distintos) y no conflicto."
+)
+
 
 def seed_attribute_registry(force: bool = False):
     """
@@ -262,14 +357,25 @@ def seed_attribute_registry(force: bool = False):
     Ltda., "Evaluación Geotécnica Caserones Mina Punta del Cobre", Tabla 3.2,
     y con los códigos de unidad observados en los sondajes MPC.
 
-    Trampa de nomenclatura documentada: el código `Kpcsb` se usa en la
-    literatura tanto para la Brecha basal (unidad padre, según Marschik) como
-    para la Brecha sedimentaria (una de sus subunidades, según Ortiz et al.).
-    Se registran con identificadores distintos —`Kpcsb_basal` y
-    `Kpcsb_sedimentaria`— y la ambigüedad queda anotada en ambos.
+    Dos trampas de nomenclatura quedan documentadas en el propio registro:
+
+    1. `Kpcsb` se usa en la literatura tanto para la Brecha basal (unidad
+       padre, según Marschik) como para la Brecha sedimentaria (una de sus
+       subunidades, según Ortiz et al.). Se registran con identificadores
+       distintos —`Kpcsb_basal` y `Kpcsb_sedimentaria`— y la ambigüedad queda
+       anotada en ambos.
+
+    2. `Fk` (feldespato potásica, ALTERACIÓN) y `Kfa` (Albitófiro, LITOLOGÍA)
+       son strings casi invertidos con roles OPUESTOS. Ver COLISION_FK_KFA.
     """
     if attr_registry and not force: return
+    # Resembrar reconstruye el vocabulario COMPLETO: los alias deben irse con
+    # los atributos. Si sobrevivieran, quedarían apuntando a ids que ya no
+    # existen (o que fueron redefinidos), y resolve_alias devolvería un
+    # atributo fantasma sin que nada lo advirtiera.
     attr_registry.clear()
+    alias_registry.clear()
+    pending_aliases.clear()
     FUENTE_K = "Karzulovic & Asoc. 2005, Tabla 3.2 (roca intacta)"
     AMB_KPCSB = ("AMBIGÜEDAD DE NOMENCLATURA: el código 'Kpcsb' se usa en la "
                  "literatura tanto para la Brecha basal (unidad padre, Marschik) "
@@ -277,53 +383,61 @@ def seed_attribute_registry(force: bool = False):
                  "Aquí se distinguen con ids explícitos.")
     defs = [
         # ── Unidades observadas en los sondajes MPC ──────────────────────────
-        Attribute(id="Kfa", nombre_oficial="Albitófiro", nivel="unidad",
+        Attribute(id="Kfa", nombre_oficial="Albitófiro", rol="litologia", nivel="unidad",
                   ucs_min=274.3, ucs_max=304.9, ucs_media=289.6,
                   ucs_sd=None, ucs_n=None, calidad=1, fuente=FUENTE_K,
                   mi=11.3, modulo_E=71.6, poisson=0.15, densidad=2.85,
                   notas=("La tabla no reporta desviación estándar, lo que sugiere una "
                          "única probeta. Se acepta el valor, pero el intervalo de "
                          "predicción se ensancha (ucs_n desconocido → marcar). "
-                         "66% del metraje de sondaje MPC (1.176,3 m).")),
-        Attribute(id="Bht", nombre_oficial="Brecha Hidrotermal", nivel="unidad",
+                         "66% del metraje de sondaje MPC (1.176,3 m). "
+                         + COLISION_FK_KFA)),
+        # ── Alteraciones ─────────────────────────────────────────────────────
+        Attribute(id="Fk", nombre_oficial="Feldespato potásica", rol="alteracion",
+                  nivel="unidad", calidad=0,
+                  notas=("Alteración potásica. Sin banda de UCS y NUNCA la tendrá: "
+                         "Karzulovic reporta por litología, no por litología×alteración. "
+                         "Por eso no participa del chequeo de bloqueo (A.4). "
+                         + COLISION_FK_KFA)),
+        Attribute(id="Bht", nombre_oficial="Brecha Hidrotermal", rol="litologia", nivel="unidad",
                   calidad=0, densidad=2.97,
                   notas=("SIN UCS DE LABORATORIO — en gestión con geología. "
                          "33% del metraje MPC (576,9 m). No es una brecha débil: "
                          "RQD mediana 92,0 (mejor que el Albitófiro) y densidad media "
                          "2,97 t/m³ (máx 4,09), coherente con brecha mineralizada bien "
                          "cementada (magnetita/sulfuros).")),
-        Attribute(id="Kpcli", nombre_oficial="Lavas Inferiores", nivel="unidad",
+        Attribute(id="Kpcli", nombre_oficial="Lavas Inferiores", rol="litologia", nivel="unidad",
                   calidad=0,
                   notas="Sin UCS de laboratorio. 1,2% del metraje MPC (20,8 m)."),
-        Attribute(id="DL", nombre_oficial="Sin identificar", nivel="unidad",
+        Attribute(id="DL", nombre_oficial="Sin identificar", rol="litologia", nivel="unidad",
                   calidad=0,
                   notas="Código sin identificar en los sondajes. 0,2% del metraje MPC (3,1 m)."),
         # ── Brecha basal y sus subunidades ───────────────────────────────────
-        Attribute(id="Kpcsb_basal", nombre_oficial="Brecha basal", nivel="unidad",
+        Attribute(id="Kpcsb_basal", nombre_oficial="Brecha basal", rol="litologia", nivel="unidad",
                   calidad=0, fuente="Marschik (nomenclatura)", notas=AMB_KPCSB),
-        Attribute(id="Brecha_mixta", nombre_oficial="Brecha mixta", nivel="subunidad",
+        Attribute(id="Brecha_mixta", nombre_oficial="Brecha mixta", rol="litologia", nivel="subunidad",
                   padre="Kpcsb_basal",
                   ucs_min=82.6, ucs_max=141.7, ucs_media=111.5, ucs_sd=23.6,
                   calidad=1, fuente=FUENTE_K,
                   mi=7.6, modulo_E=17.3, poisson=0.20, densidad=2.80,
                   notas="CV = 0,212."),
         Attribute(id="Kpcsb_sedimentaria", nombre_oficial="Brecha sedimentaria",
-                  nivel="subunidad", padre="Kpcsb_basal",
+                  rol="litologia", nivel="subunidad", padre="Kpcsb_basal",
                   ucs_min=77.4, ucs_max=98.7, ucs_media=83.6, ucs_sd=8.6,
                   calidad=1, fuente=FUENTE_K,
                   mi=19.1, modulo_E=12.8, poisson=0.22, densidad=2.76,
                   notas="CV = 0,103. " + AMB_KPCSB),
         # ── Miembro Trinidad y sus subunidades ───────────────────────────────
-        Attribute(id="Kpcs", nombre_oficial="Miembro Trinidad", nivel="unidad",
+        Attribute(id="Kpcs", nombre_oficial="Miembro Trinidad", rol="litologia", nivel="unidad",
                   calidad=0, notas="Unidad padre de las lutitas."),
         Attribute(id="Lutitas_normales", nombre_oficial="Lutitas normales",
-                  nivel="subunidad", padre="Kpcs",
+                  rol="litologia", nivel="subunidad", padre="Kpcs",
                   ucs_min=117.1, ucs_max=134.9, ucs_media=126.0, ucs_sd=12.6,
                   calidad=1, fuente=FUENTE_K,
                   mi=15.8, modulo_E=16.4, poisson=0.28, densidad=2.45,
                   notas="CV = 0,100."),
         Attribute(id="Lutitas_metamorfoseadas", nombre_oficial="Lutitas metamorfoseadas",
-                  nivel="subunidad", padre="Kpcs",
+                  rol="litologia", nivel="subunidad", padre="Kpcs",
                   ucs_min=186.8, ucs_max=221.8, ucs_media=204.3, ucs_sd=24.8,
                   calidad=1, fuente=FUENTE_K,
                   mi=20.8, modulo_E=89.0, poisson=0.115, densidad=2.50,
@@ -354,8 +468,22 @@ def validate_attribute_tree() -> List[str]:
                 errs.append(f"{a.id}: padre '{a.padre}' no es una unidad.")
         elif a.padre:
             errs.append(f"{a.id}: es unidad pero declara padre '{a.padre}'.")
+        if a.rol not in ATTR_ROLES:
+            errs.append(f"{a.id}: rol inválido '{a.rol}'. Válidos: {ATTR_ROLES}.")
+        if a.padre and a.padre in attr_registry and attr_registry[a.padre].rol != a.rol:
+            errs.append(f"{a.id}: rol '{a.rol}' distinto del rol de su padre "
+                        f"'{a.padre}' ('{attr_registry[a.padre].rol}'). La jerarquía "
+                        f"unidad→subunidad solo existe dentro de un mismo rol.")
         if a.calidad not in QUALITY_LABELS:
             errs.append(f"{a.id}: calidad {a.calidad} fuera del catálogo.")
+        # (A.1) Los campos de banda solo aplican a los roles que la usan.
+        if not a.usa_banda_ucs():
+            sucios = [c for c in ("ucs_min", "ucs_max", "ucs_media", "ucs_sd", "ucs_n")
+                      if getattr(a, c) is not None]
+            if sucios:
+                errs.append(f"{a.id}: rol '{a.rol}' no lleva banda de UCS, pero tiene "
+                            f"{', '.join(sucios)} con valor. La banda es propiedad de "
+                            f"la litología.")
         for campo in ("ucs_min", "ucs_max", "ucs_media"):
             v = getattr(a, campo)
             if v is None: continue
@@ -365,51 +493,131 @@ def validate_attribute_tree() -> List[str]:
     return errs
 
 
-# ─── T1.3 · REGISTRO DE ALIAS ────────────────────────────────────────────────
-# Un alias apunta a exactamente un atributo. Mapearlo a dos es un ERROR, no una
-# advertencia. El emparejamiento es insensible a mayúsculas, espacios y
-# acentos; el alias almacenado conserva el texto crudo original.
+def attrs_by_role(rol: str) -> List[Attribute]:
+    return [a for a in attr_registry.values() if a.rol == rol]
+
+
+# ─── T1.3 / A.2 · REGISTRO DE ALIAS (CONJUNTO POR ROL) ───────────────────────
+# Un alias apunta a exactamente UN ATRIBUTO POR ROL, y resuelve a un
+# diccionario {rol: atributo_id}. Dos atributos del MISMO rol en un mismo alias
+# es un ERROR, no una advertencia — la garantía de unicidad se conserva, solo
+# que ahora es por rol.
+#
+#     "Kfa"    → {"litologia": "Kfa"}
+#     "Fk"     → {"alteracion": "Fk"}
+#     "Bht_Fk" → {"litologia": "Bht", "alteracion": "Fk"}
+#
+# Por qué no la alternativa: crear un atributo canónico por cada par
+# litología×alteración produce n×m entradas, casi todas sin ensayo de
+# laboratorio asociado, y multiplica el registro sin aportar información.
+#
+# El emparejamiento es insensible a mayúsculas, espacios y acentos; el alias
+# almacenado conserva el texto crudo original.
 
 ALIAS_ORIGINS = ("dxf_layer", "sondaje_unidad", "excel", "manual")
+# Separadores con que Leapfrog compone nombres de capa (A.3).
+COMPOSITE_SEPARATORS = r"[_\-+\s]+"
 
 
 @dataclass
 class Alias:
     texto_crudo: str
-    atributo_id: str
+    atributos: Dict[str, str] = field(default_factory=dict)   # rol → atributo_id
     origen: str = "manual"
+
+    @property
+    def atributo_id(self) -> Optional[str]:
+        """Compatibilidad: el atributo de rol litología, si lo hay."""
+        return self.atributos.get("litologia")
+
+    def es_compuesto(self) -> bool:
+        return len(self.atributos) > 1
 
 
 # clave = texto normalizado → Alias (con el texto crudo original preservado)
 alias_registry: Dict[str, Alias] = {}
 # Bandeja de pendientes de asignar: textos vistos que no resuelven a ningún
-# atributo. clave normalizada → {texto_crudo, origenes:set, n_vistas}
+# atributo. clave normalizada → {texto_crudo, origenes:set, n_vistas, propuesta}
+# `propuesta` es la descomposición sugerida por A.3 (o None), que SIEMPRE
+# requiere confirmación explícita: se propone, nunca se acepta sola.
 pending_aliases: Dict[str, Dict] = {}
 
 
 class AliasConflict(Exception):
-    """Un alias ya apunta a otro atributo. Es un error, no una advertencia."""
-
-
-def register_alias(texto_crudo: str, atributo_id: str, origen: str = "manual") -> Alias:
     """
-    Vincula `texto_crudo` a `atributo_id`. Lanza AliasConflict si el alias ya
-    apunta a un atributo distinto, y KeyError si el atributo no existe.
+    El alias ya apunta a otro atributo DEL MISMO ROL, o se intentó mapearlo a
+    dos atributos del mismo rol a la vez. Es un error, no una advertencia.
+    """
+
+
+def _coerce_attr_map(atributos) -> Dict[str, str]:
+    """
+    Normaliza la entrada a {rol: atributo_id}. Acepta un id suelto (se deduce
+    el rol del registro), una lista de ids, o un dict ya formado. Dos ids del
+    mismo rol → AliasConflict.
+    """
+    if isinstance(atributos, str):
+        atributos = [atributos]
+    if isinstance(atributos, dict):
+        out = {}
+        for rol, aid in atributos.items():
+            if aid is None: continue
+            if aid not in attr_registry:
+                raise KeyError(f"Atributo '{aid}' no existe en el registro.")
+            real = attr_registry[aid].rol
+            if rol != real:
+                raise ValueError(f"El atributo '{aid}' tiene rol '{real}', "
+                                 f"no '{rol}'.")
+            if rol in out and out[rol] != aid:
+                raise AliasConflict(f"Dos atributos del rol '{rol}' en el mismo "
+                                    f"alias: '{out[rol]}' y '{aid}'.")
+            out[rol] = aid
+        return out
+    out = {}
+    for aid in atributos:
+        if aid is None: continue
+        if aid not in attr_registry:
+            raise KeyError(f"Atributo '{aid}' no existe en el registro.")
+        rol = attr_registry[aid].rol
+        if rol in out and out[rol] != aid:
+            raise AliasConflict(f"Dos atributos del rol '{rol}' en el mismo alias: "
+                                f"'{out[rol]}' y '{aid}'. Un alias apunta a "
+                                f"exactamente un atributo por rol.")
+        out[rol] = aid
+    return out
+
+
+def register_alias(texto_crudo: str, atributos, origen: str = "manual",
+                   merge: bool = False) -> Alias:
+    """
+    Vincula `texto_crudo` a uno o varios atributos de ROLES DISTINTOS.
+
+    `atributos` puede ser un id suelto ("Kfa"), una lista (["Bht","Fk"]) o un
+    dict {rol: id}. Lanza AliasConflict si el alias ya apunta a otro atributo
+    del mismo rol (o si la entrada trae dos del mismo rol), y KeyError si algún
+    atributo no existe. Con `merge=True` se añaden roles nuevos conservando los
+    ya registrados; sin él, la entrada reemplaza el mapeo completo.
     """
     key = _norm_txt(texto_crudo)
     if not key:
         raise ValueError("Alias vacío.")
-    if atributo_id not in attr_registry:
-        raise KeyError(f"Atributo '{atributo_id}' no existe en el registro.")
     if origen not in ALIAS_ORIGINS:
         raise ValueError(f"Origen '{origen}' inválido. Válidos: {ALIAS_ORIGINS}.")
+    nuevos = _coerce_attr_map(atributos)
+    if not nuevos:
+        raise ValueError("Alias sin ningún atributo destino.")
     prev = alias_registry.get(key)
-    if prev is not None and prev.atributo_id != atributo_id:
-        raise AliasConflict(
-            f'El alias "{texto_crudo}" ya apunta a "{prev.atributo_id}"; '
-            f'no puede apuntar además a "{atributo_id}". '
-            f"Un alias resuelve a exactamente un atributo.")
-    al = Alias(texto_crudo=str(texto_crudo).strip(), atributo_id=atributo_id, origen=origen)
+    if prev is not None:
+        for rol, aid in nuevos.items():
+            anterior = prev.atributos.get(rol)
+            if anterior is not None and anterior != aid:
+                raise AliasConflict(
+                    f'El alias "{texto_crudo}" ya apunta a "{anterior}" en el rol '
+                    f'"{rol}"; no puede apuntar además a "{aid}". '
+                    f"Un alias resuelve a exactamente un atributo por rol.")
+        if merge:
+            nuevos = {**prev.atributos, **nuevos}
+    al = Alias(texto_crudo=str(texto_crudo).strip(), atributos=nuevos, origen=origen)
     alias_registry[key] = al
     pending_aliases.pop(key, None)
     return al
@@ -419,41 +627,123 @@ def unregister_alias(texto_crudo: str):
     alias_registry.pop(_norm_txt(texto_crudo), None)
 
 
-def resolve_alias(texto_crudo: str) -> Optional[str]:
-    """Id del atributo al que resuelve el texto, o None si no está mapeado."""
-    if texto_crudo is None: return None
+def resolve_alias(texto_crudo: str) -> Dict[str, str]:
+    """
+    Mapa {rol: atributo_id} al que resuelve el texto. Dict VACÍO si no resuelve.
+    (A.2) Antes devolvía un id suelto; ahora un texto compuesto como "Bht_Fk"
+    resuelve a dos atributos de roles distintos.
+    """
+    if texto_crudo is None: return {}
     key = _norm_txt(texto_crudo)
     al = alias_registry.get(key)
-    if al is not None: return al.atributo_id
+    if al is not None: return dict(al.atributos)
     # Coincidencia directa contra id o nombre oficial (insensible a caso/acentos).
     for a in attr_registry.values():
         if key in (_norm_txt(a.id), _norm_txt(a.nombre_oficial)):
-            return a.id
-    return None
+            return {a.rol: a.id}
+    return {}
+
+
+def resolve_alias_rol(texto_crudo: str, rol: str = "litologia") -> Optional[str]:
+    """Id del atributo de ese rol al que resuelve el texto, o None."""
+    return resolve_alias(texto_crudo).get(rol)
+
+
+# ─── A.3 · DESCOMPOSICIÓN SUGERIDA DE NOMBRES COMPUESTOS ─────────────────────
+# Bht_Fk.dxf demuestra que las capas de Leapfrog pueden traer litología y
+# alteración compuestas en un solo nombre. La composición se PROPONE, nunca se
+# acepta sola: requiere confirmación explícita. Una vez confirmada, el string
+# crudo completo se almacena como alias propio para que la próxima vez resuelva
+# directo, sin volver a descomponer.
+
+def decompose_layer_name(texto_crudo: str) -> Optional[Dict]:
+    """
+    Intenta descomponer un nombre compuesto en atributos de roles distintos.
+
+    Devuelve None si no hay propuesta que hacer. Si la hay:
+        {"texto_crudo": str, "atributos": {rol: aid},
+         "tokens": {token: aid|None}, "sin_resolver": [tokens]}
+
+    Reglas: se parte por `_`, `-`, `+` y espacios; cada token se empareja contra
+    el registro (insensible a caso/espacios/acentos); si dos tokens resuelven al
+    MISMO rol no se propone nada (es ambiguo y va a la bandeja); los tokens sin
+    correspondencia se reportan.
+    """
+    if not texto_crudo: return None
+    tokens = [t for t in re.split(COMPOSITE_SEPARATORS, str(texto_crudo).strip()) if t]
+    if len(tokens) < 2: return None
+    por_rol: Dict[str, str] = {}
+    detalle: Dict[str, Optional[str]] = {}
+    sin_resolver: List[str] = []
+    for t in tokens:
+        m = resolve_alias(t)
+        if not m:
+            detalle[t] = None; sin_resolver.append(t); continue
+        if len(m) > 1:
+            # Un token que ya es compuesto no puede anidarse en otro compuesto.
+            return None
+        rol, aid = next(iter(m.items()))
+        if rol in por_rol and por_rol[rol] != aid:
+            # Dos tokens del mismo rol → ambiguo: no se propone nada.
+            return None
+        por_rol[rol] = aid
+        detalle[t] = aid
+    if len(por_rol) < 2:
+        return None      # no hay composición de roles distintos que proponer
+    return {"texto_crudo": str(texto_crudo).strip(), "atributos": por_rol,
+            "tokens": detalle, "sin_resolver": sin_resolver}
+
+
+def confirm_composite_alias(texto_crudo: str, origen: str = "manual") -> Alias:
+    """
+    Acepta la descomposición propuesta para `texto_crudo` y la almacena como
+    alias propio del string crudo completo. Lanza ValueError si no hay
+    propuesta vigente (nunca inventa una composición no propuesta).
+    """
+    key = _norm_txt(texto_crudo)
+    e = pending_aliases.get(key)
+    prop = (e or {}).get("propuesta") or decompose_layer_name(texto_crudo)
+    if not prop:
+        raise ValueError(f'No hay descomposición propuesta para "{texto_crudo}".')
+    return register_alias(prop["texto_crudo"], prop["atributos"], origen)
 
 
 def note_pending_alias(texto_crudo: str, origen: str = "manual"):
-    """Registra un texto no reconocido en la bandeja de pendientes."""
+    """
+    Registra un texto no reconocido en la bandeja de pendientes, junto con la
+    descomposición sugerida (A.3) si la hay. La propuesta es solo eso.
+    """
     if texto_crudo is None: return
     key = _norm_txt(texto_crudo)
     if not key or key in alias_registry: return
     if resolve_alias(texto_crudo): return
     e = pending_aliases.setdefault(key, {"texto_crudo": str(texto_crudo).strip(),
-                                          "origenes": set(), "n_vistas": 0})
+                                          "origenes": set(), "n_vistas": 0,
+                                          "propuesta": None})
     e["origenes"].add(origen)
     e["n_vistas"] += 1
+    if e.get("propuesta") is None:
+        e["propuesta"] = decompose_layer_name(texto_crudo)
 
 
-def resolve_or_note(texto_crudo: str, origen: str = "manual") -> Optional[str]:
-    """Resuelve el alias; si no resuelve, lo encola en pendientes. Nunca inventa."""
-    aid = resolve_alias(texto_crudo)
-    if aid is None:
+def resolve_or_note(texto_crudo: str, origen: str = "manual") -> Dict[str, str]:
+    """
+    Resuelve el alias a {rol: atributo_id}; si no resuelve, lo encola en
+    pendientes (con propuesta de descomposición si aplica). Nunca inventa.
+    """
+    m = resolve_alias(texto_crudo)
+    if not m:
         note_pending_alias(texto_crudo, origen)
-    return aid
+    return m
 
 
 def pending_alias_count() -> int:
     return len(pending_aliases)
+
+
+def pending_with_proposal() -> List[Dict]:
+    """Pendientes que traen una descomposición sugerida esperando confirmación."""
+    return [e for e in pending_aliases.values() if e.get("propuesta")]
 
 
 def _seed_default_aliases():
@@ -463,6 +753,8 @@ def _seed_default_aliases():
         "Bht": ["BHT", "Brecha Hidrotermal", "Bx Hidrotermal", "BXH"],
         "Kpcli": ["KPCLI", "Lavas Inferiores"],
         "DL": ["dl"],
+        "Fk": ["FK", "Feldespato potasica", "Feldespato potásica",
+               "Potasica", "Potásica", "K-feldespato"],
         "Brecha_mixta": ["Brecha mixta", "Bx mixta"],
         "Kpcsb_sedimentaria": ["Brecha sedimentaria", "Bx sedimentaria"],
         "Kpcsb_basal": ["Brecha basal"],
@@ -477,11 +769,22 @@ def _seed_default_aliases():
             except (AliasConflict, ValueError, KeyError): pass
 
 
-# ─── T1.5 · ESTADO SIN-ASIGNAR QUE BLOQUEA ───────────────────────────────────
-# Un atributo con calidad 0 o sin banda de UCS no puede entrar al entrenamiento.
-# El intento falla de forma ruidosa, nombrando qué atributos faltan y cuánto
-# representan. La vía prevista para continuar es excluir EXPLÍCITAMENTE, con
-# justificación registrada.
+# ─── T1.5 (corregido por A.4) · ESTADO SIN-ASIGNAR QUE BLOQUEA ───────────────
+# Una LITOLOGÍA con calidad 0 o sin banda de UCS no puede entrar al
+# entrenamiento. El intento falla de forma ruidosa, nombrando qué atributos
+# faltan y cuánto representan. La vía prevista para continuar es excluir
+# EXPLÍCITAMENTE, con justificación registrada.
+#
+# (A.4) EL CHEQUEO ALCANZA SOLO A rol="litologia". La regla original —"calidad
+# 0 bloquea"— habría hecho que Fk (feldespato potásica) bloqueara de forma
+# permanente e insalvable: las alteraciones no tienen banda de UCS y nunca la
+# van a tener, porque Karzulovic reporta por litología, no por
+# litología×alteración. Alteraciones y estructuras se registran, componen
+# dominio, y no participan del chequeo.
+#
+# LA BANDA DE UCS ES PROPIEDAD DE LA LITOLOGÍA. Bht+Fk y Bht+otra alteración
+# son dominios DISTINTOS que heredan la MISMA banda como valor previo. Si el
+# MWD muestra que difieren, eso es un HALLAZGO, no un error.
 
 # atributo_id → {"justificacion": str, "fecha": str}
 attribute_exclusions: Dict[str, Dict] = {}
@@ -505,39 +808,43 @@ def unexclude_attribute(attr_id: str):
 
 
 def attribute_point_counts() -> Dict[str, int]:
-    """Puntos MWD clasificados por atributo (vía el atributo_id de cada capa)."""
+    """Puntos MWD clasificados por atributo, contando TODOS los roles del punto."""
     counts: Dict[str, int] = {}
     for p in all_points():
-        aid = getattr(p, "atributo_id", None)
-        if aid: counts[aid] = counts.get(aid, 0) + 1
+        for aid in (getattr(p, "atributos", None) or {}).values():
+            if aid: counts[aid] = counts.get(aid, 0) + 1
     return counts
 
 
 def training_blockers() -> List[Dict]:
     """
-    Atributos que impiden entrenar: presentes en los datos, no excluidos
-    explícitamente, y sin ancla de UCS utilizable (calidad 0 o sin banda).
+    Atributos que impiden entrenar: de rol LITOLOGÍA, presentes en los datos, no
+    excluidos explícitamente, y sin ancla de UCS utilizable.
 
-    Cada entrada: {id, nombre, motivo, metros, puntos}.
+    (A.4) Alteraciones y estructuras quedan fuera del chequeo por construcción:
+    Attribute.entrenable() las declara aptas porque su rol no lleva banda.
+
+    Cada entrada: {id, nombre, rol, motivo, metros, puntos}.
     """
     counts = attribute_point_counts()
     presentes = set(counts) | set(attribute_meters)
     # Un atributo referenciado por una capa cargada también cuenta como presente
     # aunque todavía no tenga puntos (el cruce puede no haberse corrido).
     for lay in layers.values():
-        aid = getattr(lay, "atributo_id", None)
-        if aid: presentes.add(aid)
+        for aid in (getattr(lay, "atributos", None) or {}).values():
+            if aid: presentes.add(aid)
     out = []
     for aid in sorted(presentes):
         if aid in attribute_exclusions: continue
         a = attr_registry.get(aid)
         if a is None:
-            out.append({"id": aid, "nombre": aid, "motivo": "no está en el registro de vocabulario",
+            out.append({"id": aid, "nombre": aid, "rol": "?",
+                        "motivo": "no está en el registro de vocabulario",
                         "metros": attribute_meters.get(aid), "puntos": counts.get(aid, 0)})
             continue
         ok, motivo = a.entrenable()
         if ok: continue
-        out.append({"id": aid, "nombre": a.nombre_oficial, "motivo": motivo,
+        out.append({"id": aid, "nombre": a.nombre_oficial, "rol": a.rol, "motivo": motivo,
                     "metros": attribute_meters.get(aid), "puntos": counts.get(aid, 0)})
     return out
 
@@ -552,100 +859,168 @@ def training_block_message(blockers: Optional[List[Dict]] = None) -> Optional[st
         if b.get("metros") is not None: det.append(f"{b['metros']:.1f} m".replace(".", ","))
         if b.get("puntos"): det.append(f"{b['puntos']} pts")
         partes.append(f"{b['id']}" + (f" {' · '.join(det)}" if det else ""))
-    return (f"No se puede entrenar: {len(bl)} atributo{'s' if len(bl) != 1 else ''} "
-            f"sin banda de UCS asignada ({' · '.join(partes)}). "
+    return (f"No se puede entrenar: {len(bl)} "
+            f"litología{'s' if len(bl) != 1 else ''} sin banda de UCS asignada "
+            f"({' · '.join(partes)}). "
             f"Asignar en el registro de vocabulario o excluir explícitamente.")
 
 
-# ─── T1.4 · RESOLUCIÓN DE TRASLAPE POR NIVEL ─────────────────────────────────
+# ─── T1.4 reescrito por A.5 · RESOLUCIÓN DE TRASLAPE POR ROL ─────────────────
 # Reemplaza la lógica `lito_hit[i] = name`, que hacía ganar a la última capa
 # cargada y produjo un modelo degenerado con R² = 1,0. Leapfrog modela con
 # métodos probabilísticos y las mallas pueden interponerse; el MWD es la tercera
-# fuente que evalúa dónde acertó la interpolación. Todo punto excluido por
-# ambigüedad queda contabilizado y reportado, nunca descartado en silencio.
+# fuente que evalúa dónde acertó la interpolación.
+#
+# La tabla de casos se reduce a CUATRO REGLAS sobre el rol:
+#
+#   Conflicto    Dos atributos del MISMO rol en un punto → ambiguo, excluir,
+#                contabilizar.
+#   Composición  Atributos de roles DISTINTOS → se componen en un dominio.
+#   Anidamiento  Dentro de un mismo rol, unidad + su subunidad → gana la
+#                subunidad. NO es conflicto.
+#   Predominio   rol="estructura" predomina sobre todo lo demás.
+#
+# La clave de dominio es el par (litologia, alteracion|None); la banda de UCS
+# se hereda de la litología.
+#
+# EQUIVALENCIA DE EMPAQUETADO: las reglas operan sobre ATRIBUTOS CANÓNICOS, no
+# sobre nombres de capa. Por eso el resultado es idéntico venga la información
+# en una malla compuesta (Bht_Fk.dxf) o en dos mallas separadas que se
+# traslapan. Cómo vino empaquetada no puede cambiar el dominio.
+#
+# Todo punto excluido por ambigüedad se contabiliza y reporta, nunca se
+# descarta en silencio.
 
-LAYER_KINDS = ("litologia", "estructura", "alteracion")
+LAYER_KINDS = ATTR_ROLES
 
 # Contabilidad de la última corrida de clasificación.
 overlap_stats: Dict = {
     "n_puntos": 0,
     "n_ambiguos": 0,
     "n_subunidad_gana": 0,
+    "n_compuestos": 0,   # puntos con litología + alteración
     "n_sin_lito": 0,
-    "casos": {},        # "A | B" → nº de puntos
-    "motivos": {},      # motivo → nº de puntos
+    "n_sin_clasificar": 0,
+    "casos": {},         # "A | B" → nº de puntos
+    "motivos": {},       # motivo → nº de puntos
 }
 
 
-def _layer_level(layer) -> str:
-    """Nivel declarado de la capa: 'unidad' | 'subunidad' | 'desconocido'."""
-    niv = getattr(layer, "nivel", None)
-    if niv in ("unidad", "subunidad"): return niv
-    aid = getattr(layer, "atributo_id", None)
-    a = attr_registry.get(aid) if aid else None
-    return a.nivel if a else "desconocido"
-
-
-def _layer_parent(layer) -> Optional[str]:
-    aid = getattr(layer, "atributo_id", None)
-    a = attr_registry.get(aid) if aid else None
-    return a.padre if a else None
-
-
-def resolve_lito_overlap(hit_names: List[str]) -> Tuple[Optional[str], str]:
+def layer_role_ids(layer) -> Dict[str, str]:
     """
-    Resuelve un traslape de mallas de litología en un punto.
+    {rol: identidad} que aporta una capa.
 
-    Devuelve (nombre_de_capa_ganadora | None, motivo). motivo == "" cuando la
-    resolución es limpia; cualquier otro valor describe la ambigüedad y el punto
-    debe excluirse y contabilizarse.
-
-    Reglas (T1.4):
-      · una sola malla                     → gana ella
-      · unidad + su propia subunidad       → gana la subunidad (más específica)
-      · dos unidades distintas             → ambiguo
-      · dos subunidades de padres distintos→ ambiguo
-      · dos subunidades del mismo padre    → ambiguo
-
-    Sin la declaración de nivel malla por malla no se puede distinguir un
-    anidamiento legítimo de un error de modelamiento: por eso una capa de nivel
-    desconocido traslapada con otra es ambigua, no un ganador arbitrario.
+    La identidad es el ATRIBUTO CANÓNICO cuando la capa lo tiene asignado; si
+    no, se usa el nombre de la capa bajo el rol que declare `kind`. Esa reserva
+    mantiene funcionando las mallas todavía sin vocabulario asignado (y con
+    ellas el canario, cuyo DXF no está en el registro).
     """
-    if not hit_names: return None, ""
-    if len(hit_names) == 1: return hit_names[0], ""
+    attrs = getattr(layer, "atributos", None) or {}
+    if attrs: return dict(attrs)
+    kind = getattr(layer, "kind", "litologia")
+    if kind not in ATTR_ROLES: kind = "litologia"
+    return {kind: layer.name}
 
-    info = []
-    for n in hit_names:
-        lay = layers.get(n)
-        info.append({"name": n, "nivel": _layer_level(lay) if lay else "desconocido",
-                     "attr": getattr(lay, "atributo_id", None) if lay else None,
-                     "padre": _layer_parent(lay) if lay else None})
 
+def set_layer_attributes(layer, atributos: Dict[str, str]):
+    """
+    Asigna el mapa {rol: atributo_id} a una capa y sincroniza `kind` y `nivel`.
+
+    `kind` pasa a ser el rol predominante de la capa (estructura > litología >
+    alteración), y `nivel` el del atributo de litología. Mantenerlos derivados
+    evita que la capa declare un rol y el vocabulario otro.
+    """
+    layer.atributos = dict(atributos or {})
+    if "estructura" in layer.atributos: layer.kind = "estructura"
+    elif "litologia" in layer.atributos: layer.kind = "litologia"
+    elif "alteracion" in layer.atributos: layer.kind = "alteracion"
+    lito = layer.atributos.get("litologia")
+    layer.nivel = attr_registry[lito].nivel if lito in attr_registry else None
+    return layer
+
+
+def _hit_meta(rol: str, ident: str) -> Dict:
+    """Nivel y padre de una identidad; 'desconocido' si no es atributo canónico."""
+    a = attr_registry.get(ident)
+    if a is not None and a.rol == rol:
+        return {"nivel": a.nivel, "padre": a.padre, "canonico": True}
+    return {"nivel": "desconocido", "padre": None, "canonico": False}
+
+
+def _resolve_one_role(rol: str, idents: List[str]) -> Tuple[Optional[str], str]:
+    """
+    Aplica Anidamiento y Conflicto dentro de UN rol.
+    Devuelve (identidad_ganadora | None, motivo). motivo == "" es resolución
+    limpia; "subunidad_gana" es limpia y además señala anidamiento.
+    """
+    unicos = sorted(set(idents))
+    if not unicos: return None, ""
+    if len(unicos) == 1: return unicos[0], ""
+
+    info = [{"id": i, **_hit_meta(rol, i)} for i in unicos]
     unidades = [d for d in info if d["nivel"] == "unidad"]
     subunidades = [d for d in info if d["nivel"] == "subunidad"]
     desconocidas = [d for d in info if d["nivel"] == "desconocido"]
 
+    # Sin nivel declarado no se puede distinguir un anidamiento legítimo de un
+    # error de modelamiento: es ambiguo, nunca un ganador arbitrario.
     if desconocidas:
-        return None, ("traslape con capa de nivel no declarado: "
-                      + ", ".join(sorted(d["name"] for d in desconocidas)))
+        return None, (f"traslape en rol '{rol}' con capa de nivel no declarado: "
+                      + ", ".join(d["id"] for d in desconocidas))
     if len(subunidades) > 1:
         padres = {d["padre"] for d in subunidades}
-        return None, ("dos subunidades del mismo padre" if len(padres) == 1
-                      else "dos subunidades de padres distintos")
+        return None, (f"dos subunidades del mismo padre" if len(padres) == 1
+                      else f"dos subunidades de padres distintos")
     if len(subunidades) == 1:
         sub = subunidades[0]
-        # Gana la subunidad solo si toda unidad traslapada es su propio padre.
-        ajenas = [u for u in unidades if u["attr"] != sub["padre"]]
+        ajenas = [u for u in unidades if u["id"] != sub["padre"]]
         if ajenas:
-            return None, ("subunidad traslapada con unidad ajena: "
-                          + ", ".join(sorted(u["name"] for u in ajenas)))
-        return sub["name"], "subunidad_gana"
-    # Solo unidades: más de una es ambiguo por definición.
-    distintas = {u["attr"] or u["name"] for u in unidades}
-    if len(distintas) > 1:
-        return None, "dos unidades distintas"
-    # Misma unidad modelada en varias mallas: no es conflicto.
-    return unidades[0]["name"], ""
+            return None, (f"subunidad traslapada con unidad ajena en rol '{rol}': "
+                          + ", ".join(u["id"] for u in ajenas))
+        return sub["id"], "subunidad_gana"   # Anidamiento
+    return None, (f"dos unidades distintas" if rol == "litologia"
+                  else f"dos atributos del rol '{rol}'")   # Conflicto
+
+
+def resolve_overlap_by_role(hits: Dict[str, List[str]]) -> Tuple[Dict[str, str], str, bool]:
+    """
+    Resuelve el traslape completo de un punto.
+
+    `hits` es {rol: [identidades...]} acumuladas de TODAS las mallas que
+    contienen el punto. Devuelve:
+
+        ({rol: identidad_ganadora}, motivo_ambiguo, hubo_anidamiento)
+
+    motivo_ambiguo == "" significa resolución limpia. Cualquier otro valor
+    describe un Conflicto: el punto se excluye y se contabiliza.
+    """
+    resuelto: Dict[str, str] = {}
+    anidamiento = False
+    for rol in sorted(hits):
+        ganador, motivo = _resolve_one_role(rol, hits[rol])
+        if motivo == "subunidad_gana":
+            anidamiento = True; motivo = ""
+        if motivo:
+            return {}, motivo, anidamiento
+        if ganador is not None:
+            resuelto[rol] = ganador          # Composición: roles distintos conviven
+    return resuelto, "", anidamiento
+
+
+def make_dominio(lito: Optional[str], alteracion: Optional[str],
+                 estructura: Optional[str]) -> Optional[str]:
+    """
+    Clave de dominio a partir de los atributos resueltos.
+
+      · Predominio: con estructura presente, el dominio es "<lito>::<estructura>"
+        (la estructura predomina sobre todo lo demás).
+      · Si no, la clave es el par (litologia, alteracion|None), codificado como
+        "<lito>" o "<lito>~<alteracion>".
+      · Una alteración SOLA no define dominio.
+    """
+    if estructura: return f"{lito or ''}::{estructura}"
+    if lito and alteracion: return f"{lito}~{alteracion}"
+    return lito or None
 
 @dataclass
 class Layer:
@@ -660,13 +1035,21 @@ class Layer:
     caseron: Optional[str] = None; lito_alias: Optional[str] = None
     ucs_lo: Optional[float] = None; ucs_hi: Optional[float] = None
     ucs_mid: Optional[float] = None
-    # (P1-T1.2/T1.4) Vínculo al registro de vocabulario canónico y nivel
-    # jerárquico declarado. `nivel` se declara MALLA POR MALLA: sin él el código
-    # no puede distinguir un anidamiento legítimo (unidad + su subunidad) de un
-    # error de modelamiento (dos unidades traslapadas), y cualquier resolución
-    # de traslape sería arbitraria. None = no declarado → traslape ambiguo.
-    atributo_id: Optional[str] = None
+    # (P1-T1.2 / A.2) Vínculo al registro de vocabulario canónico. Una capa
+    # puede aportar VARIOS atributos de roles distintos: Bht_Fk.dxf trae
+    # litología y alteración compuestas en un solo nombre, y debe producir el
+    # mismo dominio que dos mallas separadas que se traslapan.
+    #   atributos = {"litologia": "Bht", "alteracion": "Fk"}
+    # `nivel` se toma del atributo de litología; sin atributo asignado queda
+    # None → cualquier traslape con esta capa es ambiguo, nunca un ganador
+    # arbitrario.
+    atributos: Dict[str, str] = field(default_factory=dict)
     nivel: Optional[str] = None          # "unidad" | "subunidad" | None
+
+    @property
+    def atributo_id(self) -> Optional[str]:
+        """Compatibilidad: el atributo de rol litología, si lo hay."""
+        return self.atributos.get("litologia")
 
 @dataclass
 class MWDPoint:
@@ -690,16 +1073,22 @@ class MWDPoint:
     # Seteo real del equipo para el punto (T9): presión de percusión y avance
     # registrados en el CSV/Excel de seteo, si están disponibles.
     seteo_pp: Optional[float] = None; seteo_pa: Optional[float] = None
-    # (P1-T1.4) Resolución de traslape. `atributo_id` es el vínculo al registro
-    # de vocabulario (no el nombre de la capa DXF, que es texto libre).
-    # `alteracion` se COMPONE con la litología (riolita+argílica ≠
-    # riolita+potásica); una alteración sola no define dominio.
-    # `ambiguo` marca el punto excluido por traslape irresoluble, con el motivo
-    # en `ambiguo_motivo`: contabilizado y reportado, nunca descartado en silencio.
-    atributo_id: Optional[str] = None
+    # (P1-T1.4 / A.5) Resolución de traslape por rol. `atributos` es el mapa
+    # {rol: atributo_id} resuelto para el punto — atributos CANÓNICOS, no
+    # nombres de capa, para que el dominio no dependa de cómo vino empaquetada
+    # la información. `alteracion` se COMPONE con la litología (Bht+Fk ≠
+    # Bht+otra alteración); una alteración sola no define dominio.
+    # `ambiguo` marca el punto excluido por Conflicto, con el motivo en
+    # `ambiguo_motivo`: contabilizado y reportado, nunca descartado en silencio.
+    atributos: Dict[str, str] = field(default_factory=dict)
     alteracion: Optional[str] = None
     ambiguo: bool = False
     ambiguo_motivo: Optional[str] = None
+
+    @property
+    def atributo_id(self) -> Optional[str]:
+        """Compatibilidad: el atributo de rol litología, si lo hay."""
+        return self.atributos.get("litologia")
 
 @dataclass
 class Well:
@@ -1260,14 +1649,45 @@ def excel_litologias():
         if l and l not in seen: seen.append(l)
     return sorted(seen)
 
+def lito_identities(lito) -> set:
+    """
+    Todos los textos normalizados que denotan la misma litología: el propio
+    texto, y —si resuelve a un atributo canónico— su id, su nombre oficial y
+    todos sus alias.
+
+    (A.2) Necesario desde que el dominio se expresa en atributos canónicos: un
+    punto con p.lito == "Bht" debe seguir emparejando con una capa llamada
+    "Bht_Fk" y con una fila de Excel que diga "Brecha Hidrotermal". Sin esto,
+    asignar vocabulario a una capa haría que la verificación de banda dejara
+    de evaluar EN SILENCIO.
+    """
+    if not lito: return set()
+    out = {_norm_txt(lito)}
+    aid = resolve_alias(lito).get("litologia")
+    if aid and aid in attr_registry:
+        a = attr_registry[aid]
+        out.add(_norm_txt(a.id)); out.add(_norm_txt(a.nombre_oficial))
+        for al in alias_registry.values():
+            if al.atributos.get("litologia") == aid:
+                out.add(_norm_txt(al.texto_crudo))
+    return {t for t in out if t}
+
+
 def lookup_band(caseron, litologia):
     """
     Banda de una caserón×litología. Requiere caserón (decisión D1: la unidad de
     etiquetado es la intersección, no la litología global). Devuelve el record
-    o None. Matching por texto normalizado (sin acentos/mayúsculas).
+    o None. Matching por texto normalizado (sin acentos/mayúsculas) y por
+    cualquier alias canónico de la litología.
     """
     if not caseron or not litologia: return None
-    return geomech_bands["by_pair"].get((_norm_txt(caseron), _norm_txt(litologia)))
+    cn = _norm_txt(caseron)
+    directo = geomech_bands["by_pair"].get((cn, _norm_txt(litologia)))
+    if directo is not None: return directo
+    for ident in lito_identities(litologia):
+        rec = geomech_bands["by_pair"].get((cn, ident))
+        if rec is not None: return rec
+    return None
 
 def bands_for_caseron(caseron):
     """Todas las bandas (por litología) de un caserón dado."""
@@ -1383,116 +1803,130 @@ def points_in_mesh(points, layer, batch=256):
 def classify_all_wells():
     """
     Clasifica cada punto MWD contra las mallas cargadas, resolviendo traslapes
-    por nivel jerárquico (P1-T1.4).
+    con las cuatro reglas por rol (A.5).
 
     Ya NO se sobrescribe con la última malla que acierta (`lito_hit[i] = name`):
-    se acumulan TODOS los aciertos y se resuelven con resolve_lito_overlap().
-    Un punto con traslape irresoluble se marca `ambiguo` y queda fuera del
-    dominio, pero contabilizado en overlap_stats — nunca descartado en silencio.
+    se acumulan TODOS los aciertos, agrupados POR ROL y expresados en atributos
+    canónicos, y se resuelven con resolve_overlap_by_role(). Un punto con
+    Conflicto se marca `ambiguo` y queda fuera del dominio, pero contabilizado
+    en overlap_stats — nunca descartado en silencio.
 
-    Composición del dominio:
-      · litología + estructura  → la estructura predomina totalmente
-      · litología + alteración  → se componen ("lito~alteracion")
-      · alteración sola         → no define dominio
+    Como las reglas operan sobre atributos canónicos y no sobre nombres de
+    capa, una malla compuesta (Bht_Fk.dxf) y dos mallas separadas que se
+    traslapan producen EL MISMO dominio.
     """
     layer_items = list(layers.items())
     overlap_stats.update({"n_puntos": 0, "n_ambiguos": 0, "n_subunidad_gana": 0,
-                          "n_sin_lito": 0, "casos": {}, "motivos": {}})
+                          "n_compuestos": 0, "n_sin_lito": 0, "n_sin_clasificar": 0,
+                          "casos": {}, "motivos": {}})
     for wn, well in wells.items():
         pts = well.points
         if not pts: continue
         try:
             coords = np.array([[p.este, p.norte, p.cota] for p in pts], dtype=np.float64)
             valid = np.all(np.isfinite(coords), axis=1)
-            # Acumular TODOS los aciertos por punto, no solo el último.
-            lito_hits: List[List[str]] = [[] for _ in pts]
-            estruct_hit = [None]*len(pts)
-            alter_hits: List[List[str]] = [[] for _ in pts]
+            # Acumular TODOS los aciertos por punto y por rol, no solo el último.
+            hits: List[Dict[str, List[str]]] = [{} for _ in pts]
             for name, layer in layer_items:
                 try:
+                    roles = layer_role_ids(layer)
+                    if not roles: continue
                     mask = np.zeros(len(pts), dtype=bool)
                     if valid.any():
                         mask[valid] = points_in_mesh(coords[valid], layer)
                     for i in np.where(mask)[0]:
-                        if layer.kind == "estructura": estruct_hit[i] = name
-                        elif layer.kind == "alteracion": alter_hits[i].append(name)
-                        else: lito_hits[i].append(name)
+                        for rol, ident in roles.items():
+                            hits[i].setdefault(rol, []).append(ident)
                 except Exception as e:
                     log_warn(f'Clasificación "{name}" en "{wn}": {e}')
             for i, p in enumerate(pts):
                 overlap_stats["n_puntos"] += 1
-                lh, motivo = resolve_lito_overlap(lito_hits[i])
-                eh = estruct_hit[i]
-                ah = "+".join(sorted(alter_hits[i])) if alter_hits[i] else None
-                p.alteracion = ah
+                resuelto, motivo, anidado = resolve_overlap_by_role(hits[i])
+                if anidado: overlap_stats["n_subunidad_gana"] += 1
                 p.ambiguo = False; p.ambiguo_motivo = None
-                if motivo == "subunidad_gana":
-                    overlap_stats["n_subunidad_gana"] += 1
-                    motivo = ""
                 if motivo:
-                    # Traslape irresoluble: se excluye el punto y se contabiliza.
+                    # Conflicto: se excluye el punto del dominio y se contabiliza.
                     p.ambiguo = True; p.ambiguo_motivo = motivo
-                    p.lito = None; p.estructura = eh; p.atributo_id = None
-                    p.dominio = f"::{eh}" if eh else None
+                    p.atributos = {}
+                    p.lito = None; p.alteracion = None; p.estructura = None
+                    p.dominio = None
                     overlap_stats["n_ambiguos"] += 1
-                    caso = " | ".join(sorted(lito_hits[i]))
+                    caso = " | ".join(f"{r}:{'+'.join(sorted(set(v)))}"
+                                      for r, v in sorted(hits[i].items()))
                     overlap_stats["casos"][caso] = overlap_stats["casos"].get(caso, 0) + 1
                     overlap_stats["motivos"][motivo] = overlap_stats["motivos"].get(motivo, 0) + 1
                     continue
-                p.lito, p.estructura = lh, eh
-                lay = layers.get(lh) if lh else None
-                p.atributo_id = getattr(lay, "atributo_id", None) if lay else None
+                p.atributos = resuelto
+                lh = resuelto.get("litologia")
+                ah = resuelto.get("alteracion")
+                eh = resuelto.get("estructura")
+                p.lito, p.alteracion, p.estructura = lh, ah, eh
+                p.dominio = make_dominio(lh, ah, eh)
                 if lh is None: overlap_stats["n_sin_lito"] += 1
-                # La estructura predomina totalmente sobre la litología.
-                if eh: p.dominio = f"{lh}::{eh}" if lh else f"::{eh}"
-                elif lh: p.dominio = f"{lh}~{ah}" if ah else lh
-                else: p.dominio = None   # alteración sola no define dominio
+                if lh and ah: overlap_stats["n_compuestos"] += 1
+                if p.dominio is None: overlap_stats["n_sin_clasificar"] += 1
         except Exception as e:
             log_warn(f'Clasificación pozo "{wn}": {e}')
 
-def _domain_matches_layer(d: str, name: str) -> bool:
-    """¿El dominio `d` corresponde a la capa `name`? Tolera '::' y '~'."""
-    lito, est = _split_dominio(d)
-    return lito == name or est == name
+def parse_dominio(d: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """(litologia, alteracion, estructura) a partir de la clave de dominio."""
+    if not d or d == "(sin dominio)": return None, None, None
+    izq, _, est = d.partition("::")
+    lito, _, alt = izq.partition("~")
+    return (lito or None), (alt or None), (est or None)
+
+
+def _manual_ucs_for(lito_id: str) -> Optional[float]:
+    """
+    Sobrescritura manual de UCS aplicable a una identidad de litología.
+    Es una decisión explícita del usuario y gana sobre el registro.
+    """
+    for lay in layers.values():
+        if lay.ucs_lab is None: continue
+        if layer_role_ids(lay).get("litologia") == lito_id:
+            return lay.ucs_lab
+    return None
 
 
 def build_domain_index():
     """
     Indexa dominios y les adosa el ancla de UCS.
 
-    (P1-T1.2/T1.5) El ancla proviene del REGISTRO DE VOCABULARIO cuando la capa
-    declara un atributo canónico: es la etiqueta de entrenamiento definida como
-    valor de ensayo de laboratorio (roca intacta). El `ucs_lab` manual de la
-    capa se mantiene como sobrescritura explícita del usuario y tiene prioridad.
-    También se propaga `pi_factor` (ensanche del intervalo de predicción según
-    la calidad del ancla) y `atributo_id`, para que el entrenamiento pueda
-    bloquear por atributo y no por nombre de capa.
+    (A.5) La clave de dominio es el par (litologia, alteracion|None) más la
+    estructura predominante, expresada en ATRIBUTOS CANÓNICOS. Por eso el
+    índice se construye desde la propia clave del dominio y no recorriendo
+    capas por nombre: así Bht_Fk (malla compuesta) y Bht+Fk (mallas separadas)
+    caen en el mismo dominio y heredan la misma banda.
+
+    LA BANDA DE UCS ES PROPIEDAD DE LA LITOLOGÍA. Bht+Fk y Bht+otra alteración
+    son dominios distintos que heredan la MISMA banda como valor previo; si el
+    MWD muestra que difieren, eso es un hallazgo, no un error.
     """
     domains.clear()
     for p in all_points():
         d = p.dominio or "(sin dominio)"
         if d not in domains:
             domains[d] = {"count": 0, "ucs_lab": None, "atributo_id": None,
+                          "alteracion_id": None, "estructura_id": None,
                           "pi_factor": None, "calidad": None, "fuente_ucs": None}
         domains[d]["count"] += 1
-    for name, layer in layers.items():
-        aid = getattr(layer, "atributo_id", None)
-        attr = attr_registry.get(aid) if aid else None
-        ucs_attr = attr.ucs_ancla() if attr else None
-        # El valor manual de la capa gana sobre el registro: es una decisión
-        # explícita del usuario, no un default.
-        ucs = layer.ucs_lab if layer.ucs_lab is not None else ucs_attr
-        if ucs is None and aid is None: continue
-        for d in domains:
-            if not _domain_matches_layer(d, name): continue
-            if ucs is not None:
-                domains[d]["ucs_lab"] = ucs
-                domains[d]["fuente_ucs"] = ("manual" if layer.ucs_lab is not None
-                                            else (attr.fuente if attr else None))
-            if attr is not None:
-                domains[d]["atributo_id"] = attr.id
-                domains[d]["pi_factor"] = attr.pi_factor()
-                domains[d]["calidad"] = attr.calidad
+    for d, info in domains.items():
+        lito, alt, est = parse_dominio(d)
+        info["alteracion_id"] = alt
+        info["estructura_id"] = est
+        if not lito: continue
+        attr = attr_registry.get(lito)
+        if attr is not None and attr.rol != "litologia": attr = None
+        manual = _manual_ucs_for(lito)
+        ucs = manual if manual is not None else (attr.ucs_ancla() if attr else None)
+        if ucs is not None:
+            info["ucs_lab"] = ucs
+            info["fuente_ucs"] = ("manual" if manual is not None
+                                  else (attr.fuente if attr else None))
+        if attr is not None:
+            info["atributo_id"] = attr.id
+            info["pi_factor"] = attr.pi_factor()
+            info["calidad"] = attr.calidad
 
 def apply_calibration():
     cf = cal_factors
@@ -2023,6 +2457,13 @@ def train_rf(ucs_min=None, ucs_max=None):
     except: pass
     stats = {
         "n_train": len(X), "n_excl_disc": n_excl,
+        # (A.6) El contador de ambiguos por Conflicto de traslape es parte del
+        # reporte de composición del entrenamiento: sin él, los puntos que las
+        # reglas descartaron desaparecerían de la vista.
+        "n_excl_ambiguo": overlap_stats.get("n_ambiguos", 0),
+        "n_compuestos": overlap_stats.get("n_compuestos", 0),
+        "n_anidamiento": overlap_stats.get("n_subunidad_gana", 0),
+        "overlap_motivos": dict(overlap_stats.get("motivos", {})),
         "r2_train": round(r2_tr, 3), "rmse_train": round(rmse_tr, 1),
         "rmsea": round(rmsea, 4),
         "cv_r2_mean": round(float(cv_scores.mean()), 3) if cv_scores.size else None,
@@ -2091,11 +2532,17 @@ def _resolve_caseron(lito):
     litología con distinto caserón, es ambiguo y se devuelve None.
     """
     if not lito: return None
-    ln = _norm_txt(lito)
+    idents = lito_identities(lito)
     caserones = set()
     for layer in layers.values():
-        lay_lito = _norm_txt(layer.lito_alias or layer.name)
-        if lay_lito == ln and layer.caseron:
+        if not layer.caseron: continue
+        # La capa denota esa litología por su alias de Excel, por su nombre, o
+        # por el atributo canónico que tenga asignado (que es lo que ahora
+        # lleva p.lito).
+        lay_idents = {_norm_txt(layer.lito_alias or ""), _norm_txt(layer.name)}
+        canon = layer_role_ids(layer).get("litologia")
+        if canon: lay_idents |= lito_identities(canon)
+        if idents & {t for t in lay_idents if t}:
             caserones.add(layer.caseron)
     if len(caserones) == 1:
         return next(iter(caserones))
@@ -2532,7 +2979,7 @@ def _point_to_dict(p):
         "lito_inferida":p.lito_inferida,"estructura_inferida":p.estructura_inferida,
         "grupo_confianza":p.grupo_confianza,"band_check":p.band_check,
         "seteo_pp":p.seteo_pp,"seteo_pa":p.seteo_pa,
-        "atributo_id":p.atributo_id,"alteracion":p.alteracion,
+        "atributos":dict(p.atributos),"alteracion":p.alteracion,
         "ambiguo":p.ambiguo,"ambiguo_motivo":p.ambiguo_motivo,
     }
 
@@ -2548,7 +2995,7 @@ def _point_from_dict(d):
     for attr in ("dominio","lito","estructura","ucs_ml","ucs_confiable","ucs_ml_prelim",
                  "ucs_ml_p10","ucs_ml_p90","di","grupo","lito_inferida",
                  "estructura_inferida","grupo_confianza","band_check","seteo_pp","seteo_pa",
-                 "atributo_id","alteracion","ambiguo","ambiguo_motivo"):
+                 "atributos","alteracion","ambiguo","ambiguo_motivo"):
         if attr in d: setattr(p, attr, d[attr])
     return p
 
@@ -2574,7 +3021,7 @@ def save_project(path):
                 "ucs_lab": lay.ucs_lab, "caseron": lay.caseron,
                 "lito_alias": lay.lito_alias,
                 "ucs_lo": lay.ucs_lo, "ucs_hi": lay.ucs_hi, "ucs_mid": lay.ucs_mid,
-                "atributo_id": lay.atributo_id, "nivel": lay.nivel,
+                "atributos": dict(lay.atributos), "nivel": lay.nivel,
                 "bbox_min": lay.bbox_min.tolist(), "bbox_max": lay.bbox_max.tolist(),
             }
             for ln, lay in layers.items()
@@ -2648,7 +3095,9 @@ def load_project(path):
             ucs_lab=lm.get("ucs_lab"), folder=lm.get("folder","Litología"),
             caseron=lm.get("caseron"), lito_alias=lm.get("lito_alias"),
             ucs_lo=lm.get("ucs_lo"), ucs_hi=lm.get("ucs_hi"), ucs_mid=lm.get("ucs_mid"),
-            atributo_id=lm.get("atributo_id"), nivel=lm.get("nivel"),
+            atributos=dict(lm.get("atributos") or ({"litologia": lm["atributo_id"]}
+                            if lm.get("atributo_id") else {})),
+            nivel=lm.get("nivel"),
         )
         layers[ln] = lay
 
@@ -2710,7 +3159,10 @@ def export_vocabulary() -> Dict:
         ],
         "pendientes": [
             {"texto_crudo": v["texto_crudo"], "origenes": sorted(v["origenes"]),
-             "n_vistas": v["n_vistas"]}
+             "n_vistas": v["n_vistas"],
+             # La propuesta de descomposición (A.3) viaja como sugerencia; al
+             # importar sigue requiriendo confirmación explícita.
+             "propuesta": ((v.get("propuesta") or {}).get("atributos") or None)}
             for v in pending_aliases.values()
         ],
     }
@@ -2722,7 +3174,7 @@ def export_vocabulary_json(indent: int = 2) -> str:
 
 def export_vocabulary_csv() -> str:
     """Vista tabular de los atributos (una fila por atributo), separador ';'."""
-    cols = ["id", "nombre_oficial", "sitio", "nivel", "padre", "ucs_min", "ucs_max",
+    cols = ["id", "nombre_oficial", "sitio", "rol", "nivel", "padre", "ucs_min", "ucs_max",
             "ucs_media", "ucs_sd", "ucs_n", "calidad", "calidad_etiqueta", "pi_factor",
             "excluido", "justificacion_exclusion", "mi", "modulo_E", "poisson",
             "densidad", "fuente", "fecha", "alias", "notas"]
@@ -2730,10 +3182,10 @@ def export_vocabulary_csv() -> str:
     for a in attr_registry.values():
         exc = attribute_exclusions.get(a.id)
         al = "|".join(sorted(x.texto_crudo for x in alias_registry.values()
-                             if x.atributo_id == a.id))
+                             if a.id in x.atributos.values()))
         rows.append({
             "id": a.id, "nombre_oficial": a.nombre_oficial, "sitio": a.sitio,
-            "nivel": a.nivel, "padre": a.padre or "", "ucs_min": a.ucs_min,
+            "rol": a.rol, "nivel": a.nivel, "padre": a.padre or "", "ucs_min": a.ucs_min,
             "ucs_max": a.ucs_max, "ucs_media": a.ucs_media, "ucs_sd": a.ucs_sd,
             "ucs_n": a.ucs_n, "calidad": a.calidad,
             "calidad_etiqueta": QUALITY_LABELS.get(a.calidad, "?"),
@@ -2768,7 +3220,10 @@ def import_vocabulary(data, replace: bool = True) -> Dict:
             errores.append(f"atributo {d.get('id','?')}: {e}")
     for d in data.get("alias", []):
         try:
-            register_alias(d["texto_crudo"], d["atributo_id"], d.get("origen", "manual"))
+            # Compatibilidad hacia atrás: los export previos a A.2 traían un
+            # `atributo_id` suelto en vez del mapa {rol: id}.
+            destino = d.get("atributos") or d.get("atributo_id")
+            register_alias(d["texto_crudo"], destino, d.get("origen", "manual"))
         except Exception as e:
             errores.append(f"alias «{d.get('texto_crudo','?')}»: {e}")
     for d in data.get("exclusiones", []):
@@ -3224,32 +3679,42 @@ def _vocab_badge_children():
                       style={"padding": "0", "textDecoration": "none"})
 
 
+ROLE_BADGE_COLOR = {"litologia": "primary", "alteracion": "info", "estructura": "warning"}
+
+
 def _attr_row(a: Attribute):
-    """Fila editable de un atributo."""
+    """
+    Fila editable de un atributo.
+
+    (A.1) Los campos de banda de UCS SOLO se ofrecen a rol="litologia": en los
+    demás roles no aplican y la interfaz no debe mostrarlos.
+    """
     exc = attribute_exclusions.get(a.id)
     ok, motivo = a.entrenable()
+    con_banda = a.usa_banda_ucs()
     if exc:
         estado = dbc.Badge("excluido", color="secondary", style={"fontSize": "9px"})
+    elif not con_banda:
+        estado = dbc.Badge("no requiere banda de UCS", color="dark",
+                           style={"fontSize": "9px"})
     elif ok:
         estado = dbc.Badge(f"OK · PI ×{a.pi_factor():.2f}", color="success", style={"fontSize": "9px"})
     else:
         estado = dbc.Badge(motivo, color="danger", style={"fontSize": "9px"})
     jer = (f"subunidad de {a.padre}" if a.nivel == "subunidad"
            else f"unidad" + (f" ({len(attribute_children(a.id))} sub)" if attribute_children(a.id) else ""))
-    num_inputs = [
-        dbc.Col([html.Small(lbl, style={"color": "#888", "fontSize": "9px", "display": "block"}),
-                 dbc.Input(id={"type": "attr-num", "attr": a.id, "field": f},
-                           type="number", value=getattr(a, f), debounce=True, size="sm",
-                           style={"fontSize": "10px"})], width=2)
-        for f, lbl in _VOCAB_NUM_FIELDS
-    ]
-    return dbc.ListGroupItem([
+    cuerpo = [
         html.Div([
             html.B(f"{a.id} — {a.nombre_oficial}", style={"fontSize": "11px"}),
+            html.Span("  ", style={"marginRight": "4px"}),
+            dbc.Badge(a.rol, color=ROLE_BADGE_COLOR.get(a.rol, "secondary"),
+                      style={"fontSize": "9px"}),
             html.Span(f"  · {jer}", style={"color": "#888", "fontSize": "10px"}),
             html.Span("  ", style={"marginRight": "6px"}), estado,
         ]),
-        dbc.Row([
+    ]
+    if con_banda:
+        cuerpo.append(dbc.Row([
             dbc.Col([html.Small("Calidad del ancla", style={"color": "#888", "fontSize": "9px", "display": "block"}),
                      dcc.Dropdown(id={"type": "attr-calidad", "attr": a.id},
                                   options=[{"label": f"{k} · {v}", "value": k}
@@ -3260,8 +3725,20 @@ def _attr_row(a: Attribute):
                      dbc.Input(id={"type": "attr-txt", "attr": a.id, "field": "fuente"},
                                value=a.fuente, debounce=True, size="sm",
                                style={"fontSize": "10px"})], width=8),
-        ], className="g-1 mt-1"),
-        dbc.Row(num_inputs, className="g-1 mt-1"),
+        ], className="g-1 mt-1"))
+        cuerpo.append(dbc.Row([
+            dbc.Col([html.Small(lbl, style={"color": "#888", "fontSize": "9px", "display": "block"}),
+                     dbc.Input(id={"type": "attr-num", "attr": a.id, "field": f},
+                               type="number", value=getattr(a, f), debounce=True, size="sm",
+                               style={"fontSize": "10px"})], width=2)
+            for f, lbl in _VOCAB_NUM_FIELDS
+        ], className="g-1 mt-1"))
+    else:
+        cuerpo.append(html.Small(
+            f"El rol «{a.rol}» no lleva banda de UCS: la banda es propiedad de la "
+            f"litología. No bloquea el entrenamiento.",
+            style={"color": "#888", "fontSize": "9px", "display": "block", "marginTop": "3px"}))
+    return dbc.ListGroupItem(cuerpo + [
         html.Div([
             dbc.Input(id={"type": "attr-excl-just", "attr": a.id},
                       placeholder="Justificación para excluir…",
@@ -3278,24 +3755,50 @@ def _attr_row(a: Attribute):
 
 
 def _vocab_panel_body():
-    attr_opts = [{"label": f"{a.id} — {a.nombre_oficial}", "value": a.id}
-                 for a in sorted(attr_registry.values(), key=lambda x: x.id)]
+    attr_opts = [{"label": f"{a.id} — {a.nombre_oficial}  [{a.rol}]", "value": a.id}
+                 for a in sorted(attr_registry.values(), key=lambda x: (x.rol, x.id))]
     unidades = [a for a in attr_registry.values() if a.nivel == "unidad"]
     subunidades = [a for a in attr_registry.values() if a.nivel == "subunidad"]
 
-    # ── Bandeja de pendientes ────────────────────────────────────────────────
+    # ── Bandeja de pendientes (con propuesta de composición, A.3) ────────────
     pend_rows = []
     for key, e in sorted(pending_aliases.items()):
-        pend_rows.append(dbc.ListGroupItem(dbc.Row([
+        prop = e.get("propuesta")
+        cabecera = dbc.Row([
             dbc.Col(html.Small([html.B(e["texto_crudo"]),
                                 html.Span(f"  · {', '.join(sorted(e['origenes']))}"
                                           f" · visto {e['n_vistas']}×",
                                           style={"color": "#888"})],
                                style={"fontSize": "10px"}), width=5),
+            # Multi: un alias puede apuntar a un atributo POR ROL (Bht_Fk →
+            # litología + alteración). Dos del mismo rol es error visible.
             dbc.Col(dcc.Dropdown(id={"type": "pend-assign", "index": key}, options=attr_opts,
-                                 placeholder="Asignar a atributo…", clearable=True,
+                                 placeholder="Asignar a atributo(s) — uno por rol…",
+                                 multi=True, clearable=True,
                                  style={"fontSize": "10px"}), width=7),
-        ], className="g-1 align-items-center"),
+        ], className="g-1 align-items-center")
+        hijos = [cabecera]
+        if prop:
+            det = " + ".join(f"{r}: {a}" for r, a in sorted(prop["atributos"].items()))
+            hijos.append(html.Div([
+                html.Small([
+                    html.Span("💡 Descomposición sugerida: ", style={"color": "#5DCAA5"}),
+                    html.B(det),
+                    html.Span(f"   (tokens: {', '.join(prop['tokens'])})",
+                              style={"color": "#666"}),
+                    html.Span("  · se propone, no se aplica sola",
+                              style={"color": "#888", "fontStyle": "italic"}),
+                ], style={"fontSize": "9px"}),
+                dbc.Button("Confirmar composición",
+                           id={"type": "pend-confirm-prop", "index": key},
+                           size="sm", color="success", outline=True,
+                           style={"fontSize": "9px", "marginLeft": "8px", "padding": "0 6px"}),
+            ], className="mt-1"))
+            if prop["sin_resolver"]:
+                hijos.append(html.Small(
+                    f"⚠ tokens sin correspondencia: {', '.join(prop['sin_resolver'])}",
+                    style={"color": "#F39C12", "fontSize": "9px", "display": "block"}))
+        pend_rows.append(dbc.ListGroupItem(hijos,
             style={"background": "transparent", "borderBottom": "1px solid #222", "padding": "5px 8px"}))
     pend_body = pend_rows or [html.Small("Sin textos pendientes. ✅",
                                          style={"color": "#666", "fontSize": "10px"})]
@@ -3344,12 +3847,15 @@ def _vocab_panel_body():
         casos = [html.Small(f"  {c} → {n} pts", style={"fontSize": "9px", "display": "block",
                                                         "color": "#888", "fontFamily": "monospace"})
                  for c, n in sorted(ov["casos"].items(), key=lambda kv: -kv[1])[:8]]
-        ov_body = [html.Small(
-            f"{ov['n_puntos']} puntos clasificados · "
-            f"{ov['n_ambiguos']} excluidos por ambigüedad · "
-            f"{ov['n_subunidad_gana']} resueltos a favor de la subunidad · "
-            f"{ov['n_sin_lito']} sin litología.",
-            style={"fontSize": "10px", "display": "block", "marginBottom": "4px"})] + filas + casos
+        ov_body = [html.Small([
+            f"{ov['n_puntos']} puntos clasificados · ",
+            html.B(f"{ov['n_ambiguos']} excluidos por Conflicto",
+                   style={"color": "#E74C3C" if ov["n_ambiguos"] else "#aaa"}),
+            f" · {ov.get('n_compuestos', 0)} compuestos (litología+alteración)"
+            f" · {ov['n_subunidad_gana']} por Anidamiento"
+            f" · {ov['n_sin_lito']} sin litología"
+            f" · {ov.get('n_sin_clasificar', 0)} sin clasificar.",
+        ], style={"fontSize": "10px", "display": "block", "marginBottom": "4px"})] + filas + casos
     else:
         ov_body = [html.Small("Sin clasificación ejecutada todavía.",
                               style={"color": "#666", "fontSize": "10px"})]
@@ -3384,9 +3890,13 @@ def _vocab_panel_body():
         card(f"🔗 Alias registrados ({len(alias_registry)})", [
             dbc.ListGroup([
                 dbc.ListGroupItem(dbc.Row([
-                    dbc.Col(html.Small([html.B(al.texto_crudo), " → ", al.atributo_id,
-                                        html.Span(f"  ({al.origen})", style={"color": "#888"})],
-                                       style={"fontSize": "10px"}), width=10),
+                    dbc.Col(html.Small(
+                        [html.B(al.texto_crudo), " → ",
+                         " + ".join(f"{r}:{a}" for r, a in sorted(al.atributos.items())),
+                         dbc.Badge("compuesto", color="info", className="ms-1",
+                                   style={"fontSize": "8px"}) if al.es_compuesto() else None,
+                         html.Span(f"  ({al.origen})", style={"color": "#888"})],
+                        style={"fontSize": "10px"}), width=10),
                     dbc.Col(dbc.Button("✕", id={"type": "alias-del", "index": key}, size="sm",
                                        color="link", style={"fontSize": "10px", "padding": 0}), width=2),
                 ], className="g-1 align-items-center"),
@@ -3546,26 +4056,64 @@ def on_attr_exclude(clicks, justs, just_ids, ref):
               State({"type": "pend-assign", "index": ALL}, "id"),
               State("refresh", "data"), prevent_initial_call=True)
 def on_pending_assign(values, ids, ref):
-    """Asigna un texto pendiente a un atributo canónico."""
+    """
+    Asigna un texto pendiente a uno o varios atributos canónicos de ROLES
+    DISTINTOS (el dropdown es multi). Dos del mismo rol → error visible.
+    """
     trig = callback_context.triggered_id
     if not isinstance(trig, dict): return no_update, no_update, no_update
     val = callback_context.triggered[0]["value"]
     if not val: return no_update, no_update, no_update
+    if isinstance(val, str): val = [val]
     key = trig["index"]
     e = pending_aliases.get(key)
     if not e: return no_update, no_update, no_update
     try:
-        register_alias(e["texto_crudo"], val, sorted(e["origenes"])[0])
+        al = register_alias(e["texto_crudo"], val, sorted(e["origenes"])[0])
     except AliasConflict as exc:
         return no_update, f"🚫 {exc}", True
     except (KeyError, ValueError) as exc:
         return no_update, f"🚫 {exc}", True
-    # Propagar a las capas que llevaban ese texto y aún no tienen atributo.
-    for lay in layers.values():
-        if lay.atributo_id is None and _norm_txt(lay.name) == key:
-            lay.atributo_id = val; lay.nivel = attr_registry[val].nivel
+    _propagate_alias_to_layers(key, al.atributos)
     build_domain_index()
-    return ref + 1, f"✅ «{e['texto_crudo']}» → {val}.", True
+    det = " + ".join(f"{r}:{a}" for r, a in sorted(al.atributos.items()))
+    return ref + 1, f"✅ «{e['texto_crudo']}» → {det}.", True
+
+
+def _propagate_alias_to_layers(key_norm: str, atributos: Dict[str, str]):
+    """Aplica un alias recién registrado a las capas que llevaban ese texto."""
+    for lay in layers.values():
+        if not lay.atributos and _norm_txt(lay.name) == key_norm:
+            set_layer_attributes(lay, atributos)
+
+
+@app.callback(Output("refresh", "data", allow_duplicate=True),
+              Output("toast", "children", allow_duplicate=True),
+              Output("toast", "is_open", allow_duplicate=True),
+              Input({"type": "pend-confirm-prop", "index": ALL}, "n_clicks"),
+              State("refresh", "data"), prevent_initial_call=True)
+def on_confirm_proposal(clicks, ref):
+    """
+    (A.3) Confirma la descomposición PROPUESTA para un nombre compuesto. Solo
+    aquí se acepta: la propuesta nunca se aplica sola. Una vez confirmada, el
+    string crudo completo queda como alias propio y la próxima vez resuelve
+    directo, sin volver a descomponer.
+    """
+    trig = callback_context.triggered_id
+    if not isinstance(trig, dict) or not any(c for c in clicks if c):
+        return no_update, no_update, no_update
+    key = trig["index"]
+    e = pending_aliases.get(key)
+    if not e: return no_update, no_update, no_update
+    try:
+        al = confirm_composite_alias(e["texto_crudo"], sorted(e["origenes"])[0])
+    except (AliasConflict, KeyError, ValueError) as exc:
+        return no_update, f"🚫 {exc}", True
+    _propagate_alias_to_layers(key, al.atributos)
+    build_domain_index()
+    det = " + ".join(f"{r}:{a}" for r, a in sorted(al.atributos.items()))
+    return ref + 1, (f"✅ Composición confirmada: «{al.texto_crudo}» → {det}. "
+                     f"Queda almacenada como alias propio."), True
 
 
 @app.callback(Output("refresh", "data", allow_duplicate=True),
@@ -3578,13 +4126,15 @@ def on_alias_add(n, texto, aid, ref):
     if not n: return no_update, no_update, no_update
     if not texto or not aid:
         return no_update, "🚫 Alias: falta el texto crudo o el atributo destino.", True
+    if isinstance(aid, str): aid = [aid]
     try:
-        register_alias(texto, aid, "manual")
+        al = register_alias(texto, aid, "manual")
     except AliasConflict as e:
         return no_update, f"🚫 {e}", True
     except (KeyError, ValueError) as e:
         return no_update, f"🚫 {e}", True
-    return ref + 1, f"✅ Alias «{texto}» → {aid}.", True
+    det = " + ".join(f"{r}:{a}" for r, a in sorted(al.atributos.items()))
+    return ref + 1, f"✅ Alias «{texto}» → {det}.", True
 
 
 @app.callback(Output("refresh", "data", allow_duplicate=True),
@@ -3909,17 +4459,25 @@ def on_dxf(contents_list, filenames, ref):
                 bloqueadas.append(verdict["mensaje"]); log_warn(verdict["mensaje"]); continue
             lay = Layer(name=name, kind=guess_kind(fname), triangles=tris,
                         bbox_min=bmin, bbox_max=bmax)
-            # (T1.3) Sugerencia automática de atributo canónico. Si el texto no
-            # se reconoce, cae a la bandeja de pendientes: visible y contabilizada.
-            aid = resolve_or_note(name, "dxf_layer")
-            if aid:
-                lay.atributo_id = aid
-                lay.nivel = attr_registry[aid].nivel
+            # (T1.3 / A.3) Sugerencia automática de atributos canónicos. Un
+            # nombre puede resolver a VARIOS roles (Bht_Fk → litología +
+            # alteración). Si el texto no se reconoce cae a la bandeja de
+            # pendientes, donde A.3 puede haber dejado una descomposición
+            # PROPUESTA — que nunca se aplica sola: exige confirmación.
+            m = resolve_or_note(name, "dxf_layer")
+            if m: set_layer_attributes(lay, m)
             layers[name] = lay
             if global_center is None:
                 cx = (bmin[0]+bmax[0])/2; cy = (bmin[1]+bmax[1])/2; cz = (bmin[2]+bmax[2])/2
                 set_center(norte=cy, este=cx, cota=cz)
-            loaded.append(f"{name} ({len(tris)} tri" + (f" → {aid}" if aid else ", sin atributo") + ")")
+            if m:
+                det = " → " + " + ".join(f"{r}:{a}" for r, a in sorted(m.items()))
+            else:
+                prop = (pending_aliases.get(_norm_txt(name)) or {}).get("propuesta")
+                det = (" · descomposición PROPUESTA (confirmar en el panel): "
+                       + " + ".join(f"{r}:{a}" for r, a in sorted(prop["atributos"].items()))
+                       ) if prop else ", sin atributo"
+            loaded.append(f"{name} ({len(tris)} tri{det})")
         except Exception as e:
             errs.append(f"{fname}: {e}")
     wz_state['step1']['dxf_loaded'] = bool(layers)

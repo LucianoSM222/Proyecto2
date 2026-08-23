@@ -23,6 +23,7 @@ sys.path.insert(0, HERE)
 
 import numpy as np
 import geomech_wizard as gw
+from test_support import require_real_data, SkipTest, fixture, skipped_banner
 
 
 def _find(env_var, patterns):
@@ -60,7 +61,7 @@ def _load_real_h5():
 
 # ─── TEST 1: e2e real + regresión exacta del refactor de compute_di ──────────
 def test_e2e_and_di_regression():
-    assert DXF_PATH and DQ_PATH and MW_PATH, "Faltan archivos reales."
+    require_real_data(DXF=DXF_PATH, DQ=DQ_PATH, MW=MW_PATH)
     _reset_state()
     well = _load_real_h5()
     assert len(well.points) == 1743
@@ -92,6 +93,13 @@ def test_e2e_and_di_regression():
 
 
 # ─── TEST 2 (T7): análisis de sensibilidad sin tocar p.di ─────────────────────
+# (A.8) Fixture para pytest: parte del pozo real del e2e; si falta el fixture
+# del canario, se omite en cadena en vez de dar error de fixture.
+@fixture(name="well")
+def _well_fixture():
+    return test_e2e_and_di_regression()
+
+
 def test_sensitivity_analysis(well):
     di_before = [p.di for p in well.points]  # snapshot antes de correr sensibilidad
 
@@ -228,24 +236,31 @@ if __name__ == "__main__":
     print(f"  MW : {MW_PATH}")
     print(f"  DXF: {DXF_PATH}")
     print("-" * 72)
-    ok = True
+    ok = True; n_skip = 0
     well_h5 = None
     try:
         well_h5 = test_e2e_and_di_regression()
+    except SkipTest as e:
+        n_skip += 1; print(skipped_banner('test_e2e_and_di_regression', str(e)))
     except AssertionError as e:
         ok = False; print(f"❌ test_e2e_and_di_regression FALLÓ: {e}")
     print("-" * 72)
     if well_h5 is not None:
         try:
             test_sensitivity_analysis(well_h5)
+        except SkipTest as e:
+            n_skip += 1; print(skipped_banner('test_sensitivity_analysis', str(e)))
         except AssertionError as e:
             ok = False; print(f"❌ test_sensitivity_analysis FALLÓ: {e}")
         print("-" * 72)
     for fn in (test_groupkfold_single_well, test_groupkfold_two_wells, test_groupkfold_three_wells_runs):
         try:
             fn()
+        except SkipTest as e:
+            n_skip += 1; print(skipped_banner(fn.__name__, str(e)))
         except AssertionError as e:
             ok = False; print(f"❌ {fn.__name__} FALLÓ: {e}")
         print("-" * 72)
-    print("RESULTADO:", "✅ TODOS LOS TESTS PASARON" if ok else "❌ HAY TESTS FALLIDOS")
+    print("RESULTADO:", ("✅ TODOS LOS TESTS PASARON" if ok else "❌ HAY TESTS FALLIDOS")
+          + (f"  ({n_skip} omitido(s) por falta de datos)" if n_skip else ""))
     sys.exit(0 if ok else 1)

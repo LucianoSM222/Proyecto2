@@ -177,14 +177,19 @@ def t13_alias_registry():
     section("T1.3 — Registro de alias")
     reset_registry()
 
+    # (A.2) resolve_alias devuelve {rol: atributo_id}, no un id suelto.
     # Insensible a mayúsculas, espacios y acentos; conserva el texto crudo.
     for txt in ("Kfa", "KFA", "  kfa  ", "Albitófiro", "ALBITOFIRO", "albitofiro"):
-        check(gw.resolve_alias(txt) == "Kfa", f'"{txt}" resuelve a Kfa',
-              gw.resolve_alias(txt))
+        check(gw.resolve_alias(txt) == {"litologia": "Kfa"},
+              f'"{txt}" resuelve a litologia:Kfa', gw.resolve_alias(txt))
+    check(gw.resolve_alias_rol("KFA", "litologia") == "Kfa",
+          "resolve_alias_rol extrae el id de un rol")
+    check(gw.resolve_alias_rol("KFA", "alteracion") is None,
+          "y no inventa un atributo para un rol que el alias no tiene")
     al = gw.register_alias("  Alb Porf  ", "Kfa", "dxf_layer")
     check(al.texto_crudo == "Alb Porf",
           "el alias almacenado conserva el texto crudo original", al.texto_crudo)
-    check(gw.resolve_alias("alb  porf") == "Kfa",
+    check(gw.resolve_alias("alb  porf") == {"litologia": "Kfa"},
           "el emparejamiento normaliza espacios internos")
 
     # Un alias apunta a exactamente un atributo: mapearlo a dos es ERROR.
@@ -194,7 +199,7 @@ def t13_alias_registry():
     except gw.AliasConflict as e:
         err = e
     check(err is not None, "mapear un alias a dos atributos lanza AliasConflict")
-    check(gw.resolve_alias("Alb Porf") == "Kfa",
+    check(gw.resolve_alias("Alb Porf") == {"litologia": "Kfa"},
           "tras el conflicto el alias original queda intacto")
 
     # Atributo inexistente → error, no alias huérfano.
@@ -206,7 +211,7 @@ def t13_alias_registry():
 
     # Bandeja de pendientes: visible y contabilizada.
     gw.pending_aliases.clear()
-    check(gw.resolve_or_note("Pórfido Nuevo", "dxf_layer") is None,
+    check(gw.resolve_or_note("Pórfido Nuevo", "dxf_layer") == {},
           "un texto no reconocido no se inventa")
     check(gw.pending_alias_count() == 1, "cae en la bandeja de pendientes",
           gw.pending_aliases)
@@ -234,9 +239,10 @@ def t13_alias_registry():
 def _mk_layer(name, kind="litologia", attr=None, nivel=None):
     lay = gw.Layer(name=name, kind=kind, triangles=np.zeros((0, 3, 3)),
                    bbox_min=np.zeros(3), bbox_max=np.zeros(3))
-    lay.atributo_id = attr
-    lay.nivel = nivel if nivel is not None else (
-        gw.attr_registry[attr].nivel if attr in gw.attr_registry else None)
+    if attr:
+        gw.set_layer_attributes(lay, {gw.attr_registry[attr].rol: attr})
+    if nivel is not None:
+        lay.nivel = nivel
     gw.layers[name] = lay
     return lay
 
@@ -244,57 +250,70 @@ def _mk_layer(name, kind="litologia", attr=None, nivel=None):
 def t14_overlap():
     section("T1.4 — Resolución de traslape por nivel")
     reset_registry()
-    _mk_layer("malla_Kfa", attr="Kfa")                       # unidad
-    _mk_layer("malla_Bht", attr="Bht")                       # unidad
-    _mk_layer("malla_basal", attr="Kpcsb_basal")             # unidad (padre)
-    _mk_layer("malla_mixta", attr="Brecha_mixta")            # subunidad de basal
-    _mk_layer("malla_sedim", attr="Kpcsb_sedimentaria")      # subunidad de basal
-    _mk_layer("malla_lutN", attr="Lutitas_normales")         # subunidad de Kpcs
-    _mk_layer("malla_libre")                                 # nivel no declarado
 
-    r = gw.resolve_lito_overlap([])
-    check(r == (None, ""), "sin aciertos → sin litología", r)
+    def R(*idents, rol="litologia"):
+        """Atajo: resuelve un traslape dentro de un rol."""
+        return gw._resolve_one_role(rol, list(idents))
 
-    r = gw.resolve_lito_overlap(["malla_Kfa"])
-    check(r == ("malla_Kfa", ""), "una sola malla gana limpio", r)
+    check(R() == (None, ""), "sin aciertos → sin litología", R())
+    check(R("Kfa") == ("Kfa", ""), "un solo atributo gana limpio", R("Kfa"))
 
-    # unidad + su propia subunidad → gana la subunidad. NO es conflicto.
-    n, m = gw.resolve_lito_overlap(["malla_basal", "malla_mixta"])
-    check(n == "malla_mixta" and m == "subunidad_gana",
-          "unidad + su propia subunidad → gana la subunidad", (n, m))
-    n, m = gw.resolve_lito_overlap(["malla_mixta", "malla_basal"])
-    check(n == "malla_mixta", "el resultado no depende del orden de carga", (n, m))
+    # Anidamiento: unidad + su propia subunidad → gana la subunidad.
+    n, m = R("Kpcsb_basal", "Brecha_mixta")
+    check(n == "Brecha_mixta" and m == "subunidad_gana",
+          "Anidamiento: unidad + su propia subunidad → gana la subunidad", (n, m))
+    check(R("Brecha_mixta", "Kpcsb_basal")[0] == "Brecha_mixta",
+          "el resultado no depende del orden de carga")
 
-    # dos unidades distintas → ambiguo
-    n, m = gw.resolve_lito_overlap(["malla_Kfa", "malla_Bht"])
+    # Conflicto: dos atributos del mismo rol.
+    n, m = R("Kfa", "Bht")
     check(n is None and m == "dos unidades distintas",
-          "dos unidades distintas → ambiguo", (n, m))
-
-    # dos subunidades del mismo padre → ambiguo
-    n, m = gw.resolve_lito_overlap(["malla_mixta", "malla_sedim"])
+          "Conflicto: dos unidades distintas → ambiguo", (n, m))
+    n, m = R("Brecha_mixta", "Kpcsb_sedimentaria")
     check(n is None and m == "dos subunidades del mismo padre",
-          "dos subunidades del mismo padre → ambiguo", (n, m))
-
-    # dos subunidades de padres distintos → ambiguo
-    n, m = gw.resolve_lito_overlap(["malla_mixta", "malla_lutN"])
+          "Conflicto: dos subunidades del mismo padre → ambiguo", (n, m))
+    n, m = R("Brecha_mixta", "Lutitas_normales")
     check(n is None and m == "dos subunidades de padres distintos",
-          "dos subunidades de padres distintos → ambiguo", (n, m))
-
-    # subunidad + unidad AJENA → ambiguo (no gana la subunidad)
-    n, m = gw.resolve_lito_overlap(["malla_mixta", "malla_Kfa"])
+          "Conflicto: dos subunidades de padres distintos → ambiguo", (n, m))
+    n, m = R("Brecha_mixta", "Kfa")
     check(n is None and "unidad ajena" in m,
           "subunidad + unidad ajena → ambiguo", (n, m))
 
-    # nivel no declarado → ambiguo, nunca ganador arbitrario
-    n, m = gw.resolve_lito_overlap(["malla_Kfa", "malla_libre"])
+    # Nivel no declarado → ambiguo, nunca ganador arbitrario.
+    n, m = R("Kfa", "malla_sin_vocabulario")
     check(n is None and "nivel no declarado" in m,
-          "traslape con capa de nivel no declarado → ambiguo", (n, m))
+          "traslape con identidad de nivel no declarado → ambiguo", (n, m))
 
-    # misma unidad modelada en dos mallas → no es conflicto
-    _mk_layer("malla_Kfa_b", attr="Kfa")
-    n, m = gw.resolve_lito_overlap(["malla_Kfa", "malla_Kfa_b"])
-    check(n is not None and m == "",
-          "la misma unidad en dos mallas no es conflicto", (n, m))
+    # El mismo atributo repetido en varias mallas no es conflicto.
+    check(R("Kfa", "Kfa") == ("Kfa", ""),
+          "el mismo atributo en dos mallas no es conflicto", R("Kfa", "Kfa"))
+
+    # ── Composición y Predominio, sobre el resolvedor completo ───────────────
+    res, motivo, anid = gw.resolve_overlap_by_role(
+        {"litologia": ["Bht"], "alteracion": ["Fk"]})
+    check(res == {"litologia": "Bht", "alteracion": "Fk"} and not motivo,
+          "Composición: roles distintos conviven, no compiten", (res, motivo))
+    check(gw.make_dominio("Bht", "Fk", None) == "Bht~Fk",
+          "la clave de dominio es el par (litología, alteración)")
+
+    res, motivo, _ = gw.resolve_overlap_by_role(
+        {"litologia": ["Kfa", "Bht"], "alteracion": ["Fk"]})
+    check(res == {} and motivo == "dos unidades distintas",
+          "un Conflicto en un rol invalida el punto completo", (res, motivo))
+
+    check(gw.make_dominio("Bht", "Fk", "FallaX") == "Bht::FallaX",
+          "Predominio: con estructura, ella define el dominio")
+    check(gw.make_dominio(None, "Fk", None) is None,
+          "una alteración sola no define dominio")
+
+    # Fk y Kfa: strings casi invertidos, roles OPUESTOS. No colisionan.
+    check(gw.attr_registry["Fk"].rol == "alteracion"
+          and gw.attr_registry["Kfa"].rol == "litologia",
+          "Fk es alteración y Kfa es litología")
+    res, motivo, _ = gw.resolve_overlap_by_role(
+        {"litologia": ["Kfa"], "alteracion": ["Fk"]})
+    check(not motivo and res == {"litologia": "Kfa", "alteracion": "Fk"},
+          "Kfa + Fk se COMPONEN (roles distintos), no entran en conflicto", res)
     reset_registry()
 
 
@@ -307,7 +326,10 @@ def t14_composition():
         """Malla que 'contiene' los índices de punto que se le declaren."""
         def __init__(self, name, kind, idxs, attr=None):
             self.name, self.kind, self.idxs = name, kind, set(idxs)
-            self.atributo_id = attr
+            # (A.2) La capa aporta {rol: atributo_id}. Sin atributo asignado la
+            # identidad cae al nombre de la capa y su nivel queda no declarado.
+            self.atributos = ({gw.attr_registry[attr].rol: attr}
+                              if attr in gw.attr_registry else {})
             self.nivel = gw.attr_registry[attr].nivel if attr in gw.attr_registry else None
             self.triangles = np.zeros((0, 3, 3))
             self.bbox_min = np.zeros(3); self.bbox_max = np.zeros(3)
@@ -326,7 +348,7 @@ def t14_composition():
                 FakeLayer("basal_m", "litologia", [5], "Kpcsb_basal"),
                 FakeLayer("mixta_m", "litologia", [5], "Brecha_mixta"),
                 FakeLayer("FallaA", "estructura", [1]),
-                FakeLayer("Argilica", "alteracion", [2, 3])]:
+                FakeLayer("Fk_m", "alteracion", [2, 3], "Fk")]:
         gw.layers[lay.name] = lay
 
     orig = gw.points_in_mesh
@@ -337,33 +359,36 @@ def t14_composition():
     finally:
         gw.points_in_mesh = orig
 
-    check(pts[0].dominio == "Kfa_m" and pts[0].atributo_id == "Kfa",
-          "litología sola → dominio = litología, con atributo canónico",
+    # El dominio se expresa en ATRIBUTOS CANÓNICOS, no en nombres de capa:
+    # así no depende de cómo vino empaquetada la información.
+    check(pts[0].dominio == "Kfa" and pts[0].atributo_id == "Kfa",
+          "litología sola → dominio = atributo canónico",
           (pts[0].dominio, pts[0].atributo_id))
-    check(pts[1].dominio == "Kfa_m::FallaA",
+    check(pts[1].dominio == "Kfa::FallaA",
           "litología + estructura → la estructura predomina", pts[1].dominio)
-    check(pts[2].dominio == "Kfa_m~Argilica" and pts[2].alteracion == "Argilica",
-          "litología + alteración → se componen", pts[2].dominio)
-    check(pts[3].dominio is None and pts[3].alteracion == "Argilica",
+    check(pts[2].dominio == "Kfa~Fk" and pts[2].alteracion == "Fk",
+          "litología + alteración → se componen (Kfa + Fk, roles opuestos)",
+          pts[2].dominio)
+    check(pts[3].dominio is None and pts[3].alteracion == "Fk",
           "alteración sola NO define dominio", pts[3].dominio)
     check(pts[4].ambiguo and pts[4].dominio is None and pts[4].lito is None,
           "traslape de dos unidades → punto excluido del dominio", pts[4].__dict__)
     check(pts[4].ambiguo_motivo == "dos unidades distintas",
           "el motivo de la ambigüedad queda registrado en el punto",
           pts[4].ambiguo_motivo)
-    check(not pts[5].ambiguo and pts[5].dominio == "mixta_m",
+    check(not pts[5].ambiguo and pts[5].dominio == "Brecha_mixta",
           "unidad + su subunidad se resuelve, no se excluye", pts[5].dominio)
 
     ov = gw.overlap_stats
     check(ov["n_puntos"] == 6 and ov["n_ambiguos"] == 1 and ov["n_subunidad_gana"] == 1,
           "la contabilidad de traslapes cuadra", ov)
-    check("Bht_m | Kfa_m" in ov["casos"],
+    check(any("Bht" in c and "Kfa" in c for c in ov["casos"]),
           "el caso concreto de traslape queda reportado, no descartado en silencio",
           ov["casos"])
 
     # El punto ambiguo no puede etiquetar el entrenamiento.
     gw.build_domain_index()
-    gw.domains.setdefault("Kfa_m", {})["ucs_lab"] = 289.6
+    gw.domains.setdefault("Kfa", {})["ucs_lab"] = 289.6
     X, y, g, _ = gw._get_train_data(0, 450)
     check(len(X) >= 1, "los puntos limpios sí entrenan", len(X))
     reset_registry()
@@ -386,8 +411,8 @@ def t15_blocking():
     check("Kfa" not in ids, "Kfa no bloquea: tiene ancla de laboratorio")
 
     msg = gw.training_block_message(bl)
-    check(msg.startswith("No se puede entrenar: 3 atributos sin banda de UCS asignada"),
-          "el mensaje nombra cuántos faltan", msg)
+    check(msg.startswith("No se puede entrenar: 3 litologías sin banda de UCS asignada"),
+          "el mensaje nombra cuántas litologías faltan", msg)
     for frag in ("Bht 576,9 m", "Kpcli 20,8 m", "DL 3,1 m"):
         check(frag in msg, f"el mensaje declara el metraje de {frag.split()[0]}", msg)
     check("excluir explícitamente" in msg,
@@ -490,7 +515,7 @@ def t17_persistence():
     data = json.loads(blob)
     check(data["schema"] == "mwd-geomech-vocabulario", "el JSON declara su esquema")
     check(data["sitio_activo"] == "MPC", "el JSON declara el sitio")
-    check(len(data["atributos"]) == 10, "exporta los 10 atributos",
+    check(len(data["atributos"]) == 11, "exporta los 11 atributos",
           len(data["atributos"]))
     check(any(a["id"] == "Bht" and a["ucs_media"] == 155.5 for a in data["atributos"]),
           "las ediciones numéricas viajan en el export")
@@ -511,11 +536,12 @@ def t17_persistence():
     gw.pending_aliases.clear(); gw.attribute_exclusions.clear()
     res = gw.import_vocabulary(blob, replace=True)
     check(not res["errores"], "la importación no arroja errores", res["errores"])
-    check(len(gw.attr_registry) == 10, "10 atributos restaurados", len(gw.attr_registry))
+    check(len(gw.attr_registry) == 11, "11 atributos restaurados", len(gw.attr_registry))
     check(gw.attr_registry["Bht"].ucs_media == 155.5, "valor editado sobrevive")
     check(gw.attr_registry["Kfa"].ucs_sd is None,
           "el None de ucs_sd sobrevive (no se convierte en 0)")
-    check(gw.resolve_alias("zona  x") == "Kfa", "el alias sobrevive y sigue normalizando")
+    check(gw.resolve_alias("zona  x") == {"litologia": "Kfa"},
+          "el alias sobrevive y sigue normalizando")
     check("DL" in gw.attribute_exclusions, "la exclusión sobrevive")
     check(gw.pending_alias_count() == 1, "el pendiente sobrevive")
     check(gw.attr_registry["Brecha_mixta"].padre == "Kpcsb_basal",
@@ -620,6 +646,256 @@ def geometry_regression():
     reset_registry()
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+#  ADENDA A — rol, alias por rol, descomposición, exención de fixture
+# ═════════════════════════════════════════════════════════════════════════════
+
+def a1_roles():
+    section("A.1 — Campo rol en el atributo canónico")
+    reset_registry()
+    check(gw.ATTR_ROLES == ("litologia", "alteracion", "estructura"),
+          "la enumeración de roles tiene los valores iniciales", gw.ATTR_ROLES)
+
+    # Migración: todos los prepoblados de litología llevan rol="litologia".
+    migrados = ["Kfa", "Bht", "Kpcli", "DL", "Brecha_mixta", "Kpcsb_sedimentaria",
+                "Lutitas_normales", "Lutitas_metamorfoseadas"]
+    for aid in migrados:
+        check(gw.attr_registry[aid].rol == "litologia",
+              f"{aid} migrado a rol litologia", gw.attr_registry[aid].rol)
+
+    fk = gw.attr_registry["Fk"]
+    check(fk.nombre_oficial == "Feldespato potásica" and fk.rol == "alteracion",
+          "Fk → Feldespato potásica, rol alteracion", (fk.nombre_oficial, fk.rol))
+
+    # La colisión Fk ↔ Kfa queda registrada en las notas de AMBOS.
+    for aid in ("Fk", "Kfa"):
+        n = gw.attr_registry[aid].notas
+        check("COLISIÓN DE NOMENCLATURA Fk ↔ Kfa" in n,
+              f"la colisión Fk/Kfa está registrada en las notas de {aid}")
+    check("66%" in gw.attr_registry["Kfa"].notas,
+          "la nota consigna el 66% del metraje que estuvo en riesgo")
+
+    # Los campos de banda solo aplican a litología.
+    check(gw.attr_registry["Kfa"].usa_banda_ucs(), "la litología usa banda de UCS")
+    check(not fk.usa_banda_ucs(), "la alteración NO usa banda de UCS")
+    check(fk.tiene_banda_ucs() is False, "y por tanto nunca 'tiene' banda")
+    check(fk.pi_factor() is None, "una alteración no tiene factor de intervalo")
+
+    # Ensuciar una alteración con banda es un error reportado.
+    fk.ucs_media = 120.0
+    errs = gw.validate_attribute_tree()
+    check(any("no lleva banda de UCS" in e for e in errs),
+          "poner banda a una alteración se reporta como error", errs)
+    fk.ucs_media = None
+
+    # Un rol inválido y una jerarquía entre roles distintos se reportan.
+    gw.attr_registry["X1"] = gw.Attribute(id="X1", nombre_oficial="X", rol="inventado")
+    check(any("rol inválido" in e for e in gw.validate_attribute_tree()),
+          "un rol fuera de la enumeración se reporta")
+    del gw.attr_registry["X1"]
+    gw.attr_registry["X2"] = gw.Attribute(id="X2", nombre_oficial="X",
+                                          rol="alteracion", nivel="subunidad",
+                                          padre="Kfa")
+    check(any("distinto del rol de su padre" in e for e in gw.validate_attribute_tree()),
+          "una subunidad con padre de otro rol se reporta")
+    del gw.attr_registry["X2"]
+    reset_registry()
+
+
+def a2_alias_por_rol():
+    section("A.2 — Alias que resuelven a un conjunto por rol")
+    reset_registry()
+    check(gw.resolve_alias("Kfa") == {"litologia": "Kfa"},
+          "un alias simple resuelve a un solo rol")
+    check(gw.resolve_alias("Fk") == {"alteracion": "Fk"},
+          "Fk resuelve al rol alteracion", gw.resolve_alias("Fk"))
+
+    # Bht_Fk debe resolver a DOS atributos de roles distintos.
+    al = gw.register_alias("Bht_Fk", ["Bht", "Fk"], "dxf_layer")
+    check(gw.resolve_alias("Bht_Fk") == {"litologia": "Bht", "alteracion": "Fk"},
+          "Bht_Fk resuelve a dos atributos de roles distintos",
+          gw.resolve_alias("Bht_Fk"))
+    check(al.es_compuesto(), "el alias se reconoce como compuesto")
+    check(gw.resolve_alias("BHT_FK") == {"litologia": "Bht", "alteracion": "Fk"},
+          "y sigue siendo insensible a mayúsculas")
+
+    # Dos atributos del MISMO rol en un alias → error, no advertencia.
+    err = None
+    try:
+        gw.register_alias("Mezcla", ["Kfa", "Bht"], "manual")
+    except gw.AliasConflict as e:
+        err = e
+    check(err is not None,
+          "dos atributos del mismo rol en un alias lanza AliasConflict", err)
+    check(gw.resolve_alias("Mezcla") == {}, "y el alias no queda a medias")
+
+    # Reasignar un rol ya ocupado también es conflicto.
+    err = None
+    try:
+        gw.register_alias("Bht_Fk", {"litologia": "Kfa"}, "manual")
+    except gw.AliasConflict as e:
+        err = e
+    check(err is not None, "cambiar el atributo de un rol ya fijado es conflicto", err)
+    check(gw.resolve_alias("Bht_Fk")["litologia"] == "Bht",
+          "el mapeo original sobrevive al intento")
+
+    # Añadir un rol NUEVO a un alias existente sí se permite (merge).
+    gw.register_alias("Bht_Fk", {"estructura": "FallaZ"}, "manual", merge=True) \
+        if "FallaZ" in gw.attr_registry else None
+    check(gw.resolve_alias_rol("Bht_Fk", "litologia") == "Bht",
+          "resolve_alias_rol funciona sobre un alias compuesto")
+    reset_registry()
+
+
+def a3_descomposicion():
+    section("A.3 — Descomposición sugerida de nombres compuestos")
+    reset_registry()
+
+    prop = gw.decompose_layer_name("Bht_Fk")
+    check(prop and prop["atributos"] == {"litologia": "Bht", "alteracion": "Fk"},
+          "Bht_Fk se descompone en litología + alteración", prop)
+    check(prop["sin_resolver"] == [], "sin tokens huérfanos")
+
+    for sep in ("Bht-Fk", "Bht+Fk", "Bht Fk"):
+        p = gw.decompose_layer_name(sep)
+        check(p and p["atributos"] == {"litologia": "Bht", "alteracion": "Fk"},
+              f'el separador de "{sep}" se reconoce', p)
+
+    # Dos tokens del MISMO rol → no se propone nada (ambiguo).
+    check(gw.decompose_layer_name("Bht_Kfa") is None,
+          "dos litologías en un nombre → no se propone nada (ambiguo)")
+    # Un solo token no es composición.
+    check(gw.decompose_layer_name("Bht") is None, "un token solo no es composición")
+    # Token desconocido → se reporta, pero la composición sigue en pie si hay 2 roles.
+    p = gw.decompose_layer_name("Bht_Fk_Zzz")
+    check(p and "Zzz" in p["sin_resolver"],
+          "los tokens sin correspondencia se reportan", p)
+
+    # La composición se PROPONE, nunca se acepta sola.
+    gw.pending_aliases.clear()
+    m = gw.resolve_or_note("Bht_Fk", "dxf_layer")
+    check(m == {}, "el nombre compuesto NO resuelve solo", m)
+    e = gw.pending_aliases[gw._norm_txt("Bht_Fk")]
+    check(e["propuesta"] is not None, "queda en pendientes CON la propuesta")
+    check(gw.pending_with_proposal(), "pending_with_proposal lo lista")
+
+    # Solo al confirmar se almacena como alias propio.
+    al = gw.confirm_composite_alias("Bht_Fk", "dxf_layer")
+    check(gw.resolve_alias("Bht_Fk") == {"litologia": "Bht", "alteracion": "Fk"},
+          "tras confirmar, el string crudo COMPLETO es alias propio")
+    check(al.texto_crudo == "Bht_Fk", "conserva el texto crudo", al.texto_crudo)
+    check(gw.pending_alias_count() == 0, "y sale de la bandeja")
+    # La próxima vez resuelve directo, sin volver a descomponer.
+    check(gw._norm_txt("Bht_Fk") in gw.alias_registry,
+          "queda cacheado: no hay que descomponer de nuevo")
+
+    # Confirmar algo sin propuesta vigente es un error.
+    try:
+        gw.confirm_composite_alias("NoExisteNada"); ok = False
+    except ValueError:
+        ok = True
+    check(ok, "confirmar sin propuesta vigente lanza ValueError")
+    reset_registry()
+
+
+def a4_bloqueo_solo_litologias():
+    section("A.4 — El bloqueo alcanza solo a las litologías")
+    reset_registry()
+    _mk_layer("capa_Fk", attr="Fk")
+    check(gw.attr_registry["Fk"].calidad == 0, "Fk sigue con calidad 0")
+    check(not gw.training_blockers(),
+          "Fk (calidad 0, rol alteración) NO bloquea el entrenamiento",
+          gw.training_blockers())
+    check(gw.training_block_message() is None, "no hay mensaje de bloqueo")
+
+    # Una litología sin banda SÍ bloquea, y se la nombra.
+    _mk_layer("capa_Bht", attr="Bht")
+    bl = gw.training_blockers()
+    check({b["id"] for b in bl} == {"Bht"},
+          "una litología sin banda sí bloquea, y solo ella", {b["id"] for b in bl})
+    check("Bht" in gw.training_block_message(),
+          "el mensaje la nombra", gw.training_block_message())
+    check(bl[0]["rol"] == "litologia", "el bloqueador reporta su rol", bl[0])
+
+    # Una estructura sin banda tampoco bloquea.
+    gw.attr_registry["FallaY"] = gw.Attribute(id="FallaY", nombre_oficial="Falla Y",
+                                              rol="estructura", calidad=0)
+    _mk_layer("capa_falla", attr="FallaY")
+    check({b["id"] for b in gw.training_blockers()} == {"Bht"},
+          "una estructura sin banda tampoco bloquea")
+
+    # Y Fk sigue componiendo dominio pese a no tener banda.
+    check(gw.attr_registry["Fk"].entrenable() == (True, ""),
+          "Fk se declara apto: su rol no lleva banda")
+    reset_registry()
+
+
+def a7_exencion_fixture():
+    section("A.7 — Exención explícita del guardián para fixtures")
+    reset_registry()
+    gw.allow_site_fixtures(False)
+
+    # Por el flujo NORMAL, Bht_Fk.dxf (Mina Granate) debe disparar la advertencia.
+    v = gw.site_guard(373936.0, 6960177.0, "Bht_Fk", "malla DXF", token="dxf:Bht_Fk")
+    check(not v["ok"],
+          "sin exención habilitada, el fixture de Granate NO pasa", v)
+    check(3000 <= v["dist_m"] <= 3100,
+          f"y reporta ~3.050 m ({v['dist_m']} m)", v["dist_m"])
+
+    # Con la exención habilitada, el token declarado pasa — y lo dice.
+    gw.site_pending_confirms.clear()
+    gw.allow_site_fixtures(True)
+    v = gw.site_guard(373936.0, 6960177.0, "Bht_Fk", "malla DXF", token="dxf:Bht_Fk")
+    check(v["ok"] and v.get("fixture"), "con la exención habilitada, pasa como fixture", v)
+    check("EXENTO como fixture declarado" in v["mensaje"],
+          "y el mensaje declara que es una exención, no un pase silencioso",
+          v["mensaje"])
+    check("Mina Granate" in v["mensaje"],
+          "la razón declarada viaja en el mensaje", v["mensaje"])
+
+    # La exención es POR TOKEN: otro objeto de Granate sigue bloqueado.
+    v = gw.site_guard(373936.0, 6960177.0, "OtraMalla", "malla DXF")
+    check(not v["ok"],
+          "la exención no se contagia a otros objetos del mismo sitio ajeno", v)
+
+    # Y su AUSENCIA hace fallar: sin declararlo, no hay pase.
+    quitado = gw.SITE_FIXTURE_EXEMPTIONS.pop("dxf:Bht_Fk")
+    gw.site_pending_confirms.clear()
+    v = gw.site_guard(373936.0, 6960177.0, "Bht_Fk", "malla DXF", token="dxf:Bht_Fk")
+    check(not v["ok"],
+          "sin la declaración en SITE_FIXTURE_EXEMPTIONS el fixture NO pasa", v)
+    gw.SITE_FIXTURE_EXEMPTIONS["dxf:Bht_Fk"] = quitado
+
+    gw.allow_site_fixtures(False)
+    check(gw.site_fixture_exempt("dxf:Bht_Fk") is None,
+          "la aplicación corre con las exenciones apagadas por defecto")
+    reset_registry()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Punto de entrada para pytest: corre todas las comprobaciones y falla si
+# alguna no pasó. Así esta suite cuenta en `pytest` igual que en ejecución
+# directa, en vez de quedar invisible por no llamarse test_*.
+def test_p1_fundaciones():
+    FAILURES.clear()
+    t11_site_guard()
+    t12_attribute_registry()
+    t13_alias_registry()
+    t14_overlap()
+    t14_composition()
+    t15_blocking()
+    t16_ucs_bounds()
+    t17_persistence()
+    t18_ui()
+    a1_roles()
+    a2_alias_por_rol()
+    a3_descomposicion()
+    a4_bloqueo_solo_litologias()
+    a7_exencion_fixture()
+    geometry_regression()
+    assert not FAILURES, f"{len(FAILURES)} comprobación(es) fallida(s): " + "; ".join(FAILURES)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     t11_site_guard()
@@ -631,6 +907,11 @@ if __name__ == "__main__":
     t16_ucs_bounds()
     t17_persistence()
     t18_ui()
+    a1_roles()
+    a2_alias_por_rol()
+    a3_descomposicion()
+    a4_bloqueo_solo_litologias()
+    a7_exencion_fixture()
     geometry_regression()
 
     print(f"\n{'='*70}")
