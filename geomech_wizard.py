@@ -41,10 +41,611 @@ IR, DR = f"{{{NS_IR}}}", f"{{{NS_DR}}}"
 
 ML_FEATURES = ["vel","pp","pa","pd","pr","pf","se"]
 ML_LABELS   = ["ROP","PP","AP","DP","RP","FP","SE"]
-UCS_CONFIG = {"physical_min":25.0,"physical_max":280.0,"warning_min":50.0,"warning_max":230.0,"default_min":60.0,"default_max":210.0}
+# (P1-T1.6) Límites físicos de UCS: 0 a 450 MPa. El rango anterior (25–280)
+# no era físico sino operacional, y al estar cableado como `min`/`max` del
+# componente Dash provocaba que un valor superior devolviera None y la
+# expresión `float(v or default)` cayera al valor por defecto — excluyendo en
+# silencio una litología completa. Los límites de aviso (warning_*) son
+# orientativos y NUNCA truncan: solo colorean. Los defaults abarcan todo el
+# rango físico para que ninguna banda quede fuera sin decisión explícita.
+UCS_CONFIG = {"physical_min":0.0,"physical_max":450.0,"warning_min":50.0,"warning_max":350.0,"default_min":0.0,"default_max":450.0}
 PALETTE = ["#3B8BD4","#D05538","#5DCAA5","#EF9F27","#D4537E","#7F77DD","#2ECC71","#E74C3C","#F39C12","#1ABC9C","#9B59B6","#F1C40F","#E67E22","#BDC3C7"]
 EPS = 1e-9
 PARSE_BUDGET_S = 12.0
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  P1 — FUNDACIONES: partición por sitio y registro de vocabulario        ║
+# ║                                                                          ║
+# ║  Esta capa hace la herramienta portable a otras minas e impide que un   ║
+# ║  dato de un sitio contamine otro. Convierte los datos faltantes (como   ║
+# ║  el UCS de Bht) en estados manejados en vez de bloqueos mudos.          ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+# ─── T1.1 · CONSTANTE DE SITIO Y GUARDIÁN POR COORDENADAS ────────────────────
+# Principio: las coordenadas son la autoridad de pertenencia a un sitio. Ni el
+# nombre del archivo ni el desplegable que eligió el usuario deciden nada.
+
+SITE_REGISTRY: Dict[str, Dict] = {
+    "MPC": {
+        "id": "MPC",
+        "display": "Punta del Cobre",
+        # Envolvente UTM de los 11 sondajes MPC (WGS84 19S).
+        "este_min": 376521.0, "este_max": 377005.0,
+        "norte_min": 6958752.0, "norte_max": 6959323.0,
+        "margen_m": 1500.0,
+        "notas": "Mina subterránea de cobre, Sub Level Stoping. Convenio Pucobre.",
+    },
+}
+ACTIVE_SITE = "MPC"
+
+# Objetos cuya carga disparó la advertencia de sitio y esperan confirmación
+# explícita. Cada entrada: {token, etiqueta, tipo, este, norte, dist_m,
+# umbral_m, confirmado, ts}. El guardián NO carga nada por su cuenta: devuelve
+# un veredicto y el llamador decide.
+site_pending_confirms: List[Dict] = []
+# Tokens que el usuario confirmó explícitamente ("sí, cárgalo igual").
+site_confirmed_tokens: set = set()
+
+
+def active_site() -> Dict:
+    """Config del sitio activo. Falla ruidosamente si el id no existe."""
+    if ACTIVE_SITE not in SITE_REGISTRY:
+        raise KeyError(f"Sitio activo '{ACTIVE_SITE}' no está en SITE_REGISTRY.")
+    return SITE_REGISTRY[ACTIVE_SITE]
+
+
+def site_centroid(site_id: Optional[str] = None) -> Tuple[float, float]:
+    """Centroide (este, norte) de la envolvente declarada del sitio."""
+    s = SITE_REGISTRY[site_id or ACTIVE_SITE]
+    return ((s["este_min"] + s["este_max"]) / 2.0,
+            (s["norte_min"] + s["norte_max"]) / 2.0)
+
+
+def site_guard(este: float, norte: float, etiqueta: str, tipo: str = "objeto",
+               token: Optional[str] = None) -> Dict:
+    """
+    Evalúa si un objeto cargado pertenece al sitio activo, por coordenadas.
+
+    `este`/`norte` son el centroide del objeto (malla DXF, collar de sondaje,
+    nube de puntos MWD). Devuelve un veredicto:
+
+        {"ok": bool, "dist_m": float, "umbral_m": float, "sitio": str,
+         "mensaje": str, "token": str, "confirmado": bool}
+
+    ok=True  → dentro del margen, o ya confirmado explícitamente por el usuario.
+    ok=False → excede el margen y NO hay confirmación: el llamador debe abstenerse
+               de cargar y encolar el objeto en site_pending_confirms.
+
+    Nunca carga ni descarta por su cuenta, y nunca aplica un default.
+    """
+    s = active_site()
+    tok = token or f"{tipo}:{etiqueta}"
+    if este is None or norte is None or not (np.isfinite(este) and np.isfinite(norte)):
+        return {"ok": False, "dist_m": None, "umbral_m": s["margen_m"], "sitio": s["id"],
+                "token": tok, "confirmado": False,
+                "mensaje": (f'"{etiqueta}": centroide no calculable (coordenadas no finitas). '
+                            f"No se puede verificar pertenencia al sitio {s['display']}.")}
+    cx, cy = site_centroid()
+    dist = float(np.hypot(este - cx, norte - cy))
+    if dist <= s["margen_m"]:
+        return {"ok": True, "dist_m": round(dist, 1), "umbral_m": s["margen_m"],
+                "sitio": s["id"], "token": tok, "confirmado": False, "mensaje": ""}
+    confirmado = tok in site_confirmed_tokens
+    msg = (f'⚠ "{etiqueta}" ({tipo}) está a {_num_cl(dist)} m del centroide de '
+           f"{s['display']} ({s['id']}); el margen declarado es {_num_cl(s['margen_m'])} m. "
+           f"Centroide del objeto: E {_num_cl(este, 1)} · N {_num_cl(norte, 1)}. "
+           f"Muy probablemente sea de OTRA MINA.")
+    if not confirmado:
+        _queue_site_confirm(tok, etiqueta, tipo, este, norte, dist, s["margen_m"])
+    return {"ok": confirmado, "dist_m": round(dist, 1), "umbral_m": s["margen_m"],
+            "sitio": s["id"], "token": tok, "confirmado": confirmado,
+            "mensaje": msg + (" [confirmado por el usuario]" if confirmado else "")}
+
+
+def _num_cl(x, dec=0):
+    """Número en formato chileno: miles con '.', decimales con ','."""
+    s = f"{x:,.{dec}f}"
+    return s.replace(",", "\x00").replace(".", ",").replace("\x00", ".")
+
+
+def _queue_site_confirm(token, etiqueta, tipo, este, norte, dist, umbral):
+    for e in site_pending_confirms:
+        if e["token"] == token:
+            e.update(dist_m=round(dist, 1), este=este, norte=norte); return
+    site_pending_confirms.append({
+        "token": token, "etiqueta": etiqueta, "tipo": tipo,
+        "este": float(este), "norte": float(norte),
+        "dist_m": round(float(dist), 1), "umbral_m": float(umbral),
+        "ts": time.strftime("%H:%M:%S"),
+    })
+
+
+def confirm_site_token(token: str):
+    """Marca un objeto fuera de envolvente como aceptado explícitamente."""
+    site_confirmed_tokens.add(token)
+    for i, e in enumerate(list(site_pending_confirms)):
+        if e["token"] == token:
+            site_pending_confirms.pop(i); break
+
+
+def discard_site_token(token: str):
+    """Descarta la solicitud de confirmación (el objeto no se carga)."""
+    for i, e in enumerate(list(site_pending_confirms)):
+        if e["token"] == token:
+            site_pending_confirms.pop(i); break
+
+
+# ─── T1.2 · REGISTRO DE ATRIBUTOS CANÓNICOS ──────────────────────────────────
+# El campo `calidad` no es decorativo: modula el ancho del intervalo de
+# predicción del modelo. Un ancla de laboratorio de una sola probeta y un
+# análogo de otra mina no pueden producir la misma confianza.
+
+QUALITY_LABELS = {
+    0: "sin_asignar",
+    1: "ensayo_del_sitio",
+    2: "componente_RMR_local",
+    3: "analogo_del_distrito",
+    4: "literatura",
+}
+# Multiplicador del semiancho del intervalo de predicción según procedencia del
+# ancla de UCS. calidad 0 no tiene factor: no puede entrar al entrenamiento.
+QUALITY_PI_FACTOR = {0: None, 1: 1.00, 2: 1.30, 3: 1.60, 4: 2.00}
+# Ensanche adicional cuando el ancla proviene de una sola probeta (sin SD).
+# El Albitófiro de Karzulovic carece de desviación estándar, lo que sugiere una
+# única probeta: se acepta el valor, pero la incertidumbre debe reflejarlo.
+SINGLE_SPECIMEN_PI_FACTOR = 1.35
+
+
+@dataclass
+class Attribute:
+    """Atributo canónico de vocabulario (unidad o subunidad litológica)."""
+    id: str
+    nombre_oficial: str
+    sitio: str = ACTIVE_SITE
+    nivel: str = "unidad"                    # "unidad" | "subunidad"
+    padre: Optional[str] = None              # id de la unidad que la contiene
+    ucs_min: Optional[float] = None
+    ucs_max: Optional[float] = None
+    ucs_media: Optional[float] = None
+    ucs_sd: Optional[float] = None
+    ucs_n: Optional[int] = None              # nº de probetas (None = desconocido)
+    fuente: str = ""
+    calidad: int = 0
+    fecha: str = ""
+    mi: Optional[float] = None
+    modulo_E: Optional[float] = None         # GPa
+    poisson: Optional[float] = None
+    densidad: Optional[float] = None         # t/m³
+    notas: str = ""
+
+    def tiene_banda_ucs(self) -> bool:
+        """True si hay un ancla de UCS utilizable como etiqueta de entrenamiento."""
+        return any(v is not None for v in (self.ucs_media, self.ucs_min, self.ucs_max))
+
+    def ucs_ancla(self) -> Optional[float]:
+        """Valor puntual de UCS a usar como etiqueta. None si no hay banda."""
+        if self.ucs_media is not None: return float(self.ucs_media)
+        if self.ucs_min is not None and self.ucs_max is not None:
+            return (float(self.ucs_min) + float(self.ucs_max)) / 2.0
+        for v in (self.ucs_min, self.ucs_max):
+            if v is not None: return float(v)
+        return None
+
+    def pi_factor(self) -> Optional[float]:
+        """
+        Factor de ensanche del intervalo de predicción, según la calidad del
+        ancla y si proviene de una sola probeta. None si el atributo no es
+        entrenable (calidad 0 o sin banda).
+        """
+        base = QUALITY_PI_FACTOR.get(self.calidad)
+        if base is None or not self.tiene_banda_ucs(): return None
+        f = base
+        if self.ucs_sd is None and (self.ucs_n is None or self.ucs_n <= 1):
+            f *= SINGLE_SPECIMEN_PI_FACTOR
+        return round(f, 4)
+
+    def entrenable(self) -> Tuple[bool, str]:
+        """(puede entrenar, motivo si no)."""
+        if self.calidad == 0:
+            return False, "calidad 0 (sin_asignar)"
+        if not self.tiene_banda_ucs():
+            return False, "sin banda de UCS asignada"
+        return True, ""
+
+
+attr_registry: Dict[str, Attribute] = {}
+
+
+def seed_attribute_registry(force: bool = False):
+    """
+    Prepobla el registro con la tabla de roca intacta de Karzulovic & Asoc.
+    Ltda., "Evaluación Geotécnica Caserones Mina Punta del Cobre", Tabla 3.2,
+    y con los códigos de unidad observados en los sondajes MPC.
+
+    Trampa de nomenclatura documentada: el código `Kpcsb` se usa en la
+    literatura tanto para la Brecha basal (unidad padre, según Marschik) como
+    para la Brecha sedimentaria (una de sus subunidades, según Ortiz et al.).
+    Se registran con identificadores distintos —`Kpcsb_basal` y
+    `Kpcsb_sedimentaria`— y la ambigüedad queda anotada en ambos.
+    """
+    if attr_registry and not force: return
+    attr_registry.clear()
+    FUENTE_K = "Karzulovic & Asoc. 2005, Tabla 3.2 (roca intacta)"
+    AMB_KPCSB = ("AMBIGÜEDAD DE NOMENCLATURA: el código 'Kpcsb' se usa en la "
+                 "literatura tanto para la Brecha basal (unidad padre, Marschik) "
+                 "como para la Brecha sedimentaria (subunidad, Ortiz et al.). "
+                 "Aquí se distinguen con ids explícitos.")
+    defs = [
+        # ── Unidades observadas en los sondajes MPC ──────────────────────────
+        Attribute(id="Kfa", nombre_oficial="Albitófiro", nivel="unidad",
+                  ucs_min=274.3, ucs_max=304.9, ucs_media=289.6,
+                  ucs_sd=None, ucs_n=None, calidad=1, fuente=FUENTE_K,
+                  mi=11.3, modulo_E=71.6, poisson=0.15, densidad=2.85,
+                  notas=("La tabla no reporta desviación estándar, lo que sugiere una "
+                         "única probeta. Se acepta el valor, pero el intervalo de "
+                         "predicción se ensancha (ucs_n desconocido → marcar). "
+                         "66% del metraje de sondaje MPC (1.176,3 m).")),
+        Attribute(id="Bht", nombre_oficial="Brecha Hidrotermal", nivel="unidad",
+                  calidad=0, densidad=2.97,
+                  notas=("SIN UCS DE LABORATORIO — en gestión con geología. "
+                         "33% del metraje MPC (576,9 m). No es una brecha débil: "
+                         "RQD mediana 92,0 (mejor que el Albitófiro) y densidad media "
+                         "2,97 t/m³ (máx 4,09), coherente con brecha mineralizada bien "
+                         "cementada (magnetita/sulfuros).")),
+        Attribute(id="Kpcli", nombre_oficial="Lavas Inferiores", nivel="unidad",
+                  calidad=0,
+                  notas="Sin UCS de laboratorio. 1,2% del metraje MPC (20,8 m)."),
+        Attribute(id="DL", nombre_oficial="Sin identificar", nivel="unidad",
+                  calidad=0,
+                  notas="Código sin identificar en los sondajes. 0,2% del metraje MPC (3,1 m)."),
+        # ── Brecha basal y sus subunidades ───────────────────────────────────
+        Attribute(id="Kpcsb_basal", nombre_oficial="Brecha basal", nivel="unidad",
+                  calidad=0, fuente="Marschik (nomenclatura)", notas=AMB_KPCSB),
+        Attribute(id="Brecha_mixta", nombre_oficial="Brecha mixta", nivel="subunidad",
+                  padre="Kpcsb_basal",
+                  ucs_min=82.6, ucs_max=141.7, ucs_media=111.5, ucs_sd=23.6,
+                  calidad=1, fuente=FUENTE_K,
+                  mi=7.6, modulo_E=17.3, poisson=0.20, densidad=2.80,
+                  notas="CV = 0,212."),
+        Attribute(id="Kpcsb_sedimentaria", nombre_oficial="Brecha sedimentaria",
+                  nivel="subunidad", padre="Kpcsb_basal",
+                  ucs_min=77.4, ucs_max=98.7, ucs_media=83.6, ucs_sd=8.6,
+                  calidad=1, fuente=FUENTE_K,
+                  mi=19.1, modulo_E=12.8, poisson=0.22, densidad=2.76,
+                  notas="CV = 0,103. " + AMB_KPCSB),
+        # ── Miembro Trinidad y sus subunidades ───────────────────────────────
+        Attribute(id="Kpcs", nombre_oficial="Miembro Trinidad", nivel="unidad",
+                  calidad=0, notas="Unidad padre de las lutitas."),
+        Attribute(id="Lutitas_normales", nombre_oficial="Lutitas normales",
+                  nivel="subunidad", padre="Kpcs",
+                  ucs_min=117.1, ucs_max=134.9, ucs_media=126.0, ucs_sd=12.6,
+                  calidad=1, fuente=FUENTE_K,
+                  mi=15.8, modulo_E=16.4, poisson=0.28, densidad=2.45,
+                  notas="CV = 0,100."),
+        Attribute(id="Lutitas_metamorfoseadas", nombre_oficial="Lutitas metamorfoseadas",
+                  nivel="subunidad", padre="Kpcs",
+                  ucs_min=186.8, ucs_max=221.8, ucs_media=204.3, ucs_sd=24.8,
+                  calidad=1, fuente=FUENTE_K,
+                  mi=20.8, modulo_E=89.0, poisson=0.115, densidad=2.50,
+                  notas="CV = 0,121."),
+    ]
+    for a in defs:
+        attr_registry[a.id] = a
+    _seed_default_aliases()
+
+
+def attribute_children(attr_id: str) -> List[str]:
+    """Ids de las subunidades cuyo padre es `attr_id`."""
+    return [a.id for a in attr_registry.values() if a.padre == attr_id]
+
+
+def validate_attribute_tree() -> List[str]:
+    """Errores estructurales del registro (padres inexistentes, niveles rotos)."""
+    errs = []
+    for a in attr_registry.values():
+        if a.nivel not in ("unidad", "subunidad"):
+            errs.append(f"{a.id}: nivel inválido '{a.nivel}'.")
+        if a.nivel == "subunidad":
+            if not a.padre:
+                errs.append(f"{a.id}: subunidad sin padre declarado.")
+            elif a.padre not in attr_registry:
+                errs.append(f"{a.id}: padre '{a.padre}' no existe en el registro.")
+            elif attr_registry[a.padre].nivel != "unidad":
+                errs.append(f"{a.id}: padre '{a.padre}' no es una unidad.")
+        elif a.padre:
+            errs.append(f"{a.id}: es unidad pero declara padre '{a.padre}'.")
+        if a.calidad not in QUALITY_LABELS:
+            errs.append(f"{a.id}: calidad {a.calidad} fuera del catálogo.")
+        for campo in ("ucs_min", "ucs_max", "ucs_media"):
+            v = getattr(a, campo)
+            if v is None: continue
+            if not (UCS_CONFIG["physical_min"] <= v <= UCS_CONFIG["physical_max"]):
+                errs.append(f"{a.id}.{campo} = {v} fuera de los límites físicos "
+                            f"[{UCS_CONFIG['physical_min']}, {UCS_CONFIG['physical_max']}] MPa.")
+    return errs
+
+
+# ─── T1.3 · REGISTRO DE ALIAS ────────────────────────────────────────────────
+# Un alias apunta a exactamente un atributo. Mapearlo a dos es un ERROR, no una
+# advertencia. El emparejamiento es insensible a mayúsculas, espacios y
+# acentos; el alias almacenado conserva el texto crudo original.
+
+ALIAS_ORIGINS = ("dxf_layer", "sondaje_unidad", "excel", "manual")
+
+
+@dataclass
+class Alias:
+    texto_crudo: str
+    atributo_id: str
+    origen: str = "manual"
+
+
+# clave = texto normalizado → Alias (con el texto crudo original preservado)
+alias_registry: Dict[str, Alias] = {}
+# Bandeja de pendientes de asignar: textos vistos que no resuelven a ningún
+# atributo. clave normalizada → {texto_crudo, origenes:set, n_vistas}
+pending_aliases: Dict[str, Dict] = {}
+
+
+class AliasConflict(Exception):
+    """Un alias ya apunta a otro atributo. Es un error, no una advertencia."""
+
+
+def register_alias(texto_crudo: str, atributo_id: str, origen: str = "manual") -> Alias:
+    """
+    Vincula `texto_crudo` a `atributo_id`. Lanza AliasConflict si el alias ya
+    apunta a un atributo distinto, y KeyError si el atributo no existe.
+    """
+    key = _norm_txt(texto_crudo)
+    if not key:
+        raise ValueError("Alias vacío.")
+    if atributo_id not in attr_registry:
+        raise KeyError(f"Atributo '{atributo_id}' no existe en el registro.")
+    if origen not in ALIAS_ORIGINS:
+        raise ValueError(f"Origen '{origen}' inválido. Válidos: {ALIAS_ORIGINS}.")
+    prev = alias_registry.get(key)
+    if prev is not None and prev.atributo_id != atributo_id:
+        raise AliasConflict(
+            f'El alias "{texto_crudo}" ya apunta a "{prev.atributo_id}"; '
+            f'no puede apuntar además a "{atributo_id}". '
+            f"Un alias resuelve a exactamente un atributo.")
+    al = Alias(texto_crudo=str(texto_crudo).strip(), atributo_id=atributo_id, origen=origen)
+    alias_registry[key] = al
+    pending_aliases.pop(key, None)
+    return al
+
+
+def unregister_alias(texto_crudo: str):
+    alias_registry.pop(_norm_txt(texto_crudo), None)
+
+
+def resolve_alias(texto_crudo: str) -> Optional[str]:
+    """Id del atributo al que resuelve el texto, o None si no está mapeado."""
+    if texto_crudo is None: return None
+    key = _norm_txt(texto_crudo)
+    al = alias_registry.get(key)
+    if al is not None: return al.atributo_id
+    # Coincidencia directa contra id o nombre oficial (insensible a caso/acentos).
+    for a in attr_registry.values():
+        if key in (_norm_txt(a.id), _norm_txt(a.nombre_oficial)):
+            return a.id
+    return None
+
+
+def note_pending_alias(texto_crudo: str, origen: str = "manual"):
+    """Registra un texto no reconocido en la bandeja de pendientes."""
+    if texto_crudo is None: return
+    key = _norm_txt(texto_crudo)
+    if not key or key in alias_registry: return
+    if resolve_alias(texto_crudo): return
+    e = pending_aliases.setdefault(key, {"texto_crudo": str(texto_crudo).strip(),
+                                          "origenes": set(), "n_vistas": 0})
+    e["origenes"].add(origen)
+    e["n_vistas"] += 1
+
+
+def resolve_or_note(texto_crudo: str, origen: str = "manual") -> Optional[str]:
+    """Resuelve el alias; si no resuelve, lo encola en pendientes. Nunca inventa."""
+    aid = resolve_alias(texto_crudo)
+    if aid is None:
+        note_pending_alias(texto_crudo, origen)
+    return aid
+
+
+def pending_alias_count() -> int:
+    return len(pending_aliases)
+
+
+def _seed_default_aliases():
+    """Alias evidentes de los códigos de sondaje y sus nombres oficiales."""
+    base = {
+        "Kfa": ["KFA", "Albitofiro", "ALB", "Albitófiro"],
+        "Bht": ["BHT", "Brecha Hidrotermal", "Bx Hidrotermal", "BXH"],
+        "Kpcli": ["KPCLI", "Lavas Inferiores"],
+        "DL": ["dl"],
+        "Brecha_mixta": ["Brecha mixta", "Bx mixta"],
+        "Kpcsb_sedimentaria": ["Brecha sedimentaria", "Bx sedimentaria"],
+        "Kpcsb_basal": ["Brecha basal"],
+        "Kpcs": ["Miembro Trinidad", "Trinidad"],
+        "Lutitas_normales": ["Lutitas normales", "Lutita normal"],
+        "Lutitas_metamorfoseadas": ["Lutitas metamorfoseadas", "Lutita metamorfoseada"],
+    }
+    for aid, textos in base.items():
+        if aid not in attr_registry: continue
+        for t in textos:
+            try: register_alias(t, aid, "manual")
+            except (AliasConflict, ValueError, KeyError): pass
+
+
+# ─── T1.5 · ESTADO SIN-ASIGNAR QUE BLOQUEA ───────────────────────────────────
+# Un atributo con calidad 0 o sin banda de UCS no puede entrar al entrenamiento.
+# El intento falla de forma ruidosa, nombrando qué atributos faltan y cuánto
+# representan. La vía prevista para continuar es excluir EXPLÍCITAMENTE, con
+# justificación registrada.
+
+# atributo_id → {"justificacion": str, "fecha": str}
+attribute_exclusions: Dict[str, Dict] = {}
+# Metraje por atributo declarado desde los sondajes (lo puebla el cargador de
+# sondajes cuando exista; vacío no es un default, es "aún no medido").
+attribute_meters: Dict[str, float] = {}
+
+
+def exclude_attribute(attr_id: str, justificacion: str):
+    """Excluye explícitamente un atributo del entrenamiento, con justificación."""
+    if attr_id not in attr_registry:
+        raise KeyError(f"Atributo '{attr_id}' no existe en el registro.")
+    j = (justificacion or "").strip()
+    if not j:
+        raise ValueError("La exclusión requiere una justificación explícita.")
+    attribute_exclusions[attr_id] = {"justificacion": j, "fecha": time.strftime("%Y-%m-%d %H:%M")}
+
+
+def unexclude_attribute(attr_id: str):
+    attribute_exclusions.pop(attr_id, None)
+
+
+def attribute_point_counts() -> Dict[str, int]:
+    """Puntos MWD clasificados por atributo (vía el atributo_id de cada capa)."""
+    counts: Dict[str, int] = {}
+    for p in all_points():
+        aid = getattr(p, "atributo_id", None)
+        if aid: counts[aid] = counts.get(aid, 0) + 1
+    return counts
+
+
+def training_blockers() -> List[Dict]:
+    """
+    Atributos que impiden entrenar: presentes en los datos, no excluidos
+    explícitamente, y sin ancla de UCS utilizable (calidad 0 o sin banda).
+
+    Cada entrada: {id, nombre, motivo, metros, puntos}.
+    """
+    counts = attribute_point_counts()
+    presentes = set(counts) | set(attribute_meters)
+    # Un atributo referenciado por una capa cargada también cuenta como presente
+    # aunque todavía no tenga puntos (el cruce puede no haberse corrido).
+    for lay in layers.values():
+        aid = getattr(lay, "atributo_id", None)
+        if aid: presentes.add(aid)
+    out = []
+    for aid in sorted(presentes):
+        if aid in attribute_exclusions: continue
+        a = attr_registry.get(aid)
+        if a is None:
+            out.append({"id": aid, "nombre": aid, "motivo": "no está en el registro de vocabulario",
+                        "metros": attribute_meters.get(aid), "puntos": counts.get(aid, 0)})
+            continue
+        ok, motivo = a.entrenable()
+        if ok: continue
+        out.append({"id": aid, "nombre": a.nombre_oficial, "motivo": motivo,
+                    "metros": attribute_meters.get(aid), "puntos": counts.get(aid, 0)})
+    return out
+
+
+def training_block_message(blockers: Optional[List[Dict]] = None) -> Optional[str]:
+    """Mensaje de bloqueo, o None si no hay bloqueadores."""
+    bl = training_blockers() if blockers is None else blockers
+    if not bl: return None
+    partes = []
+    for b in bl:
+        det = []
+        if b.get("metros") is not None: det.append(f"{b['metros']:.1f} m".replace(".", ","))
+        if b.get("puntos"): det.append(f"{b['puntos']} pts")
+        partes.append(f"{b['id']}" + (f" {' · '.join(det)}" if det else ""))
+    return (f"No se puede entrenar: {len(bl)} atributo{'s' if len(bl) != 1 else ''} "
+            f"sin banda de UCS asignada ({' · '.join(partes)}). "
+            f"Asignar en el registro de vocabulario o excluir explícitamente.")
+
+
+# ─── T1.4 · RESOLUCIÓN DE TRASLAPE POR NIVEL ─────────────────────────────────
+# Reemplaza la lógica `lito_hit[i] = name`, que hacía ganar a la última capa
+# cargada y produjo un modelo degenerado con R² = 1,0. Leapfrog modela con
+# métodos probabilísticos y las mallas pueden interponerse; el MWD es la tercera
+# fuente que evalúa dónde acertó la interpolación. Todo punto excluido por
+# ambigüedad queda contabilizado y reportado, nunca descartado en silencio.
+
+LAYER_KINDS = ("litologia", "estructura", "alteracion")
+
+# Contabilidad de la última corrida de clasificación.
+overlap_stats: Dict = {
+    "n_puntos": 0,
+    "n_ambiguos": 0,
+    "n_subunidad_gana": 0,
+    "n_sin_lito": 0,
+    "casos": {},        # "A | B" → nº de puntos
+    "motivos": {},      # motivo → nº de puntos
+}
+
+
+def _layer_level(layer) -> str:
+    """Nivel declarado de la capa: 'unidad' | 'subunidad' | 'desconocido'."""
+    niv = getattr(layer, "nivel", None)
+    if niv in ("unidad", "subunidad"): return niv
+    aid = getattr(layer, "atributo_id", None)
+    a = attr_registry.get(aid) if aid else None
+    return a.nivel if a else "desconocido"
+
+
+def _layer_parent(layer) -> Optional[str]:
+    aid = getattr(layer, "atributo_id", None)
+    a = attr_registry.get(aid) if aid else None
+    return a.padre if a else None
+
+
+def resolve_lito_overlap(hit_names: List[str]) -> Tuple[Optional[str], str]:
+    """
+    Resuelve un traslape de mallas de litología en un punto.
+
+    Devuelve (nombre_de_capa_ganadora | None, motivo). motivo == "" cuando la
+    resolución es limpia; cualquier otro valor describe la ambigüedad y el punto
+    debe excluirse y contabilizarse.
+
+    Reglas (T1.4):
+      · una sola malla                     → gana ella
+      · unidad + su propia subunidad       → gana la subunidad (más específica)
+      · dos unidades distintas             → ambiguo
+      · dos subunidades de padres distintos→ ambiguo
+      · dos subunidades del mismo padre    → ambiguo
+
+    Sin la declaración de nivel malla por malla no se puede distinguir un
+    anidamiento legítimo de un error de modelamiento: por eso una capa de nivel
+    desconocido traslapada con otra es ambigua, no un ganador arbitrario.
+    """
+    if not hit_names: return None, ""
+    if len(hit_names) == 1: return hit_names[0], ""
+
+    info = []
+    for n in hit_names:
+        lay = layers.get(n)
+        info.append({"name": n, "nivel": _layer_level(lay) if lay else "desconocido",
+                     "attr": getattr(lay, "atributo_id", None) if lay else None,
+                     "padre": _layer_parent(lay) if lay else None})
+
+    unidades = [d for d in info if d["nivel"] == "unidad"]
+    subunidades = [d for d in info if d["nivel"] == "subunidad"]
+    desconocidas = [d for d in info if d["nivel"] == "desconocido"]
+
+    if desconocidas:
+        return None, ("traslape con capa de nivel no declarado: "
+                      + ", ".join(sorted(d["name"] for d in desconocidas)))
+    if len(subunidades) > 1:
+        padres = {d["padre"] for d in subunidades}
+        return None, ("dos subunidades del mismo padre" if len(padres) == 1
+                      else "dos subunidades de padres distintos")
+    if len(subunidades) == 1:
+        sub = subunidades[0]
+        # Gana la subunidad solo si toda unidad traslapada es su propio padre.
+        ajenas = [u for u in unidades if u["attr"] != sub["padre"]]
+        if ajenas:
+            return None, ("subunidad traslapada con unidad ajena: "
+                          + ", ".join(sorted(u["name"] for u in ajenas)))
+        return sub["name"], "subunidad_gana"
+    # Solo unidades: más de una es ambiguo por definición.
+    distintas = {u["attr"] or u["name"] for u in unidades}
+    if len(distintas) > 1:
+        return None, "dos unidades distintas"
+    # Misma unidad modelada en varias mallas: no es conflicto.
+    return unidades[0]["name"], ""
 
 @dataclass
 class Layer:
@@ -59,6 +660,13 @@ class Layer:
     caseron: Optional[str] = None; lito_alias: Optional[str] = None
     ucs_lo: Optional[float] = None; ucs_hi: Optional[float] = None
     ucs_mid: Optional[float] = None
+    # (P1-T1.2/T1.4) Vínculo al registro de vocabulario canónico y nivel
+    # jerárquico declarado. `nivel` se declara MALLA POR MALLA: sin él el código
+    # no puede distinguir un anidamiento legítimo (unidad + su subunidad) de un
+    # error de modelamiento (dos unidades traslapadas), y cualquier resolución
+    # de traslape sería arbitraria. None = no declarado → traslape ambiguo.
+    atributo_id: Optional[str] = None
+    nivel: Optional[str] = None          # "unidad" | "subunidad" | None
 
 @dataclass
 class MWDPoint:
@@ -82,6 +690,16 @@ class MWDPoint:
     # Seteo real del equipo para el punto (T9): presión de percusión y avance
     # registrados en el CSV/Excel de seteo, si están disponibles.
     seteo_pp: Optional[float] = None; seteo_pa: Optional[float] = None
+    # (P1-T1.4) Resolución de traslape. `atributo_id` es el vínculo al registro
+    # de vocabulario (no el nombre de la capa DXF, que es texto libre).
+    # `alteracion` se COMPONE con la litología (riolita+argílica ≠
+    # riolita+potásica); una alteración sola no define dominio.
+    # `ambiguo` marca el punto excluido por traslape irresoluble, con el motivo
+    # en `ambiguo_motivo`: contabilizado y reportado, nunca descartado en silencio.
+    atributo_id: Optional[str] = None
+    alteracion: Optional[str] = None
+    ambiguo: bool = False
+    ambiguo_motivo: Optional[str] = None
 
 @dataclass
 class Well:
@@ -344,6 +962,16 @@ def match_and_place_wells(dq_results, mw_by_hole):
         pts = best["puntos"]
         if not pts:
             log_warn(f'MW "{key}": 0 puntos, omitido.'); continue
+        # (P1-T1.1) Guardián por coordenadas sobre el collar real. Solo aplica a
+        # pozos con posición verdadera: los de posición ficticia (sin DQ) heredan
+        # el centro global y su distancia no informa nada sobre su procedencia.
+        if collar:
+            verdict = site_guard(este=collar["este"], norte=collar["norte"],
+                                 etiqueta=key, tipo="collar de pozo", token=f"pozo:{key}")
+            if not verdict["ok"]:
+                counts["fuera_sitio"] = counts.get("fuera_sitio", 0) + 1
+                log_warn(verdict["mensaje"] + " Pozo NO cargado.")
+                continue
         if collar and final_pt:
             if global_center is None:
                 set_center(collar["norte"], collar["este"], collar["cota"])
@@ -472,8 +1100,18 @@ def is_dq(fname, root_tag=""):
     return "DRPQual" in root_tag or fname.upper().startswith("DQ")
 
 def guess_kind(fname):
-    fl = fname.lower()
-    return "estructura" if any(x in fl for x in ("falla","fault","struct","fractura")) else "litologia"
+    """
+    Tipo de malla por nombre de archivo. Es solo una SUGERENCIA inicial: el
+    usuario la corrige en el árbol de capas. La alteración se separa de la
+    litología porque se compone con ella en vez de competir (T1.4).
+    """
+    fl = _norm_txt(fname)
+    if any(x in fl for x in ("falla", "fault", "struct", "fractura", "dique", "contacto")):
+        return "estructura"
+    if any(x in fl for x in ("alteracion", "alter", "argilic", "potasic", "propilit",
+                             "filic", "sericit", "silicif")):
+        return "alteracion"
+    return "litologia"
 
 def parse_excel(path):
     try:
@@ -743,15 +1381,33 @@ def points_in_mesh(points, layer, batch=256):
     return inside
 
 def classify_all_wells():
+    """
+    Clasifica cada punto MWD contra las mallas cargadas, resolviendo traslapes
+    por nivel jerárquico (P1-T1.4).
+
+    Ya NO se sobrescribe con la última malla que acierta (`lito_hit[i] = name`):
+    se acumulan TODOS los aciertos y se resuelven con resolve_lito_overlap().
+    Un punto con traslape irresoluble se marca `ambiguo` y queda fuera del
+    dominio, pero contabilizado en overlap_stats — nunca descartado en silencio.
+
+    Composición del dominio:
+      · litología + estructura  → la estructura predomina totalmente
+      · litología + alteración  → se componen ("lito~alteracion")
+      · alteración sola         → no define dominio
+    """
     layer_items = list(layers.items())
+    overlap_stats.update({"n_puntos": 0, "n_ambiguos": 0, "n_subunidad_gana": 0,
+                          "n_sin_lito": 0, "casos": {}, "motivos": {}})
     for wn, well in wells.items():
         pts = well.points
         if not pts: continue
         try:
             coords = np.array([[p.este, p.norte, p.cota] for p in pts], dtype=np.float64)
             valid = np.all(np.isfinite(coords), axis=1)
-            lito_hit = [None]*len(pts)
+            # Acumular TODOS los aciertos por punto, no solo el último.
+            lito_hits: List[List[str]] = [[] for _ in pts]
             estruct_hit = [None]*len(pts)
+            alter_hits: List[List[str]] = [[] for _ in pts]
             for name, layer in layer_items:
                 try:
                     mask = np.zeros(len(pts), dtype=bool)
@@ -759,30 +1415,84 @@ def classify_all_wells():
                         mask[valid] = points_in_mesh(coords[valid], layer)
                     for i in np.where(mask)[0]:
                         if layer.kind == "estructura": estruct_hit[i] = name
-                        else: lito_hit[i] = name
+                        elif layer.kind == "alteracion": alter_hits[i].append(name)
+                        else: lito_hits[i].append(name)
                 except Exception as e:
                     log_warn(f'Clasificación "{name}" en "{wn}": {e}')
             for i, p in enumerate(pts):
-                lh, eh = lito_hit[i], estruct_hit[i]
+                overlap_stats["n_puntos"] += 1
+                lh, motivo = resolve_lito_overlap(lito_hits[i])
+                eh = estruct_hit[i]
+                ah = "+".join(sorted(alter_hits[i])) if alter_hits[i] else None
+                p.alteracion = ah
+                p.ambiguo = False; p.ambiguo_motivo = None
+                if motivo == "subunidad_gana":
+                    overlap_stats["n_subunidad_gana"] += 1
+                    motivo = ""
+                if motivo:
+                    # Traslape irresoluble: se excluye el punto y se contabiliza.
+                    p.ambiguo = True; p.ambiguo_motivo = motivo
+                    p.lito = None; p.estructura = eh; p.atributo_id = None
+                    p.dominio = f"::{eh}" if eh else None
+                    overlap_stats["n_ambiguos"] += 1
+                    caso = " | ".join(sorted(lito_hits[i]))
+                    overlap_stats["casos"][caso] = overlap_stats["casos"].get(caso, 0) + 1
+                    overlap_stats["motivos"][motivo] = overlap_stats["motivos"].get(motivo, 0) + 1
+                    continue
                 p.lito, p.estructura = lh, eh
-                if lh and eh: p.dominio = f"{lh}::{eh}"
-                elif lh: p.dominio = lh
-                elif eh: p.dominio = f"::{eh}"
-                else: p.dominio = None
+                lay = layers.get(lh) if lh else None
+                p.atributo_id = getattr(lay, "atributo_id", None) if lay else None
+                if lh is None: overlap_stats["n_sin_lito"] += 1
+                # La estructura predomina totalmente sobre la litología.
+                if eh: p.dominio = f"{lh}::{eh}" if lh else f"::{eh}"
+                elif lh: p.dominio = f"{lh}~{ah}" if ah else lh
+                else: p.dominio = None   # alteración sola no define dominio
         except Exception as e:
             log_warn(f'Clasificación pozo "{wn}": {e}')
 
+def _domain_matches_layer(d: str, name: str) -> bool:
+    """¿El dominio `d` corresponde a la capa `name`? Tolera '::' y '~'."""
+    lito, est = _split_dominio(d)
+    return lito == name or est == name
+
+
 def build_domain_index():
+    """
+    Indexa dominios y les adosa el ancla de UCS.
+
+    (P1-T1.2/T1.5) El ancla proviene del REGISTRO DE VOCABULARIO cuando la capa
+    declara un atributo canónico: es la etiqueta de entrenamiento definida como
+    valor de ensayo de laboratorio (roca intacta). El `ucs_lab` manual de la
+    capa se mantiene como sobrescritura explícita del usuario y tiene prioridad.
+    También se propaga `pi_factor` (ensanche del intervalo de predicción según
+    la calidad del ancla) y `atributo_id`, para que el entrenamiento pueda
+    bloquear por atributo y no por nombre de capa.
+    """
     domains.clear()
     for p in all_points():
         d = p.dominio or "(sin dominio)"
-        if d not in domains: domains[d] = {"count":0, "ucs_lab":None}
+        if d not in domains:
+            domains[d] = {"count": 0, "ucs_lab": None, "atributo_id": None,
+                          "pi_factor": None, "calidad": None, "fuente_ucs": None}
         domains[d]["count"] += 1
     for name, layer in layers.items():
-        if layer.ucs_lab is None: continue
+        aid = getattr(layer, "atributo_id", None)
+        attr = attr_registry.get(aid) if aid else None
+        ucs_attr = attr.ucs_ancla() if attr else None
+        # El valor manual de la capa gana sobre el registro: es una decisión
+        # explícita del usuario, no un default.
+        ucs = layer.ucs_lab if layer.ucs_lab is not None else ucs_attr
+        if ucs is None and aid is None: continue
         for d in domains:
-            if d == name or d.startswith(name+"::") or d.endswith("::"+name):
-                domains[d]["ucs_lab"] = layer.ucs_lab
+            if not _domain_matches_layer(d, name): continue
+            if ucs is not None:
+                domains[d]["ucs_lab"] = ucs
+                domains[d]["fuente_ucs"] = ("manual" if layer.ucs_lab is not None
+                                            else (attr.fuente if attr else None))
+            if attr is not None:
+                domains[d]["atributo_id"] = attr.id
+                domains[d]["pi_factor"] = attr.pi_factor()
+                domains[d]["calidad"] = attr.calidad
 
 def apply_calibration():
     cf = cal_factors
@@ -1238,8 +1948,13 @@ def _get_train_data(ucs_min, ucs_max):
     for wn, well in wells.items():
         for p in well.points:
             if not p.entrenable or not p.dominio: continue
+            # (P1-T1.4) Punto excluido por traslape irresoluble: ya contabilizado
+            # en overlap_stats, no puede etiquetar nada.
+            if getattr(p, "ambiguo", False): continue
             dom = domains.get(p.dominio)
             if not dom or dom.get("ucs_lab") is None: continue
+            # (P1-T1.5) Atributo excluido explícitamente por el usuario.
+            if dom.get("atributo_id") in attribute_exclusions: continue
             ucs = dom["ucs_lab"]
             if ucs < ucs_min or ucs > ucs_max: continue
             if p.di is not None and p.di > di_threshold: n_excl += 1; continue
@@ -1250,9 +1965,19 @@ def _get_train_data(ucs_min, ucs_max):
             np.array(groups), n_excl)
 
 def train_rf(ucs_min=None, ucs_max=None):
+    """
+    (P1-T1.5) Antes de entrenar, verifica que ningún atributo presente en los
+    datos quede sin banda de UCS y sin exclusión explícita. El bloqueo es
+    ruidoso: nombra los atributos faltantes y cuánto representan.
+    """
     global rf_model, rf_stats
-    ucs_min = ucs_min or ucs_range["ucs_min"]
-    ucs_max = ucs_max or ucs_range["ucs_max"]
+    # `or` sería un default silencioso si llega 0.0 (un mínimo legítimo ahora
+    # que el rango físico parte en 0): se distingue None explícitamente.
+    ucs_min = ucs_range["ucs_min"] if ucs_min is None else ucs_min
+    ucs_max = ucs_range["ucs_max"] if ucs_max is None else ucs_max
+    bloqueo = training_block_message()
+    if bloqueo:
+        return {"error": bloqueo, "blockers": training_blockers()}
     X, y, groups, n_excl = _get_train_data(ucs_min, ucs_max)
     if len(X) < 10:
         return {"error": f"Insuficientes puntos ({len(X)} < 10)."}
@@ -1322,11 +2047,30 @@ def predict_all_wells():
     p10 = np.percentile(all_tree, 10, axis=0)
     p50 = np.percentile(all_tree, 50, axis=0)
     p90 = np.percentile(all_tree, 90, axis=0)
+    # (P1-T1.2) El ancho del intervalo se ensancha según la CALIDAD del ancla de
+    # UCS del dominio: un ensayo del sitio con una sola probeta y un análogo de
+    # otra mina no pueden producir la misma confianza. El factor se aplica
+    # alrededor de la mediana; el resultado se acota al rango físico sin
+    # truncamiento silencioso (el recorte se reporta en parse_warnings).
+    lo_f, hi_f = UCS_CONFIG["physical_min"], UCS_CONFIG["physical_max"]
+    n_recortados = 0
     for i, p in enumerate(pts):
-        p.ucs_ml     = round(float(p50[i]), 1)
-        p.ucs_ml_p10 = round(float(p10[i]), 1)
-        p.ucs_ml_p90 = round(float(p90[i]), 1)
+        med = float(p50[i]); lo = float(p10[i]); hi = float(p90[i])
+        dom = domains.get(p.dominio) if p.dominio else None
+        f = (dom or {}).get("pi_factor")
+        if f and f > 1.0:
+            lo = med - (med - lo) * f
+            hi = med + (hi - med) * f
+        lo_c, hi_c = max(lo_f, lo), min(hi_f, hi)
+        if lo_c != lo or hi_c != hi: n_recortados += 1
+        p.ucs_ml     = round(med, 1)
+        p.ucs_ml_p10 = round(lo_c, 1)
+        p.ucs_ml_p90 = round(hi_c, 1)
         p.ucs_ml_prelim = False
+    if n_recortados:
+        log_warn(f"Intervalo de predicción: {n_recortados} punto(s) con extremos "
+                 f"acotados al rango físico [{lo_f:g}, {hi_f:g}] MPa tras el "
+                 f"ensanche por calidad del ancla.")
     for well in wells.values():
         last_stable = None
         for p in well.points:
@@ -1579,9 +2323,12 @@ def remove_filter(idx):
     return False
 
 def _split_dominio(d):
+    """(litología, estructura). La alteración compuesta ('lito~alt') se recorta."""
     if not d or d == "(sin dominio)": return None, None
     parts = d.split("::")
-    return (parts[0] or None, parts[1] or None) if len(parts)==2 else (parts[0] or None, None)
+    lito, est = (parts[0], parts[1]) if len(parts) == 2 else (parts[0], None)
+    if lito: lito = lito.split("~")[0]
+    return (lito or None), (est or None)
 
 def compute_domain_groups(tol_ucs=20.0, tol_di=0.15, interval_m=2.0):
     domain_groups.clear()
@@ -1785,6 +2532,8 @@ def _point_to_dict(p):
         "lito_inferida":p.lito_inferida,"estructura_inferida":p.estructura_inferida,
         "grupo_confianza":p.grupo_confianza,"band_check":p.band_check,
         "seteo_pp":p.seteo_pp,"seteo_pa":p.seteo_pa,
+        "atributo_id":p.atributo_id,"alteracion":p.alteracion,
+        "ambiguo":p.ambiguo,"ambiguo_motivo":p.ambiguo_motivo,
     }
 
 def _point_from_dict(d):
@@ -1798,7 +2547,8 @@ def _point_from_dict(d):
     )
     for attr in ("dominio","lito","estructura","ucs_ml","ucs_confiable","ucs_ml_prelim",
                  "ucs_ml_p10","ucs_ml_p90","di","grupo","lito_inferida",
-                 "estructura_inferida","grupo_confianza","band_check","seteo_pp","seteo_pa"):
+                 "estructura_inferida","grupo_confianza","band_check","seteo_pp","seteo_pa",
+                 "atributo_id","alteracion","ambiguo","ambiguo_motivo"):
         if attr in d: setattr(p, attr, d[attr])
     return p
 
@@ -1824,10 +2574,19 @@ def save_project(path):
                 "ucs_lab": lay.ucs_lab, "caseron": lay.caseron,
                 "lito_alias": lay.lito_alias,
                 "ucs_lo": lay.ucs_lo, "ucs_hi": lay.ucs_hi, "ucs_mid": lay.ucs_mid,
+                "atributo_id": lay.atributo_id, "nivel": lay.nivel,
                 "bbox_min": lay.bbox_min.tolist(), "bbox_max": lay.bbox_max.tolist(),
             }
             for ln, lay in layers.items()
         },
+        # (P1-T1.7) El vocabulario viaja con el proyecto: sin él, un .gwz cargado
+        # en otra sesión perdería los anclajes de UCS y las exclusiones
+        # justificadas, y el bloqueo de entrenamiento se dispararía sin motivo.
+        "vocabulario": export_vocabulary(),
+        "sitio_activo": ACTIVE_SITE,
+        "site_confirmed_tokens": sorted(site_confirmed_tokens),
+        "attribute_meters": attribute_meters,
+        "overlap_stats": {k: v for k, v in overlap_stats.items()},
         "domains": domains,
         "domain_groups": domain_groups,
         "clean_filters": clean_filters,
@@ -1889,6 +2648,7 @@ def load_project(path):
             ucs_lab=lm.get("ucs_lab"), folder=lm.get("folder","Litología"),
             caseron=lm.get("caseron"), lito_alias=lm.get("lito_alias"),
             ucs_lo=lm.get("ucs_lo"), ucs_hi=lm.get("ucs_hi"), ucs_mid=lm.get("ucs_mid"),
+            atributo_id=lm.get("atributo_id"), nivel=lm.get("nivel"),
         )
         layers[ln] = lay
 
@@ -1907,6 +2667,122 @@ def load_project(path):
     wz_state.update(proj.get("wz_state", {}))
     if proj.get("geomech_records"):
         index_geomech_bands(proj["geomech_records"])
+    # (P1-T1.7) Restaurar vocabulario, exclusiones y confirmaciones de sitio.
+    # Si el proyecto es anterior a P1 no trae vocabulario: se resiembra el
+    # registro por defecto en vez de quedar vacío (que bloquearía todo).
+    site_confirmed_tokens.clear()
+    site_confirmed_tokens.update(proj.get("site_confirmed_tokens", []))
+    site_pending_confirms.clear()
+    attribute_meters.clear()
+    attribute_meters.update(proj.get("attribute_meters", {}))
+    overlap_stats.update(proj.get("overlap_stats", {}))
+    vocab = proj.get("vocabulario")
+    if vocab:
+        res = import_vocabulary(vocab, replace=True)
+        for e in res["errores"]:
+            log_warn(f"Vocabulario al cargar proyecto: {e}")
+    else:
+        seed_attribute_registry(force=True)
+        log_warn("Proyecto sin registro de vocabulario (anterior a P1): "
+                 "se sembró el registro por defecto del sitio.")
+
+# ─── P1-T1.7 · PERSISTENCIA DEL REGISTRO DE VOCABULARIO ──────────────────────
+# Exporta/importa atributos + alias + exclusiones justificadas. Legible por
+# humanos, versionable, y publicable como anexo de la memoria.
+
+VOCAB_SCHEMA_VERSION = 1
+
+
+def export_vocabulary() -> Dict:
+    """Registro completo como dict serializable (JSON legible)."""
+    from dataclasses import asdict
+    return {
+        "schema": "mwd-geomech-vocabulario",
+        "schema_version": VOCAB_SCHEMA_VERSION,
+        "sitio_activo": ACTIVE_SITE,
+        "sitio": active_site(),
+        "exportado": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "calidad_catalogo": {str(k): v for k, v in QUALITY_LABELS.items()},
+        "atributos": [asdict(a) for a in attr_registry.values()],
+        "alias": [asdict(a) for a in alias_registry.values()],
+        "exclusiones": [
+            {"atributo_id": k, **v} for k, v in sorted(attribute_exclusions.items())
+        ],
+        "pendientes": [
+            {"texto_crudo": v["texto_crudo"], "origenes": sorted(v["origenes"]),
+             "n_vistas": v["n_vistas"]}
+            for v in pending_aliases.values()
+        ],
+    }
+
+
+def export_vocabulary_json(indent: int = 2) -> str:
+    return json.dumps(export_vocabulary(), ensure_ascii=False, indent=indent)
+
+
+def export_vocabulary_csv() -> str:
+    """Vista tabular de los atributos (una fila por atributo), separador ';'."""
+    cols = ["id", "nombre_oficial", "sitio", "nivel", "padre", "ucs_min", "ucs_max",
+            "ucs_media", "ucs_sd", "ucs_n", "calidad", "calidad_etiqueta", "pi_factor",
+            "excluido", "justificacion_exclusion", "mi", "modulo_E", "poisson",
+            "densidad", "fuente", "fecha", "alias", "notas"]
+    rows = []
+    for a in attr_registry.values():
+        exc = attribute_exclusions.get(a.id)
+        al = "|".join(sorted(x.texto_crudo for x in alias_registry.values()
+                             if x.atributo_id == a.id))
+        rows.append({
+            "id": a.id, "nombre_oficial": a.nombre_oficial, "sitio": a.sitio,
+            "nivel": a.nivel, "padre": a.padre or "", "ucs_min": a.ucs_min,
+            "ucs_max": a.ucs_max, "ucs_media": a.ucs_media, "ucs_sd": a.ucs_sd,
+            "ucs_n": a.ucs_n, "calidad": a.calidad,
+            "calidad_etiqueta": QUALITY_LABELS.get(a.calidad, "?"),
+            "pi_factor": a.pi_factor(), "excluido": "sí" if exc else "no",
+            "justificacion_exclusion": (exc or {}).get("justificacion", ""),
+            "mi": a.mi, "modulo_E": a.modulo_E, "poisson": a.poisson,
+            "densidad": a.densidad, "fuente": a.fuente, "fecha": a.fecha,
+            "alias": al, "notas": a.notas.replace("\n", " "),
+        })
+    return pd.DataFrame(rows, columns=cols).to_csv(index=False, sep=";")
+
+
+def import_vocabulary(data, replace: bool = True) -> Dict:
+    """
+    Importa un registro exportado. `data` es un dict o una cadena JSON.
+    Devuelve un resumen {atributos, alias, exclusiones, errores}. Los conflictos
+    de alias se reportan, nunca se resuelven en silencio.
+    """
+    if isinstance(data, (str, bytes)):
+        data = json.loads(data)
+    if data.get("schema") != "mwd-geomech-vocabulario":
+        raise ValueError("El archivo no es un registro de vocabulario válido.")
+    errores = []
+    if replace:
+        attr_registry.clear(); alias_registry.clear()
+        pending_aliases.clear(); attribute_exclusions.clear()
+    campos = {f for f in Attribute.__dataclass_fields__}
+    for d in data.get("atributos", []):
+        try:
+            attr_registry[d["id"]] = Attribute(**{k: v for k, v in d.items() if k in campos})
+        except Exception as e:
+            errores.append(f"atributo {d.get('id','?')}: {e}")
+    for d in data.get("alias", []):
+        try:
+            register_alias(d["texto_crudo"], d["atributo_id"], d.get("origen", "manual"))
+        except Exception as e:
+            errores.append(f"alias «{d.get('texto_crudo','?')}»: {e}")
+    for d in data.get("exclusiones", []):
+        try:
+            exclude_attribute(d["atributo_id"], d.get("justificacion", ""))
+        except Exception as e:
+            errores.append(f"exclusión {d.get('atributo_id','?')}: {e}")
+    for d in data.get("pendientes", []):
+        for o in d.get("origenes", ["manual"]):
+            note_pending_alias(d["texto_crudo"], o)
+    errores.extend(validate_attribute_tree())
+    return {"atributos": len(attr_registry), "alias": len(alias_registry),
+            "exclusiones": len(attribute_exclusions), "errores": errores}
+
 
 # ─── T11: KIT DE EXPORTACIÓN "CAPÍTULO 5" ────────────────────────────────────
 # Genera un ZIP con CSVs + figuras HTML standalone + resumen.txt para incluir
@@ -2194,6 +3070,12 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
     return fig
 
 # ─── APP DASH ─────────────────────────────────────────────────────────────────
+# (P1) Sembrar el registro de vocabulario ANTES de construir el layout: el
+# contador de pendientes y el panel de vocabulario lo leen al renderizar.
+seed_attribute_registry()
+for _e in validate_attribute_tree():
+    log_warn(f"Registro de vocabulario: {_e}")
+
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.SLATE],
                 title=f"{APP_TITLE} v{APP_VERSION}", suppress_callback_exceptions=True)
 
@@ -2242,6 +3124,10 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
         html.Span([f"⛏ {APP_TITLE} v{APP_VERSION}"],
                   style={"fontSize":"13px","fontWeight":700,"color":"#e0e0e0","marginRight":"12px"}),
         html.Div(id="pills-bar", className="d-flex align-items-center gap-1 flex-wrap flex-grow-1"),
+        # (P1-T1.8) Contador de pendientes SIEMPRE visible desde la vista
+        # principal, no escondido en el panel de vocabulario.
+        html.Div(id="vocab-badge", className="d-flex align-items-center",
+                 style={"marginRight":"10px"}),
         html.Div([html.Label("Color:", style={"fontSize":"11px","color":"#aaa","marginRight":"4px"}),
                   dcc.Dropdown(id="color-by",
                     options=[{"label":v[0],"value":k} for k,v in COLOR_FIELDS.items()],
@@ -2296,7 +3182,475 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
         ]),
         dbc.ModalFooter(dbc.Button("Cerrar", id="close-well-report", size="sm", color="secondary")),
     ], id="well-report-modal", size="xl", is_open=False),
+    # (P1-T1.8) Panel de vocabulario: atributos, alias, pendientes, traslapes,
+    # objetos fuera de sitio y persistencia del registro.
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("Registro de vocabulario y partición por sitio")),
+        dbc.ModalBody(id="vocab-modal-body", style={"maxHeight":"75vh","overflowY":"auto"}),
+        dbc.ModalFooter(dbc.Button("Cerrar", id="close-vocab", size="sm", color="secondary")),
+    ], id="vocab-modal", size="xl", is_open=False, scrollable=True),
 ])
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  P1-T1.8 — PANEL DE VOCABULARIO                                          ║
+# ║  Tabla de atributos editable · tabla de alias · bandeja de pendientes    ║
+# ║  con contador · exportar/importar · confirmaciones de sitio.             ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+_VOCAB_NUM_FIELDS = [
+    ("ucs_min", "UCS mín"), ("ucs_max", "UCS máx"), ("ucs_media", "UCS media"),
+    ("ucs_sd", "UCS SD"), ("ucs_n", "n probetas"),
+    ("mi", "mi"), ("modulo_E", "E [GPa]"), ("poisson", "ν"), ("densidad", "γ [t/m³]"),
+]
+
+
+def _vocab_badge_children():
+    n = pending_alias_count()
+    n_bloq = len(training_blockers())
+    n_sitio = len(site_pending_confirms)
+    kids = []
+    if n_sitio:
+        kids.append(dbc.Badge(f"🚫 {n_sitio} fuera de sitio", color="danger",
+                              className="me-1", style={"fontSize": "10px"}))
+    if n:
+        kids.append(dbc.Badge(f"🏷 {n} pendiente{'s' if n != 1 else ''}", color="warning",
+                              className="me-1", style={"fontSize": "10px"}))
+    if n_bloq:
+        kids.append(dbc.Badge(f"⛔ {n_bloq} sin UCS", color="danger",
+                              className="me-1", style={"fontSize": "10px"}))
+    if not kids:
+        kids.append(dbc.Badge("🏷 vocabulario OK", color="success", style={"fontSize": "10px"}))
+    return dbc.Button(kids, id="btn-open-vocab", color="link", size="sm",
+                      style={"padding": "0", "textDecoration": "none"})
+
+
+def _attr_row(a: Attribute):
+    """Fila editable de un atributo."""
+    exc = attribute_exclusions.get(a.id)
+    ok, motivo = a.entrenable()
+    if exc:
+        estado = dbc.Badge("excluido", color="secondary", style={"fontSize": "9px"})
+    elif ok:
+        estado = dbc.Badge(f"OK · PI ×{a.pi_factor():.2f}", color="success", style={"fontSize": "9px"})
+    else:
+        estado = dbc.Badge(motivo, color="danger", style={"fontSize": "9px"})
+    jer = (f"subunidad de {a.padre}" if a.nivel == "subunidad"
+           else f"unidad" + (f" ({len(attribute_children(a.id))} sub)" if attribute_children(a.id) else ""))
+    num_inputs = [
+        dbc.Col([html.Small(lbl, style={"color": "#888", "fontSize": "9px", "display": "block"}),
+                 dbc.Input(id={"type": "attr-num", "attr": a.id, "field": f},
+                           type="number", value=getattr(a, f), debounce=True, size="sm",
+                           style={"fontSize": "10px"})], width=2)
+        for f, lbl in _VOCAB_NUM_FIELDS
+    ]
+    return dbc.ListGroupItem([
+        html.Div([
+            html.B(f"{a.id} — {a.nombre_oficial}", style={"fontSize": "11px"}),
+            html.Span(f"  · {jer}", style={"color": "#888", "fontSize": "10px"}),
+            html.Span("  ", style={"marginRight": "6px"}), estado,
+        ]),
+        dbc.Row([
+            dbc.Col([html.Small("Calidad del ancla", style={"color": "#888", "fontSize": "9px", "display": "block"}),
+                     dcc.Dropdown(id={"type": "attr-calidad", "attr": a.id},
+                                  options=[{"label": f"{k} · {v}", "value": k}
+                                           for k, v in QUALITY_LABELS.items()],
+                                  value=a.calidad, clearable=False,
+                                  style={"fontSize": "10px"})], width=4),
+            dbc.Col([html.Small("Fuente", style={"color": "#888", "fontSize": "9px", "display": "block"}),
+                     dbc.Input(id={"type": "attr-txt", "attr": a.id, "field": "fuente"},
+                               value=a.fuente, debounce=True, size="sm",
+                               style={"fontSize": "10px"})], width=8),
+        ], className="g-1 mt-1"),
+        dbc.Row(num_inputs, className="g-1 mt-1"),
+        html.Div([
+            dbc.Input(id={"type": "attr-excl-just", "attr": a.id},
+                      placeholder="Justificación para excluir…",
+                      value=(exc or {}).get("justificacion", ""), debounce=True, size="sm",
+                      style={"fontSize": "10px", "display": "inline-block", "width": "70%"}),
+            dbc.Button("Reincluir" if exc else "Excluir",
+                       id={"type": "attr-excl-btn", "attr": a.id}, size="sm",
+                       color="secondary" if exc else "warning", outline=True,
+                       style={"fontSize": "10px", "marginLeft": "6px"}),
+        ], className="mt-1"),
+        html.Small(a.notas, style={"color": "#666", "fontSize": "9px", "display": "block",
+                                   "marginTop": "3px"}) if a.notas else None,
+    ], style={"background": "transparent", "borderBottom": "1px solid #222", "padding": "8px 10px"})
+
+
+def _vocab_panel_body():
+    attr_opts = [{"label": f"{a.id} — {a.nombre_oficial}", "value": a.id}
+                 for a in sorted(attr_registry.values(), key=lambda x: x.id)]
+    unidades = [a for a in attr_registry.values() if a.nivel == "unidad"]
+    subunidades = [a for a in attr_registry.values() if a.nivel == "subunidad"]
+
+    # ── Bandeja de pendientes ────────────────────────────────────────────────
+    pend_rows = []
+    for key, e in sorted(pending_aliases.items()):
+        pend_rows.append(dbc.ListGroupItem(dbc.Row([
+            dbc.Col(html.Small([html.B(e["texto_crudo"]),
+                                html.Span(f"  · {', '.join(sorted(e['origenes']))}"
+                                          f" · visto {e['n_vistas']}×",
+                                          style={"color": "#888"})],
+                               style={"fontSize": "10px"}), width=5),
+            dbc.Col(dcc.Dropdown(id={"type": "pend-assign", "index": key}, options=attr_opts,
+                                 placeholder="Asignar a atributo…", clearable=True,
+                                 style={"fontSize": "10px"}), width=7),
+        ], className="g-1 align-items-center"),
+            style={"background": "transparent", "borderBottom": "1px solid #222", "padding": "5px 8px"}))
+    pend_body = pend_rows or [html.Small("Sin textos pendientes. ✅",
+                                         style={"color": "#666", "fontSize": "10px"})]
+
+    # ── Confirmaciones de sitio (T1.1) ───────────────────────────────────────
+    s = active_site()
+    sitio_rows = []
+    for e in site_pending_confirms:
+        sitio_rows.append(dbc.ListGroupItem([
+            html.Small([html.B(f"{e['etiqueta']} "),
+                        html.Span(f"({e['tipo']}) a "),
+                        html.B(f"{_num_cl(e['dist_m'])} m"),
+                        html.Span(f" del centroide de {s['display']}; margen "
+                                  f"{_num_cl(e['umbral_m'])} m."),
+                        html.Br(),
+                        html.Span(f"Centroide: E {_num_cl(e['este'],1)} · N {_num_cl(e['norte'],1)}",
+                                  style={"color": "#888", "fontFamily": "monospace"})],
+                       style={"fontSize": "10px"}),
+            html.Div([
+                dbc.Button("Cargar igual (confirmo)", id={"type": "site-confirm", "index": e["token"]},
+                           size="sm", color="danger", outline=True, style={"fontSize": "10px"}),
+                dbc.Button("Descartar", id={"type": "site-discard", "index": e["token"]},
+                           size="sm", color="secondary", outline=True,
+                           style={"fontSize": "10px", "marginLeft": "6px"}),
+            ], className="mt-1"),
+        ], style={"background": "transparent", "borderBottom": "1px solid #222", "padding": "6px 8px"}))
+    sitio_body = sitio_rows or [html.Small(
+        f"Nada fuera de la envolvente de {s['display']}. ✅",
+        style={"color": "#666", "fontSize": "10px"})]
+
+    # ── Bloqueadores de entrenamiento (T1.5) ─────────────────────────────────
+    bl = training_blockers()
+    if bl:
+        bloq_body = [dbc.Alert(training_block_message(bl), color="danger",
+                               style={"fontSize": "10px", "padding": "6px 10px"})]
+    else:
+        bloq_body = [html.Small("Ningún atributo bloquea el entrenamiento. ✅",
+                                style={"color": "#666", "fontSize": "10px"})]
+
+    # ── Traslapes (T1.4) ─────────────────────────────────────────────────────
+    ov = overlap_stats
+    if ov.get("n_puntos"):
+        filas = [html.Small(f"· {m}: {n} pts", style={"fontSize": "10px", "display": "block",
+                                                       "color": "#E74C3C"})
+                 for m, n in sorted(ov["motivos"].items(), key=lambda kv: -kv[1])]
+        casos = [html.Small(f"  {c} → {n} pts", style={"fontSize": "9px", "display": "block",
+                                                        "color": "#888", "fontFamily": "monospace"})
+                 for c, n in sorted(ov["casos"].items(), key=lambda kv: -kv[1])[:8]]
+        ov_body = [html.Small(
+            f"{ov['n_puntos']} puntos clasificados · "
+            f"{ov['n_ambiguos']} excluidos por ambigüedad · "
+            f"{ov['n_subunidad_gana']} resueltos a favor de la subunidad · "
+            f"{ov['n_sin_lito']} sin litología.",
+            style={"fontSize": "10px", "display": "block", "marginBottom": "4px"})] + filas + casos
+    else:
+        ov_body = [html.Small("Sin clasificación ejecutada todavía.",
+                              style={"color": "#666", "fontSize": "10px"})]
+
+    return [
+        dbc.Alert([
+            html.B(f"Sitio activo: {s['display']} ({s['id']})"), html.Br(),
+            html.Small(f"Envolvente UTM · Este {_num_cl(s['este_min'])}–{_num_cl(s['este_max'])} · "
+                       f"Norte {_num_cl(s['norte_min'])}–{_num_cl(s['norte_max'])} · "
+                       f"margen {_num_cl(s['margen_m'])} m. "
+                       "Las coordenadas son la autoridad de pertenencia al sitio: "
+                       "ni el nombre del archivo ni este desplegable.",
+                       style={"fontSize": "10px"}),
+        ], color="dark", style={"fontSize": "11px", "padding": "8px 12px"}),
+
+        card(f"🚫 Objetos fuera de sitio ({len(site_pending_confirms)})",
+             [dbc.ListGroup(sitio_body, flush=True)]),
+        card(f"⛔ Bloqueadores de entrenamiento ({len(bl)})", bloq_body),
+        card(f"🏷 Pendientes de asignar ({pending_alias_count()})",
+             [html.Small("Todo texto de capa DXF o sondaje que no resuelve a un atributo "
+                         "canónico aparece aquí. Un alias apunta a exactamente un atributo.",
+                         style={"color": "#888", "fontSize": "10px", "display": "block",
+                                "marginBottom": "6px"}),
+              dbc.ListGroup(pend_body, flush=True)]),
+        card("🔀 Resolución de traslapes (último cruce)", ov_body),
+
+        card(f"📖 Atributos — unidades ({len(unidades)})",
+             [dbc.ListGroup([_attr_row(a) for a in sorted(unidades, key=lambda x: x.id)], flush=True)]),
+        card(f"📖 Atributos — subunidades ({len(subunidades)})",
+             [dbc.ListGroup([_attr_row(a) for a in sorted(subunidades, key=lambda x: x.id)], flush=True)]),
+
+        card(f"🔗 Alias registrados ({len(alias_registry)})", [
+            dbc.ListGroup([
+                dbc.ListGroupItem(dbc.Row([
+                    dbc.Col(html.Small([html.B(al.texto_crudo), " → ", al.atributo_id,
+                                        html.Span(f"  ({al.origen})", style={"color": "#888"})],
+                                       style={"fontSize": "10px"}), width=10),
+                    dbc.Col(dbc.Button("✕", id={"type": "alias-del", "index": key}, size="sm",
+                                       color="link", style={"fontSize": "10px", "padding": 0}), width=2),
+                ], className="g-1 align-items-center"),
+                    style={"background": "transparent", "borderBottom": "1px solid #1a1a1a",
+                           "padding": "3px 8px"})
+                for key, al in sorted(alias_registry.items())
+            ], flush=True, style={"maxHeight": "220px", "overflowY": "auto"}),
+            html.Hr(style={"margin": "8px 0"}),
+            dbc.Row([
+                dbc.Col(dbc.Input(id="alias-new-text", placeholder="Texto crudo…", size="sm",
+                                  style={"fontSize": "10px"}), width=5),
+                dbc.Col(dcc.Dropdown(id="alias-new-attr", options=attr_opts,
+                                     placeholder="Atributo…", style={"fontSize": "10px"}), width=5),
+                dbc.Col(dbc.Button("+", id="btn-alias-add", size="sm", color="info",
+                                   outline=True, style={"fontSize": "11px"}), width=2),
+            ], className="g-1"),
+        ]),
+
+        card("💾 Persistencia del registro", [
+            html.Small("Exporta atributos + alias + exclusiones justificadas. "
+                       "Legible por humanos, versionable y publicable como anexo de la memoria.",
+                       style={"color": "#888", "fontSize": "10px", "display": "block",
+                              "marginBottom": "6px"}),
+            dbc.Row([
+                dbc.Col(dbc.Button("⬇ JSON", id="btn-vocab-json", size="sm", color="info",
+                                   outline=True, style={"fontSize": "10px"}), width="auto"),
+                dbc.Col(dbc.Button("⬇ CSV", id="btn-vocab-csv", size="sm", color="info",
+                                   outline=True, style={"fontSize": "10px"}), width="auto"),
+            ], className="g-2"),
+            # El uploader vive DENTRO del panel: revelarlo desde la raíz lo
+            # dejaría detrás del modal, invisible para el usuario.
+            dcc.Upload(id="up-vocab", multiple=False, accept=".json",
+                       children=html.Span("⬆ Importar: suelta aquí el .json (o haz clic)"),
+                       style={"border": "1px dashed #3B8BD4", "borderRadius": "5px",
+                              "padding": "10px", "textAlign": "center", "cursor": "pointer",
+                              "marginTop": "8px", "fontSize": "10px", "color": "#3B8BD4"}),
+            html.Small("Importar REEMPLAZA el registro actual (atributos, alias y "
+                       "exclusiones). Exporta antes si quieres conservarlo.",
+                       style={"color": "#888", "fontSize": "9px", "display": "block",
+                              "marginTop": "4px"}),
+        ]),
+    ]
+
+
+@app.callback(Output("vocab-badge", "children"), Input("refresh", "data"))
+def render_vocab_badge(_):
+    return _vocab_badge_children()
+
+
+@app.callback(Output("vocab-modal", "is_open"), Output("vocab-modal-body", "children"),
+              Input("btn-open-vocab", "n_clicks"), Input("close-vocab", "n_clicks"),
+              Input("btn-open-vocab-step1", "n_clicks"), Input("refresh", "data"),
+              State("vocab-modal", "is_open"), prevent_initial_call=True)
+def toggle_vocab_modal(open_c, close_c, open_c1, _ref, is_open):
+    trig = callback_context.triggered_id
+    if trig in ("btn-open-vocab", "btn-open-vocab-step1"): return True, _vocab_panel_body()
+    if trig == "close-vocab": return False, no_update
+    # refresh mientras está abierto → recomponer el cuerpo sin cerrarlo
+    return (no_update, _vocab_panel_body()) if is_open else (no_update, no_update)
+
+
+@app.callback(Output("refresh", "data", allow_duplicate=True),
+              Output("toast", "children", allow_duplicate=True),
+              Output("toast", "is_open", allow_duplicate=True),
+              Input({"type": "attr-num", "attr": ALL, "field": ALL}, "value"),
+              State({"type": "attr-num", "attr": ALL, "field": ALL}, "id"),
+              State("refresh", "data"), prevent_initial_call=True)
+def on_attr_num(values, ids, ref):
+    """
+    Campos numéricos del registro. Todo valor fuera de los límites físicos de
+    UCS se RECHAZA con mensaje visible (T1.6): nunca se sustituye ni se ignora
+    en silencio.
+    """
+    lo_f, hi_f = UCS_CONFIG["physical_min"], UCS_CONFIG["physical_max"]
+    changed, rechazados = False, []
+    for val, id_d in zip(values, ids):
+        a = attr_registry.get(id_d["attr"])
+        if a is None: continue
+        f = id_d["field"]
+        if val is None or val == "":
+            if getattr(a, f) is not None:
+                setattr(a, f, None); changed = True
+            continue
+        try: x = float(val)
+        except (TypeError, ValueError):
+            rechazados.append(f"{a.id}.{f}: «{val}» no es número."); continue
+        if not np.isfinite(x):
+            rechazados.append(f"{a.id}.{f}: valor no finito."); continue
+        if f in ("ucs_min", "ucs_max", "ucs_media") and not (lo_f <= x <= hi_f):
+            rechazados.append(f"{a.id}.{f}: {x:g} MPa fuera del rango físico "
+                              f"[{lo_f:g}, {hi_f:g}]."); continue
+        if f == "ucs_n": x = int(x)
+        if getattr(a, f) != x:
+            setattr(a, f, x); changed = True
+    if rechazados:
+        return ref + 1, "🚫 Valor NO aplicado: " + " · ".join(rechazados), True
+    if changed:
+        build_domain_index()
+        return ref + 1, no_update, no_update
+    return no_update, no_update, no_update
+
+
+@app.callback(Output("refresh", "data", allow_duplicate=True),
+              Input({"type": "attr-calidad", "attr": ALL}, "value"),
+              Input({"type": "attr-txt", "attr": ALL, "field": ALL}, "value"),
+              State({"type": "attr-calidad", "attr": ALL}, "id"),
+              State({"type": "attr-txt", "attr": ALL, "field": ALL}, "id"),
+              State("refresh", "data"), prevent_initial_call=True)
+def on_attr_meta(cal_vals, txt_vals, cal_ids, txt_ids, ref):
+    changed = False
+    for v, i in zip(cal_vals, cal_ids):
+        a = attr_registry.get(i["attr"])
+        if a is not None and v is not None and a.calidad != int(v):
+            a.calidad = int(v); changed = True
+    for v, i in zip(txt_vals, txt_ids):
+        a = attr_registry.get(i["attr"])
+        if a is not None and getattr(a, i["field"]) != (v or ""):
+            setattr(a, i["field"], v or ""); changed = True
+    if not changed: return no_update
+    build_domain_index()
+    return ref + 1
+
+
+@app.callback(Output("refresh", "data", allow_duplicate=True),
+              Output("toast", "children", allow_duplicate=True),
+              Output("toast", "is_open", allow_duplicate=True),
+              Input({"type": "attr-excl-btn", "attr": ALL}, "n_clicks"),
+              State({"type": "attr-excl-just", "attr": ALL}, "value"),
+              State({"type": "attr-excl-just", "attr": ALL}, "id"),
+              State("refresh", "data"), prevent_initial_call=True)
+def on_attr_exclude(clicks, justs, just_ids, ref):
+    """Excluir / reincluir un atributo. La exclusión EXIGE justificación."""
+    trig = callback_context.triggered_id
+    if not isinstance(trig, dict) or not any(c for c in clicks if c):
+        return no_update, no_update, no_update
+    aid = trig["attr"]
+    if aid in attribute_exclusions:
+        unexclude_attribute(aid)
+        build_domain_index()
+        return ref + 1, f"↩ «{aid}» reincluido en el entrenamiento.", True
+    just = next((v for v, i in zip(justs, just_ids) if i["attr"] == aid), None)
+    try:
+        exclude_attribute(aid, just)
+    except ValueError:
+        return no_update, (f"🚫 No se excluyó «{aid}»: la exclusión requiere una "
+                           f"justificación explícita escrita en el campo."), True
+    except KeyError as e:
+        return no_update, f"🚫 {e}", True
+    build_domain_index()
+    return ref + 1, f"✅ «{aid}» excluido del entrenamiento. Justificación registrada.", True
+
+
+@app.callback(Output("refresh", "data", allow_duplicate=True),
+              Output("toast", "children", allow_duplicate=True),
+              Output("toast", "is_open", allow_duplicate=True),
+              Input({"type": "pend-assign", "index": ALL}, "value"),
+              State({"type": "pend-assign", "index": ALL}, "id"),
+              State("refresh", "data"), prevent_initial_call=True)
+def on_pending_assign(values, ids, ref):
+    """Asigna un texto pendiente a un atributo canónico."""
+    trig = callback_context.triggered_id
+    if not isinstance(trig, dict): return no_update, no_update, no_update
+    val = callback_context.triggered[0]["value"]
+    if not val: return no_update, no_update, no_update
+    key = trig["index"]
+    e = pending_aliases.get(key)
+    if not e: return no_update, no_update, no_update
+    try:
+        register_alias(e["texto_crudo"], val, sorted(e["origenes"])[0])
+    except AliasConflict as exc:
+        return no_update, f"🚫 {exc}", True
+    except (KeyError, ValueError) as exc:
+        return no_update, f"🚫 {exc}", True
+    # Propagar a las capas que llevaban ese texto y aún no tienen atributo.
+    for lay in layers.values():
+        if lay.atributo_id is None and _norm_txt(lay.name) == key:
+            lay.atributo_id = val; lay.nivel = attr_registry[val].nivel
+    build_domain_index()
+    return ref + 1, f"✅ «{e['texto_crudo']}» → {val}.", True
+
+
+@app.callback(Output("refresh", "data", allow_duplicate=True),
+              Output("toast", "children", allow_duplicate=True),
+              Output("toast", "is_open", allow_duplicate=True),
+              Input("btn-alias-add", "n_clicks"),
+              State("alias-new-text", "value"), State("alias-new-attr", "value"),
+              State("refresh", "data"), prevent_initial_call=True)
+def on_alias_add(n, texto, aid, ref):
+    if not n: return no_update, no_update, no_update
+    if not texto or not aid:
+        return no_update, "🚫 Alias: falta el texto crudo o el atributo destino.", True
+    try:
+        register_alias(texto, aid, "manual")
+    except AliasConflict as e:
+        return no_update, f"🚫 {e}", True
+    except (KeyError, ValueError) as e:
+        return no_update, f"🚫 {e}", True
+    return ref + 1, f"✅ Alias «{texto}» → {aid}.", True
+
+
+@app.callback(Output("refresh", "data", allow_duplicate=True),
+              Input({"type": "alias-del", "index": ALL}, "n_clicks"),
+              State("refresh", "data"), prevent_initial_call=True)
+def on_alias_del(clicks, ref):
+    trig = callback_context.triggered_id
+    if not isinstance(trig, dict) or not any(c for c in clicks if c): return no_update
+    alias_registry.pop(trig["index"], None)
+    return ref + 1
+
+
+@app.callback(Output("refresh", "data", allow_duplicate=True),
+              Output("toast", "children", allow_duplicate=True),
+              Output("toast", "is_open", allow_duplicate=True),
+              Input({"type": "site-confirm", "index": ALL}, "n_clicks"),
+              Input({"type": "site-discard", "index": ALL}, "n_clicks"),
+              State("refresh", "data"), prevent_initial_call=True)
+def on_site_decision(conf_clicks, disc_clicks, ref):
+    trig = callback_context.triggered_id
+    if not isinstance(trig, dict): return no_update, no_update, no_update
+    if not callback_context.triggered[0]["value"]:
+        return no_update, no_update, no_update
+    tok = trig["index"]
+    if trig["type"] == "site-confirm":
+        confirm_site_token(tok)
+        return ref + 1, (f"⚠ «{tok}» aceptado fuera de la envolvente del sitio. "
+                         f"Vuelve a cargar el archivo para que entre."), True
+    discard_site_token(tok)
+    return ref + 1, f"🗑 «{tok}» descartado.", True
+
+
+@app.callback(Output("download", "data", allow_duplicate=True),
+              Input("btn-vocab-json", "n_clicks"), Input("btn-vocab-csv", "n_clicks"),
+              prevent_initial_call=True)
+def on_vocab_export(n_json, n_csv):
+    trig = callback_context.triggered_id
+    stamp = time.strftime("%Y%m%d_%H%M")
+    if trig == "btn-vocab-json" and n_json:
+        return dict(content=export_vocabulary_json(),
+                    filename=f"vocabulario_{ACTIVE_SITE}_{stamp}.json")
+    if trig == "btn-vocab-csv" and n_csv:
+        return dict(content=export_vocabulary_csv(),
+                    filename=f"vocabulario_{ACTIVE_SITE}_{stamp}.csv")
+    return no_update
+
+
+@app.callback(Output("refresh", "data", allow_duplicate=True),
+              Output("toast", "children", allow_duplicate=True),
+              Output("toast", "is_open", allow_duplicate=True),
+              Input("up-vocab", "contents"), State("up-vocab", "filename"),
+              State("refresh", "data"), prevent_initial_call=True)
+def on_vocab_import(content, fname, ref):
+    if not content: return no_update, no_update, no_update
+    try:
+        _, b64 = content.split(",", 1)
+        res = import_vocabulary(base64.b64decode(b64).decode("utf-8"), replace=True)
+    except Exception as e:
+        return no_update, f"🚫 Importación fallida: {e}", True
+    build_domain_index()
+    msg = (f"✅ Vocabulario importado: {res['atributos']} atributos · "
+           f"{res['alias']} alias · {res['exclusiones']} exclusiones.")
+    if res["errores"]:
+        msg += f" ⚠ {len(res['errores'])} problema(s): " + " · ".join(res["errores"][:4])
+    return ref + 1, msg, True
+
 
 @app.callback(
     Output("wz-content","children"), Output("pills-bar","children"),
@@ -2365,8 +3719,12 @@ def _layer_tree():
                 html.Small([html.Span("●",style={"color":PALETTE[i%len(PALETTE)],"marginRight":"4px"}),
                             f"{layer.kind[:4]}: ", name, ucs_badge, band_badge], style={"fontSize":"11px"}),
             ], style={"display":"flex","alignItems":"center"}),
+            # (P1-T1.6) SIN min/max en el componente: con ellos, un valor fuera
+            # de rango llega como None al callback y la validación no puede
+            # distinguirlo de "campo vacío" → se perdía en silencio. La
+            # validación vive en update_ucs, que rechaza con mensaje visible.
             dbc.Input(id={"type":"ucs-in","index":name}, type="number", placeholder="UCS [MPa]",
-                      value=layer.ucs_lab, min=UCS_CONFIG["physical_min"], max=UCS_CONFIG["physical_max"],
+                      value=layer.ucs_lab,
                       step=1, size="sm", debounce=True, style={"fontSize":"10px","marginTop":"3px"}),
         ]
         # Etiquetado caserón×litología (T2). Los dropdowns solo se muestran si
@@ -2417,22 +3775,41 @@ def _layer_tree():
 
 @app.callback(
     Output("refresh","data",allow_duplicate=True),
+    Output("toast","children",allow_duplicate=True),
+    Output("toast","is_open",allow_duplicate=True),
     Input({"type":"ucs-in","index":ALL},"value"),
     State({"type":"ucs-in","index":ALL},"id"),
     State("refresh","data"), prevent_initial_call=True,
 )
 def update_ucs(values, ids, ref):
-    changed = False
+    """
+    (P1-T1.6) Un valor fuera de los límites físicos produce ERROR VISIBLE, nunca
+    sustitución silenciosa. Antes se ignoraba el valor sin avisar y la capa se
+    quedaba con su UCS anterior (o sin UCS), excluyéndola del entrenamiento sin
+    que nada lo dijera.
+    """
+    changed, rechazados = False, []
+    lo, hi = UCS_CONFIG["physical_min"], UCS_CONFIG["physical_max"]
     for val, id_d in zip(values, ids):
         name = id_d["index"]
-        if name in layers and val is not None:
+        if name not in layers or val is None: continue
+        try:
             ucs = float(val)
-            if UCS_CONFIG["physical_min"] <= ucs <= UCS_CONFIG["physical_max"]:
-                layers[name].ucs_lab = ucs; changed = True
+        except (TypeError, ValueError):
+            rechazados.append(f"{name}: «{val}» no es un número."); continue
+        if not np.isfinite(ucs):
+            rechazados.append(f"{name}: valor no finito."); continue
+        if not (lo <= ucs <= hi):
+            rechazados.append(f"{name}: {ucs:g} MPa fuera del rango físico [{lo:g}, {hi:g}]."); continue
+        if layers[name].ucs_lab != ucs:
+            layers[name].ucs_lab = ucs; changed = True
+    if rechazados:
+        build_domain_index()
+        return ref+1, "🚫 UCS rechazado (valor NO aplicado): " + " · ".join(rechazados), True
     if changed:
         build_domain_index()
-        return ref+1
-    return no_update
+        return ref+1, no_update, no_update
+    return no_update, no_update, no_update
 
 @app.callback(
     Output("refresh","data",allow_duplicate=True),
@@ -2511,7 +3888,7 @@ def nav(pill_clicks, current):
 )
 def on_dxf(contents_list, filenames, ref):
     if not contents_list: return no_update, no_update, no_update
-    loaded, errs = [], []
+    loaded, errs, bloqueadas = [], [], []
     for content, fname in zip(contents_list, filenames):
         try:
             _, b64 = content.split(",", 1)
@@ -2523,17 +3900,36 @@ def on_dxf(contents_list, filenames, ref):
             name = Path(fname).stem
             bmin = tris.reshape(-1,3).min(0)
             bmax = tris.reshape(-1,3).max(0)
-            layers[name] = Layer(name=name, kind=guess_kind(fname), triangles=tris,
-                                  bbox_min=bmin, bbox_max=bmax)
+            # (T1.1) Guardián por coordenadas: DXF es X=Este, Y=Norte, Z=Cota.
+            # Las coordenadas son la autoridad de pertenencia al sitio, no el
+            # nombre del archivo. Si excede el margen NO se carga en silencio.
+            verdict = site_guard(este=(bmin[0]+bmax[0])/2, norte=(bmin[1]+bmax[1])/2,
+                                 etiqueta=name, tipo="malla DXF", token=f"dxf:{name}")
+            if not verdict["ok"]:
+                bloqueadas.append(verdict["mensaje"]); log_warn(verdict["mensaje"]); continue
+            lay = Layer(name=name, kind=guess_kind(fname), triangles=tris,
+                        bbox_min=bmin, bbox_max=bmax)
+            # (T1.3) Sugerencia automática de atributo canónico. Si el texto no
+            # se reconoce, cae a la bandeja de pendientes: visible y contabilizada.
+            aid = resolve_or_note(name, "dxf_layer")
+            if aid:
+                lay.atributo_id = aid
+                lay.nivel = attr_registry[aid].nivel
+            layers[name] = lay
             if global_center is None:
                 cx = (bmin[0]+bmax[0])/2; cy = (bmin[1]+bmax[1])/2; cz = (bmin[2]+bmax[2])/2
                 set_center(norte=cy, este=cx, cota=cz)
-            loaded.append(f"{name} ({len(tris)} tri)")
+            loaded.append(f"{name} ({len(tris)} tri" + (f" → {aid}" if aid else ", sin atributo") + ")")
         except Exception as e:
             errs.append(f"{fname}: {e}")
     wz_state['step1']['dxf_loaded'] = bool(layers)
-    msg = f"✅ DXF: {', '.join(loaded)}" + (f" | Err: {'; '.join(errs)}" if errs else "")
-    return ref+1, msg, True
+    parts = []
+    if loaded: parts.append(f"✅ DXF: {', '.join(loaded)}")
+    if bloqueadas: parts.append("🚫 FUERA DE SITIO (no cargadas): " + " ".join(bloqueadas))
+    if errs: parts.append(f"Err: {'; '.join(errs)}")
+    n_pend = pending_alias_count()
+    if n_pend: parts.append(f"🏷 {n_pend} texto(s) pendiente(s) de asignar.")
+    return ref+1, " | ".join(parts) if parts else "Sin cambios.", True
 
 @app.callback(
     Output("refresh","data",allow_duplicate=True),
@@ -2573,6 +3969,9 @@ def on_xml(contents_list, filenames, ref):
     if counts["fallback"]:  parts.append(f"{counts['fallback']} por hermano ⚠")
     if counts["ambiguous"]: parts.append(f"{counts['ambiguous']} ambiguos ⚠ (reasignar)")
     if counts["no_dq"]:     parts.append(f"{counts['no_dq']} sin DQ ⚠")
+    if counts.get("fuera_sitio"):
+        parts.append(f"🚫 {counts['fuera_sitio']} FUERA DEL SITIO {active_site()['id']} "
+                     f"(no cargados — ver advertencias)")
     if errs: parts.append(f"Err: {'; '.join(errs)}")
     return ref+1, " · ".join(parts), True
 
@@ -2832,6 +4231,8 @@ def do_di_sensitivity(n_clicks_list, well_sel_list, out_ids):
 
 @app.callback(
     Output("ml-task-poll","disabled"),
+    Output("toast","children",allow_duplicate=True),
+    Output("toast","is_open",allow_duplicate=True),
     Input("btn-ml","n_clicks"),
     State("ucs-min","value"), State("ucs-max","value"),
     prevent_initial_call=True,
@@ -2841,14 +4242,39 @@ def do_ml(n, ucs_min_v, ucs_max_v):
     Lanza el pipeline (cruce + índice + RF) en un hilo de fondo y activa el
     polling (dcc.Interval) que consulta task_state cada 500ms para actualizar
     la barra de progreso y el log en vivo, sin bloquear la UI de Dash.
+
+    (P1-T1.6) El rango de UCS ya NO cae a un default cuando el campo llega
+    vacío o fuera de límites: eso fue el bug que excluía en silencio una
+    litología completa. Un rango inválido aborta el lanzamiento con mensaje.
     """
     if not n or task_state["running"]:
-        return no_update
-    ucs_range["ucs_min"] = float(ucs_min_v or UCS_CONFIG["default_min"])
-    ucs_range["ucs_max"] = float(ucs_max_v or UCS_CONFIG["default_max"])
+        return no_update, no_update, no_update
+    lo_f, hi_f = UCS_CONFIG["physical_min"], UCS_CONFIG["physical_max"]
+    def _chk(v, etiqueta):
+        if v is None or v == "":
+            return None, f"{etiqueta} vacío (o fuera de rango en el campo)."
+        try: x = float(v)
+        except (TypeError, ValueError): return None, f"{etiqueta}: «{v}» no es un número."
+        if not np.isfinite(x): return None, f"{etiqueta}: valor no finito."
+        if not (lo_f <= x <= hi_f):
+            return None, f"{etiqueta}: {x:g} MPa fuera del rango físico [{lo_f:g}, {hi_f:g}]."
+        return x, None
+    lo, e1 = _chk(ucs_min_v, "UCS mín")
+    hi, e2 = _chk(ucs_max_v, "UCS máx")
+    errs = [e for e in (e1, e2) if e]
+    if not errs and lo > hi:
+        errs.append(f"UCS mín ({lo:g}) es mayor que UCS máx ({hi:g}).")
+    if errs:
+        return no_update, "🚫 No se ejecutó: " + " · ".join(errs), True
+    ucs_range["ucs_min"], ucs_range["ucs_max"] = lo, hi
+    # (P1-T1.5) Bloqueo ruidoso: atributos presentes sin banda de UCS y sin
+    # exclusión explícita impiden entrenar. Se nombra qué falta y cuánto pesa.
+    bloqueo = training_block_message()
+    if bloqueo:
+        return no_update, "🚫 " + bloqueo, True
     th = threading.Thread(target=run_ml_task, args=(ucs_range["ucs_min"], ucs_range["ucs_max"]), daemon=True)
     th.start()
-    return False  # habilita el Interval de polling
+    return False, no_update, no_update  # habilita el Interval de polling
 
 @app.callback(
     Output("ml-progress-bar","value"), Output("ml-progress-bar","label"),
@@ -3285,8 +4711,37 @@ def _step1():
                      html.Small("Sin UCS",style={"color":"#aaa"})], width=4),
         ]),
     ], color="dark", style={"fontSize":"12px"}) if all_pts else None
+    s_act = active_site()
+    n_pend = pending_alias_count()
+    n_bloq = len(training_blockers())
+    n_sitio = len(site_pending_confirms)
     return html.Div([
         html.H6("Paso 1 — Cargar datos", className="mb-3"),
+        # (P1) Sitio activo y estado del vocabulario, arriba de todo: la
+        # partición por sitio y los pendientes no pueden estar escondidos.
+        dbc.Alert([
+            html.Div([
+                html.B(f"⛏ Sitio: {s_act['display']} ({s_act['id']})"),
+                dbc.Button("Abrir registro de vocabulario →", id="btn-open-vocab-step1",
+                           size="sm", color="link",
+                           style={"fontSize":"10px","padding":"0 0 0 8px"}),
+            ]),
+            html.Small(
+                f"Un archivo de trabajo = una mina. Todo objeto a más de "
+                f"{_num_cl(s_act['margen_m'])} m del centroide exige confirmación explícita.",
+                style={"fontSize":"10px","color":"#aaa","display":"block"}),
+            html.Div([
+                dbc.Badge(f"🚫 {n_sitio} fuera de sitio", color="danger",
+                          className="me-1", style={"fontSize":"10px"}) if n_sitio else None,
+                dbc.Badge(f"🏷 {n_pend} pendiente{'s' if n_pend != 1 else ''} de asignar",
+                          color="warning", className="me-1",
+                          style={"fontSize":"10px"}) if n_pend else None,
+                dbc.Badge(f"⛔ {n_bloq} atributo(s) sin banda de UCS", color="danger",
+                          className="me-1", style={"fontSize":"10px"}) if n_bloq else None,
+                dbc.Badge("vocabulario OK", color="success",
+                          style={"fontSize":"10px"}) if not (n_sitio or n_pend or n_bloq) else None,
+            ], className="mt-1"),
+        ], color="dark", style={"fontSize":"11px","padding":"8px 12px"}),
         card("Mallas DXF", [
             html.Small("Sólidos 3DFACE en UTM. Asigna UCS a cada capa (panel inferior).",
                        style={"color":"#aaa","display":"block","marginBottom":"8px"}),
@@ -3531,14 +4986,16 @@ def _step4():
         dbc.Alert([f"Con UCS lab: {n_ucs}  ·  Roca intacta (DI≤{di_threshold}): {n_intact} → RF  ·  Caídas excluidas: {n_drops}"],
                   color="info", style={"fontSize":"11px","padding":"5px 10px"}, className="mb-2"),
         dbc.Row([
+            # (P1-T1.6) Sin min/max en el componente: con ellos un valor fuera
+            # de rango llega como None y `float(v or default)` lo sustituía en
+            # silencio por el default, excluyendo una litología entera. La
+            # validación vive en do_ml y rechaza con mensaje visible.
             dbc.Col([html.Small("UCS mín [MPa]", style={"color":"#aaa","display":"block"}),
                       dbc.Input(id="ucs-min", type="number", value=ucs_range["ucs_min"],
-                                 min=UCS_CONFIG["physical_min"], step=5, size="sm",
-                                 style={"fontSize":"11px"})], width=3),
+                                 step=5, size="sm", style={"fontSize":"11px"})], width=3),
             dbc.Col([html.Small("UCS máx [MPa]", style={"color":"#aaa","display":"block"}),
                       dbc.Input(id="ucs-max", type="number", value=ucs_range["ucs_max"],
-                                 max=UCS_CONFIG["physical_max"], step=5, size="sm",
-                                 style={"fontSize":"11px"})], width=3),
+                                 step=5, size="sm", style={"fontSize":"11px"})], width=3),
             dbc.Col(html.Small(f"Físico: [{UCS_CONFIG['physical_min']},{UCS_CONFIG['physical_max']}] MPa",
                                 style={"color":"#555","fontSize":"10px","alignSelf":"flex-end"}), width=6),
         ], className="g-2 mb-2"),
