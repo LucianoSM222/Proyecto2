@@ -12,7 +12,7 @@
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
-import os, sys, json, time, base64, tempfile, re, warnings, threading, traceback
+import os, sys, json, time, base64, tempfile, re, warnings, threading, traceback, math
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Tuple
@@ -442,6 +442,29 @@ def seed_attribute_registry(force: bool = False):
                   calidad=1, fuente=FUENTE_K,
                   mi=20.8, modulo_E=89.0, poisson=0.115, densidad=2.50,
                   notas="CV = 0,121."),
+        # ── Códigos de estructura de los sondajes (P2-T2.1) ──────────────────
+        # Todos rol="estructura": no llevan banda de UCS (A.4) y nunca
+        # bloquean el entrenamiento. calidad=0 es correcto aquí, no un hueco.
+        Attribute(id="ZFR", nombre_oficial="Zona fracturada", rol="estructura",
+                  nivel="unidad", calidad=0),
+        Attribute(id="FRI", nombre_oficial="Fractura interna", rol="estructura",
+                  nivel="unidad", calidad=0),
+        Attribute(id="FM", nombre_oficial="Falla menor", rol="estructura",
+                  nivel="unidad", calidad=0),
+        Attribute(id="V", nombre_oficial="Veta", rol="estructura",
+                  nivel="unidad", calidad=0,
+                  notas="Sinónimo logueado como 'vet' en algunos sondajes."),
+        Attribute(id="ZF", nombre_oficial="Zona de falla", rol="estructura",
+                  nivel="unidad", calidad=0),
+        Attribute(id="FI", nombre_oficial="Falla interna", rol="estructura",
+                  nivel="unidad", calidad=0),
+        Attribute(id="SD", nombre_oficial="Zona de cizalle", rol="estructura",
+                  nivel="unidad", calidad=0),
+        Attribute(id="Cto", nombre_oficial="Contacto", rol="estructura",
+                  nivel="unidad", calidad=0,
+                  notas=("Los contactos casi no están logueados como estructura en los "
+                         "sondajes; la mayoría se DERIVAN de los límites de la tabla de "
+                         "litología (P2-T2.3, tipo='contacto_derivado').")),
     ]
     for a in defs:
         attr_registry[a.id] = a
@@ -514,7 +537,12 @@ def attrs_by_role(rol: str) -> List[Attribute]:
 # El emparejamiento es insensible a mayúsculas, espacios y acentos; el alias
 # almacenado conserva el texto crudo original.
 
-ALIAS_ORIGINS = ("dxf_layer", "sondaje_unidad", "excel", "manual")
+# (P2-T2.1) "sondaje_estructura" se agrega para los códigos de discontinuidad
+# de la tabla de estructuras de los sondajes (ZFR, FRI, FM, V, ZF, FI, SD),
+# distinto de "sondaje_unidad" (litología) aunque ambos vengan de los mismos
+# seis CSV — el origen registra DE QUÉ TABLA vino el texto, no solo de qué
+# fuente de archivo.
+ALIAS_ORIGINS = ("dxf_layer", "sondaje_unidad", "sondaje_estructura", "excel", "manual")
 # Separadores con que Leapfrog compone nombres de capa (A.3).
 COMPOSITE_SEPARATORS = r"[_\-+\s]+"
 
@@ -761,6 +789,16 @@ def _seed_default_aliases():
         "Kpcs": ["Miembro Trinidad", "Trinidad"],
         "Lutitas_normales": ["Lutitas normales", "Lutita normal"],
         "Lutitas_metamorfoseadas": ["Lutitas metamorfoseadas", "Lutita metamorfoseada"],
+        # (P2-T2.1) Códigos de estructura y sinónimos. V/vet es el caso
+        # explícito del enunciado: mismo discriminador, dos strings.
+        "ZFR": ["ZFR", "Zona fracturada"],
+        "FRI": ["FRI", "Fractura interna"],
+        "FM": ["FM", "Falla menor"],
+        "V": ["V", "VET", "vet", "Vet", "Veta"],
+        "ZF": ["ZF", "Zona de falla"],
+        "FI": ["FI", "Falla interna"],
+        "SD": ["SD", "Zona de cizalle", "Cizalle"],
+        "Cto": ["Cto", "CTO", "Contacto"],
     }
     for aid, textos in base.items():
         if aid not in attr_registry: continue
@@ -1136,6 +1174,650 @@ wz_state = {
     'step4':{'model_trained':False},
     'step5':{'grouped':False,'predicted':False},
 }
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  P2 — SONDAJES: parser, desurvey y selección de pozos                   ║
+# ║                                                                          ║
+# ║  Incorpora los sondajes con testigo como fuente de verdad INDEPENDIENTE ║
+# ║  del MWD, y resuelve qué pozos son relevantes para un conjunto de       ║
+# ║  caserones dado (mallas DXF de litología cargadas en ese momento).      ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+@dataclass
+class DrillHole:
+    """
+    Sondaje con testigo. `trace` es el resultado de desurvey_hole() —
+    [(profundidad, Este, Norte, Cota), ...] — y es la fuente para ubicar
+    cualquier tramo (litología/estructura/geomecánica/densidad) en UTM.
+
+    `lithology`/`structures`/`geomec`/`density` son listas de dicts con
+    'from'/'to' en profundidad (md), no en UTM: la posición se resuelve con
+    trace_interp() cuando se necesita.
+    """
+    holeid: str
+    x_utm: float; y_utm: float; z_utm: float
+    length: Optional[float] = None
+    # (depth, azimuth, dip) tal como se leyeron, sin ordenar todavía.
+    surveys: List[Tuple[float, float, float]] = field(default_factory=list)
+    trace: List[Tuple[float, float, float, float]] = field(default_factory=list)
+    # True si desurvey_hole() tuvo que sintetizar una segunda estación por
+    # tener solo una (T2.2) — declarado en `warnings`, nunca silencioso.
+    trace_extended: bool = False
+    lithology: List[Dict] = field(default_factory=list)
+    structures: List[Dict] = field(default_factory=list)
+    geomec: List[Dict] = field(default_factory=list)
+    density: List[Dict] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    # (T2.2) Banda espacial norte-sur, poblada por compute_spatial_bands().
+    banda: Optional[str] = None
+    # (T2.4) Resultado del último cruce traza↔malla.
+    estado: Optional[str] = None          # "intersecta" | "cercano" | "lejano" | None
+    dist_min_m: Optional[float] = None
+    malla_cercana: Optional[str] = None
+    metros_dentro: float = 0.0
+    # (T2.5) Métricas por pozo.
+    metros_por_unidad: Dict[str, float] = field(default_factory=dict)
+    n_estructuras: int = 0
+    rqd_mediana: Optional[float] = None
+    rmr_mediana: Optional[float] = None
+    # (T2.6) None = selección automática (deriva de `estado`); True/False =
+    # anulación manual explícita, en cualquiera de los dos sentidos, que
+    # sobrevive a un recálculo del cruce (refresh_drillhole_selection no la
+    # toca).
+    seleccion_manual: Optional[bool] = None
+
+    def seleccionado(self) -> bool:
+        if self.seleccion_manual is not None:
+            return self.seleccion_manual
+        return self.estado == "intersecta"
+
+    def length_declarado(self) -> float:
+        """
+        Profundidad total a usar para completar el trazado más allá de la
+        última estación conocida: la mayor entre `length` (header) y el
+        'to' más profundo logueado en cualquiera de las cuatro tablas.
+        """
+        tos = [self.length or 0.0]
+        for coll in (self.lithology, self.structures, self.geomec, self.density):
+            tos.extend(r["to"] for r in coll if r.get("to") is not None)
+        return max(tos) if tos else 0.0
+
+
+drillholes: Dict[str, DrillHole] = {}
+# (T2.2) Agregados por banda espacial: {"Sur"/"Centro"/"Norte": {...}}.
+spatial_bands: Dict[str, Dict] = {}
+# (T2.4) Umbral de distancia por defecto para el estado "cercano". El
+# enunciado no fija un valor: se documenta aquí y queda editable en la UI.
+DRILLHOLE_NEAR_DISTANCE_M = 25.0
+# (T2.4) Resolución de muestreo de la traza para el cruce contra mallas.
+DRILLHOLE_TRACE_STEP_M = 1.0
+# (T2.3) Tolerancia para considerar dos tramos de litología "consecutivos".
+DRILLHOLE_CONTACT_GAP_EPS_M = 0.05
+
+# ─── T2.1 · LECTOR DE LOS SEIS CSV ────────────────────────────────────────────
+# Separador ';', terminación CRLF, codificación latin-1, clave holeid, valor
+# centinela -999. Mapeo TOLERANTE de columnas: distintas minas usan
+# azimuth_utm o azimuth, agregan subunidad, etc. — el lector no falla por eso.
+
+DRILLHOLE_SENTINEL = -999.0
+_DH_HOLEID = ["holeid", "hole_id", "id_sondaje", "pozo", "id"]
+_DH_FROM = ["from", "desde"]
+_DH_TO = ["to", "hasta"]
+
+# spec[kind][campo_canónico] = (candidatos_de_nombre, "text"|"num")
+DRILLHOLE_COLS = {
+    "header": {
+        "holeid": (_DH_HOLEID, "text"),
+        "x_utm": (["x_utm", "este", "x", "easting"], "num"),
+        "y_utm": (["y_utm", "norte", "y", "northing"], "num"),
+        "z_utm": (["z_utm", "cota", "z", "elevation", "elev"], "num"),
+        "length": (["length", "largo", "profundidad_total", "eot", "total_depth"], "num"),
+    },
+    "survey": {
+        "holeid": (_DH_HOLEID, "text"),
+        "depth": (["depth", "profundidad", "md", "prof"], "num"),
+        "azimuth": (["azimuth_utm", "azimuth", "azimut", "brujula"], "num"),
+        "dip": (["dip", "inclinacion", "inclinación", "buzamiento"], "num"),
+        "equipo": (["equipo_desviacion", "equipo", "tool", "herramienta"], "text"),
+    },
+    "lithology": {
+        "holeid": (_DH_HOLEID, "text"),
+        "from": (_DH_FROM, "num"), "to": (_DH_TO, "num"),
+        "unidad": (["unidad", "litologia", "lito", "subunidad", "codigo"], "text"),
+    },
+    "structure": {
+        "holeid": (_DH_HOLEID, "text"),
+        "from": (_DH_FROM, "num"), "to": (_DH_TO, "num"),
+        "structure": (["structure", "estructura", "tipo_estructura", "codigo"], "text"),
+    },
+    "geomec": {
+        "holeid": (_DH_HOLEID, "text"),
+        "from": (_DH_FROM, "num"), "to": (_DH_TO, "num"),
+        "rqd": (["rqd"], "num"), "rmr": (["rmr"], "num"),
+    },
+    "density": {
+        "holeid": (_DH_HOLEID, "text"),
+        "from": (_DH_FROM, "num"), "to": (_DH_TO, "num"),
+        "density": (["density", "densidad", "dens", "gamma"], "num"),
+    },
+}
+DRILLHOLE_KINDS = tuple(DRILLHOLE_COLS)
+
+
+def guess_drillhole_kind(fname: str) -> Optional[str]:
+    """Adivina cuál de los 6 CSV es `fname` por palabras clave en el nombre."""
+    n = _norm_txt(fname)
+    if "header" in n or "collar" in n: return "header"
+    if "survey" in n or "desviacion" in n: return "survey"
+    if "lithology" in n or "litologia" in n: return "lithology"
+    if "structure" in n or "estructura" in n: return "structure"
+    if "geomec" in n: return "geomec"
+    if "density" in n or "densidad" in n: return "density"
+    return None
+
+
+def _find_drillhole_col(cols_norm: Dict[str, str], candidates: List[str]) -> Optional[str]:
+    """Coincidencia exacta (normalizada) primero; substring como reserva."""
+    for c in candidates:
+        cn = _norm_txt(c)
+        if cn in cols_norm: return cols_norm[cn]
+    for c in candidates:
+        cn = _norm_txt(c)
+        if not cn: continue
+        for norm, orig in cols_norm.items():
+            if cn in norm: return orig
+    return None
+
+
+def _read_drillhole_table(raw_bytes: bytes, kind: str) -> pd.DataFrame:
+    """
+    Lee uno de los seis CSV de sondaje. Columnas canónicas de salida según
+    DRILLHOLE_COLS[kind]; el centinela -999 se convierte en nulo en todos los
+    campos numéricos. No falla por columnas EXTRA (p.ej. 'subunidad'): esas
+    simplemente se ignoran.
+    """
+    try:
+        df = pd.read_csv(_io.BytesIO(raw_bytes), sep=";", encoding="latin-1")
+    except Exception as e:
+        raise RuntimeError(f"CSV de sondaje ({kind}) ilegible: {e}")
+    df.columns = [str(c).strip() for c in df.columns]
+    cols_norm = {_norm_txt(c): c for c in df.columns}
+    spec = DRILLHOLE_COLS[kind]
+    out = pd.DataFrame(index=df.index)
+    faltan = []
+    for canon, (cands, dtype) in spec.items():
+        col = _find_drillhole_col(cols_norm, cands)
+        if col is None:
+            if canon in ("holeid", "from", "to"):
+                faltan.append(canon)
+            out[canon] = None
+            continue
+        if dtype == "text":
+            # Ojo: astype(str) sobre NaN da el string "nan", no un nulo. Se
+            # evalúa pd.notna ANTES de convertir para no dejar pasar ese
+            # literal como si fuera un código real.
+            out[canon] = df[col].apply(lambda v: str(v).strip() if pd.notna(v) else None)
+        else:
+            s = pd.to_numeric(df[col], errors="coerce")
+            out[canon] = s.mask(s == DRILLHOLE_SENTINEL)
+    if faltan:
+        raise RuntimeError(f"CSV de sondaje ({kind}): faltan columnas obligatorias "
+                           f"{faltan}. Columnas presentes: {list(df.columns)}.")
+    return out
+
+
+def load_drillhole_csvs(files: Dict[str, bytes]) -> Dict:
+    """
+    Construye `drillholes` a partir de hasta seis tablas ya identificadas por
+    `kind` ({"header","survey","lithology","structure","geomec","density"}).
+
+    header y survey son OBLIGATORIAS (sin ellas no hay collar ni desviación).
+    Las otras cuatro son opcionales; su ausencia se declara en el resultado,
+    nunca se sustituye por datos inventados.
+
+    (T1.1) Cada collar pasa por el guardián de sitio: uno fuera de la
+    envolvente del sitio activo no se carga sin confirmación explícita.
+
+    (T2.1) Los códigos de litología y de estructura se resuelven contra el
+    registro de vocabulario de P1 (resolve_or_note): lo no reconocido cae en
+    la bandeja de pendientes, visible y contabilizada, nunca se inventa.
+
+    Devuelve {"holes": n, "warnings": [...], "faltantes": [...]}.
+    """
+    if "header" not in files or "survey" not in files:
+        raise RuntimeError("Se requieren al menos las tablas 'header' y 'survey' "
+                           "para construir los sondajes.")
+    tables = {k: _read_drillhole_table(raw, k) for k, raw in files.items()}
+    warnings_local: List[str] = []
+    faltantes = [k for k in ("lithology", "structure", "geomec", "density") if k not in files]
+    if faltantes:
+        warnings_local.append(f"Tablas ausentes (declaradas, no sustituidas): "
+                              f"{', '.join(faltantes)}.")
+
+    drillholes.clear()
+    hdr = tables["header"]
+    for _, row in hdr.iterrows():
+        hid = row["holeid"]
+        if not hid or pd.isna(row["x_utm"]) or pd.isna(row["y_utm"]) or pd.isna(row["z_utm"]):
+            warnings_local.append(f'"{hid}": collar con coordenadas incompletas, omitido.')
+            continue
+        verdict = site_guard(este=float(row["x_utm"]), norte=float(row["y_utm"]),
+                             etiqueta=hid, tipo="collar de sondaje", token=f"sondaje:{hid}")
+        if not verdict["ok"]:
+            warnings_local.append(verdict["mensaje"]); log_warn(verdict["mensaje"])
+            continue
+        drillholes[hid] = DrillHole(
+            holeid=hid, x_utm=float(row["x_utm"]), y_utm=float(row["y_utm"]),
+            z_utm=float(row["z_utm"]),
+            length=float(row["length"]) if pd.notna(row.get("length")) else None,
+        )
+
+    surv = tables["survey"]
+    surv = surv[surv["holeid"].isin(drillholes)].sort_values(["holeid", "depth"])
+    for hid, g in surv.groupby("holeid", sort=False):
+        dh = drillholes[hid]
+        for _, r in g.iterrows():
+            if pd.isna(r["depth"]) or pd.isna(r["azimuth"]) or pd.isna(r["dip"]):
+                dh.warnings.append("Estación de desviación con dato faltante, omitida.")
+                continue
+            dh.surveys.append((float(r["depth"]), float(r["azimuth"]), float(r["dip"])))
+    for hid, dh in drillholes.items():
+        if not dh.surveys:
+            msg = f'Sondaje "{hid}": sin estaciones de desviación válidas.'
+            dh.warnings.append(msg); warnings_local.append(msg)
+
+    if "lithology" in tables:
+        for _, r in tables["lithology"].iterrows():
+            dh = drillholes.get(r["holeid"])
+            if dh is None or pd.isna(r["from"]) or pd.isna(r["to"]) or not r.get("unidad"):
+                continue
+            unidad_raw = r["unidad"]
+            aid = resolve_or_note(unidad_raw, "sondaje_unidad").get("litologia")
+            dh.lithology.append({"from": float(r["from"]), "to": float(r["to"]),
+                                 "unidad": unidad_raw, "atributo_id": aid})
+
+    if "structure" in tables:
+        for _, r in tables["structure"].iterrows():
+            dh = drillholes.get(r["holeid"])
+            if dh is None or pd.isna(r["from"]) or pd.isna(r["to"]) or not r.get("structure"):
+                continue
+            raw = r["structure"]
+            aid = resolve_or_note(raw, "sondaje_estructura").get("estructura")
+            dh.structures.append({"from": float(r["from"]), "to": float(r["to"]),
+                                  "codigo": raw, "atributo_id": aid, "tipo": "logueada"})
+
+    if "geomec" in tables:
+        for _, r in tables["geomec"].iterrows():
+            dh = drillholes.get(r["holeid"])
+            if dh is None or pd.isna(r["from"]) or pd.isna(r["to"]):
+                continue
+            dh.geomec.append({
+                "from": float(r["from"]), "to": float(r["to"]),
+                "rqd": float(r["rqd"]) if pd.notna(r.get("rqd")) else None,
+                "rmr": float(r["rmr"]) if pd.notna(r.get("rmr")) else None,
+            })
+
+    if "density" in tables:
+        for _, r in tables["density"].iterrows():
+            dh = drillholes.get(r["holeid"])
+            if dh is None or pd.isna(r["from"]) or pd.isna(r["to"]):
+                continue
+            dh.density.append({"from": float(r["from"]), "to": float(r["to"]),
+                               "densidad": float(r["density"]) if pd.notna(r.get("density")) else None})
+
+    for dh in drillholes.values():
+        dh.lithology.sort(key=lambda x: x["from"])
+        dh.structures.sort(key=lambda x: x["from"])
+        dh.geomec.sort(key=lambda x: x["from"])
+        dh.density.sort(key=lambda x: x["from"])
+
+    return {"holes": len(drillholes), "warnings": warnings_local, "faltantes": faltantes}
+
+
+# ─── T2.2 · DESURVEY POR CURVATURA MÍNIMA ─────────────────────────────────────
+
+def desurvey_min_curvature(collar_ENZ, surveys):
+    """
+    surveys: lista ordenada de (depth, azimuth, dip). dip negativo hacia
+    abajo. Devuelve lista de (depth, Este, Norte, Cota). Curvatura mínima,
+    validada contra los 11 pozos MPC.
+    """
+    E, N, Z = collar_ENZ
+    pts = [(0.0, E, N, Z)]
+    for i in range(len(surveys) - 1):
+        d1, a1, i1 = surveys[i]
+        d2, a2, i2 = surveys[i + 1]
+        md = d2 - d1
+        if md <= 0:
+            continue
+        I1, A1 = math.radians(90 + i1), math.radians(a1)
+        I2, A2 = math.radians(90 + i2), math.radians(a2)
+        cb = math.cos(I2 - I1) - math.sin(I1) * math.sin(I2) * (1 - math.cos(A2 - A1))
+        cb = max(-1.0, min(1.0, cb))
+        b = math.acos(cb)
+        rf = 1.0 if b < 1e-9 else 2 / b * math.tan(b / 2)   # factor de razón
+        dN = md / 2 * (math.sin(I1)*math.cos(A1) + math.sin(I2)*math.cos(A2)) * rf
+        dE = md / 2 * (math.sin(I1)*math.sin(A1) + math.sin(I2)*math.sin(A2)) * rf
+        dZ = md / 2 * (math.cos(I1) + math.cos(I2)) * rf
+        E += dE; N += dN; Z -= dZ
+        pts.append((d2, E, N, Z))
+    return pts
+
+
+def desurvey_hole(dh: DrillHole) -> List[Tuple[float, float, float, float]]:
+    """
+    Desurveya un DrillHole. Criterio de aceptación: los 11 pozos MPC deben
+    desurveyarse SIN EXCEPCIÓN.
+
+    Casos declarados (nunca silenciosos):
+      · sin estaciones          → traza = solo el collar; advertencia.
+      · una sola estación       → se asume trazado recto con ese azimut/
+        inclinación hasta la profundidad total declarada (header o el 'to'
+        más profundo logueado), para poder ubicar tramos más allá de esa
+        única lectura. `trace_extended=True` y advertencia explícita.
+    """
+    surveys = sorted(dh.surveys, key=lambda s: s[0])
+    dh.trace_extended = False
+    if not surveys:
+        msg = f'Sondaje "{dh.holeid}": sin estaciones de desviación; traza = collar.'
+        if msg not in dh.warnings: dh.warnings.append(msg)
+        log_warn(msg)
+        dh.trace = [(0.0, dh.x_utm, dh.y_utm, dh.z_utm)]
+        return dh.trace
+    if len(surveys) == 1:
+        d0, a0, i0 = surveys[0]
+        total = dh.length_declarado()
+        if total > d0 + 1e-9:
+            msg = (f'Sondaje "{dh.holeid}": una sola estación de desviación (en '
+                   f'{d0:.1f} m). Se asume trazado recto con azimut {a0:.2f}° / '
+                   f'inclinación {i0:.2f}° hasta la profundidad declarada '
+                   f'({total:.1f} m).')
+            if msg not in dh.warnings: dh.warnings.append(msg)
+            log_warn(msg)
+            surveys = [(d0, a0, i0), (total, a0, i0)]
+            dh.trace_extended = True
+    dh.trace = desurvey_min_curvature((dh.x_utm, dh.y_utm, dh.z_utm), surveys)
+    return dh.trace
+
+
+def desurvey_all_holes():
+    for dh in drillholes.values():
+        desurvey_hole(dh)
+
+
+def trace_interp(trace, depth: float) -> Tuple[float, float, float]:
+    """
+    Interpolación lineal (Este, Norte, Cota) a una profundidad arbitraria
+    entre estaciones desurveyadas. Fuera de rango: se sostiene el valor del
+    extremo más cercano (no se extrapola más allá de lo declarado).
+    """
+    if not trace: return (float("nan"), float("nan"), float("nan"))
+    if depth <= trace[0][0]: return trace[0][1:]
+    if depth >= trace[-1][0]: return trace[-1][1:]
+    for i in range(len(trace) - 1):
+        d1, d2 = trace[i][0], trace[i + 1][0]
+        if d1 <= depth <= d2:
+            t = (depth - d1) / (d2 - d1) if d2 > d1 else 0.0
+            return tuple(trace[i][j+1] + t*(trace[i+1][j+1]-trace[i][j+1]) for j in range(3))
+    return trace[-1][1:]
+
+
+def sample_trace(trace, step: float = DRILLHOLE_TRACE_STEP_M):
+    """Muestrea la traza a resolución `step` [m], para el cruce con mallas."""
+    if not trace: return []
+    d0, d1 = trace[0][0], trace[-1][0]
+    if d1 <= d0: return [trace[0]]
+    n_steps = max(int((d1 - d0) / step), 1)
+    depths = [d0 + k*step for k in range(n_steps)] + [d1]
+    return [(d, *trace_interp(trace, d)) for d in depths]
+
+
+# ─── T2.2 · REPARTO ESPACIAL EN TERCIOS NORTE-SUR ─────────────────────────────
+
+def compute_spatial_bands() -> Dict[str, Dict]:
+    """
+    Divide el eje northing en tres tercios IGUALES EN RANGO (no en cantidad
+    de pozos) sobre la nube COMPLETA de puntos desurveyados de todos los
+    sondajes — no solo los collares, para que un pozo inclinado no quede mal
+    encasillado por un límite calculado únicamente con bocas de pozo.
+
+    Cada pozo se etiqueta por la northing de SU PROPIO collar contra esos dos
+    límites. Devuelve {"Sur"/"Centro"/"Norte": {n_pozos, m_litologia,
+    n_estructuras, cota_min, cota_max, holeids}}.
+    """
+    all_n = [p[2] for dh in drillholes.values() for p in dh.trace]
+    spatial_bands.clear()
+    labels = ("Sur", "Centro", "Norte")
+    for lbl in labels:
+        spatial_bands[lbl] = {"n_pozos": 0, "m_litologia": 0.0, "n_estructuras": 0,
+                              "cota_min": None, "cota_max": None, "holeids": []}
+    if not all_n:
+        return spatial_bands
+    n_lo, n_hi = min(all_n), max(all_n)
+    span = (n_hi - n_lo) or EPS
+    b1 = n_lo + span / 3.0
+    b2 = n_lo + 2 * span / 3.0
+    for hid, dh in drillholes.items():
+        lbl = "Sur" if dh.y_utm < b1 else ("Centro" if dh.y_utm < b2 else "Norte")
+        dh.banda = lbl
+        b = spatial_bands[lbl]
+        b["n_pozos"] += 1; b["holeids"].append(hid)
+        b["m_litologia"] += sum(r["to"] - r["from"] for r in dh.lithology)
+        b["n_estructuras"] += sum(1 for r in dh.structures if r.get("tipo") == "logueada")
+        zs = [p[3] for p in dh.trace] or [dh.z_utm]
+        zmn, zmx = min(zs), max(zs)
+        b["cota_min"] = zmn if b["cota_min"] is None else min(b["cota_min"], zmn)
+        b["cota_max"] = zmx if b["cota_max"] is None else max(b["cota_max"], zmx)
+    for b in spatial_bands.values():
+        b["m_litologia"] = round(b["m_litologia"], 1)
+    return spatial_bands
+
+
+# ─── T2.3 · CONTACTOS DERIVADOS ───────────────────────────────────────────────
+
+def derive_contacts(dh: DrillHole) -> List[Dict]:
+    """
+    Deriva contactos de los límites entre tramos CONSECUTIVOS de la tabla de
+    litología, marcados con tipo='contacto_derivado' (nunca 'logueada', para
+    no confundirlos con estructuras registradas por el geólogo). Serán las
+    etiquetas del discriminador fractura-contacto en una sesión posterior;
+    aquí solo se generan y se almacenan.
+
+    Solo se deriva un contacto donde los tramos son contiguos (tolerancia
+    DRILLHOLE_CONTACT_GAP_EPS_M) y la unidad cambia. Un salto real entre
+    tramos no permite ubicar el contacto con certeza y se deja sin derivar.
+    """
+    contactos = []
+    lito = sorted(dh.lithology, key=lambda x: x["from"])
+    for i in range(len(lito) - 1):
+        a, b = lito[i], lito[i + 1]
+        if abs(b["from"] - a["to"]) > DRILLHOLE_CONTACT_GAP_EPS_M:
+            continue
+        if _norm_txt(a["unidad"]) == _norm_txt(b["unidad"]):
+            continue
+        depth = (a["to"] + b["from"]) / 2.0
+        contactos.append({
+            "from": depth, "to": depth,
+            "codigo": f'{a["unidad"]}→{b["unidad"]}', "atributo_id": "Cto",
+            "tipo": "contacto_derivado",
+            "unidad_antes": a["unidad"], "unidad_despues": b["unidad"],
+        })
+    return contactos
+
+
+def refresh_drillhole_contacts():
+    for dh in drillholes.values():
+        dh.structures = [s for s in dh.structures if s.get("tipo") != "contacto_derivado"]
+        dh.structures.extend(derive_contacts(dh))
+        dh.structures.sort(key=lambda x: x["from"])
+
+
+# ─── T2.4 · INTERSECCIÓN TRAZA↔MALLA EN TRES ESTADOS ──────────────────────────
+# Reutiliza points_in_mesh (rayo vertical + grid XY) tal cual, contra las
+# mallas ya cargadas cuando se leen los sondajes.
+
+def _mesh_vertices(layer) -> np.ndarray:
+    if not hasattr(layer, "_verts_cache"):
+        layer._verts_cache = layer.triangles.reshape(-1, 3) if layer.triangles.size else np.zeros((0, 3))
+    return layer._verts_cache
+
+
+def _bbox_dist(points: np.ndarray, layer) -> np.ndarray:
+    """Distancia (0 si está dentro del bbox) de cada punto al bbox de la capa."""
+    lo, hi = layer.bbox_min, layer.bbox_max
+    d = np.maximum(np.maximum(lo - points, points - hi), 0.0)
+    return np.linalg.norm(d, axis=1)
+
+
+def _min_dist_to_layer(points: np.ndarray, layer, vert_chunk: int = 4000) -> np.ndarray:
+    """
+    Distancia APROXIMADA de cada punto al vértice más cercano de la malla
+    (no a la superficie exacta: puede sobrestimar frente a una cara plana,
+    lejos de cualquier vértice). Suficiente para el flag 'cercano' de la UI,
+    documentado como aproximación. El bbox filtra primero mallas evidentemente
+    lejanas, para no pagar el costo fino en ellas.
+    """
+    out = _bbox_dist(points, layer)
+    verts = _mesh_vertices(layer)
+    cand = np.where(out < DRILLHOLE_NEAR_DISTANCE_M * 3)[0]
+    if cand.size == 0 or verts.size == 0:
+        return out
+    pts = points[cand]
+    best = np.full(len(pts), np.inf)
+    for vstart in range(0, len(verts), vert_chunk):
+        vv = verts[vstart:vstart + vert_chunk]
+        d = np.sqrt(((pts[:, None, :] - vv[None, :, :]) ** 2).sum(-1)).min(axis=1)
+        best = np.minimum(best, d)
+    out[cand] = np.minimum(out[cand], best)
+    return out
+
+
+def _sum_inside_length(samples, inside_mask) -> float:
+    """Metros de traza dentro de alguna malla, integrados a la resolución de
+    muestreo (T2.4/T2.5); el error queda acotado por DRILLHOLE_TRACE_STEP_M."""
+    total = 0.0
+    for i in range(len(samples) - 1):
+        if inside_mask[i]:
+            total += samples[i + 1][0] - samples[i][0]
+    return round(total, 2)
+
+
+def compute_drillhole_mesh_intersections(kinds=("litologia",), near_m: Optional[float] = None):
+    """
+    (T2.4) Clasifica cada sondaje en tres estados contra las mallas cargadas
+    de los `kinds` dados (por defecto solo litología: son las que representan
+    caserones/dominios).
+
+        Intersecta  algún punto de la traza cae dentro de alguna malla → seleccionado por defecto
+        Cercano     no intersecta, pasa a menos de `near_m`             → NO seleccionado por defecto
+        Lejano      fuera de ese rango                                  → NO seleccionado por defecto
+
+    Sin mallas cargadas de esos `kinds`, el estado queda None — declarado,
+    nunca "lejano" por default silencioso.
+    """
+    near_m = DRILLHOLE_NEAR_DISTANCE_M if near_m is None else near_m
+    relevant = [lay for lay in layers.values() if lay.kind in kinds]
+    if not relevant:
+        for dh in drillholes.values():
+            dh.estado = None; dh.dist_min_m = None; dh.malla_cercana = None
+            dh.metros_dentro = 0.0
+        return
+
+    for dh in drillholes.values():
+        if not dh.trace:
+            desurvey_hole(dh)
+        samples = sample_trace(dh.trace)
+        if not samples:
+            dh.estado = None; dh.dist_min_m = None; dh.malla_cercana = None
+            dh.metros_dentro = 0.0
+            continue
+        coords = np.array([(s[1], s[2], s[3]) for s in samples], dtype=np.float64)
+        valid = np.all(np.isfinite(coords), axis=1)
+
+        inside_any = np.zeros(len(samples), dtype=bool)
+        for lay in relevant:
+            try:
+                mask = np.zeros(len(samples), dtype=bool)
+                if valid.any():
+                    mask[valid] = points_in_mesh(coords[valid], lay)
+                inside_any |= mask
+            except Exception as e:
+                log_warn(f'Intersección traza↔malla "{lay.name}" en "{dh.holeid}": {e}')
+
+        dh.metros_dentro = _sum_inside_length(samples, inside_any)
+        n_in = int(inside_any.sum())
+
+        if n_in > 0:
+            dh.estado = "intersecta"; dh.dist_min_m = 0.0; dh.malla_cercana = None
+            continue
+
+        nearest_layer, nearest_dist = None, float("inf")
+        if valid.any():
+            for lay in relevant:
+                try:
+                    d = _min_dist_to_layer(coords[valid], lay)
+                    if d.size and float(d.min()) < nearest_dist:
+                        nearest_dist = float(d.min()); nearest_layer = lay.name
+                except Exception as e:
+                    log_warn(f'Distancia traza↔malla "{lay.name}" en "{dh.holeid}": {e}')
+
+        if nearest_layer is None:
+            dh.estado = "lejano"; dh.dist_min_m = None; dh.malla_cercana = None
+        else:
+            dh.estado = "cercano" if nearest_dist < near_m else "lejano"
+            dh.dist_min_m = round(nearest_dist, 1); dh.malla_cercana = nearest_layer
+
+
+# ─── T2.5 · MÉTRICAS POR POZO ─────────────────────────────────────────────────
+
+def compute_drillhole_metrics_basic():
+    """Metros por unidad y nº de estructuras: no dependen de mallas cargadas,
+    solo de las propias tablas del sondaje. Se calculan siempre."""
+    for dh in drillholes.values():
+        mpu: Dict[str, float] = {}
+        for r in dh.lithology:
+            mpu[r["unidad"]] = mpu.get(r["unidad"], 0.0) + (r["to"] - r["from"])
+        dh.metros_por_unidad = {k: round(v, 2) for k, v in mpu.items()}
+        dh.n_estructuras = sum(1 for r in dh.structures if r.get("tipo") == "logueada")
+
+
+def compute_drillhole_rqd_rmr_medians(kinds=("litologia",)):
+    """
+    RQD/RMR medianos SOLO del tramo que efectivamente intersecta una malla
+    relevante. Si el pozo no intersecta nada (o no hay geomecánica logueada),
+    quedan en None: no hay 'tramo intersectado' del que promediar, y forzar
+    el global del pozo sería un default silencioso.
+    """
+    relevant = [lay for lay in layers.values() if lay.kind in kinds]
+    for dh in drillholes.values():
+        if dh.estado != "intersecta" or not dh.geomec or not relevant:
+            dh.rqd_mediana = None; dh.rmr_mediana = None
+            continue
+        rqds, rmrs = [], []
+        for r in dh.geomec:
+            mid = (r["from"] + r["to"]) / 2.0
+            e, n, z = trace_interp(dh.trace, mid)
+            if not np.isfinite(e): continue
+            pt = np.array([[e, n, z]], dtype=np.float64)
+            dentro = any(points_in_mesh(pt, lay)[0] for lay in relevant)
+            if not dentro: continue
+            if r.get("rqd") is not None: rqds.append(r["rqd"])
+            if r.get("rmr") is not None: rmrs.append(r["rmr"])
+        dh.rqd_mediana = round(float(np.median(rqds)), 1) if rqds else None
+        dh.rmr_mediana = round(float(np.median(rmrs)), 1) if rmrs else None
+
+
+def refresh_drillhole_selection(kinds=("litologia",), near_m: Optional[float] = None):
+    """Orquesta T2.2-T2.5 completo: desurvey → bandas → contactos → cruce →
+    métricas. Es lo que dispara el botón 'Recalcular selección' de la UI, y
+    lo que corre automáticamente al terminar de cargar los CSV."""
+    desurvey_all_holes()
+    compute_spatial_bands()
+    refresh_drillhole_contacts()
+    compute_drillhole_metrics_basic()
+    compute_drillhole_mesh_intersections(kinds=kinds, near_m=near_m)
+    compute_drillhole_rqd_rmr_medians(kinds=kinds)
+
 
 # ─── SISTEMA DE TAREAS EN SEGUNDO PLANO (progreso + log para operaciones largas) ─
 # Permite ejecutar operaciones potencialmente largas (cruce geométrico + ML)
@@ -2999,6 +3681,49 @@ def _point_from_dict(d):
         if attr in d: setattr(p, attr, d[attr])
     return p
 
+# ─── P2 · PERSISTENCIA DE SONDAJES DENTRO DEL PROYECTO ───────────────────────
+# Sin esto, recargar un .gwz perdería los sondajes y la selección manual del
+# usuario (T2.6 exige que la selección persista en el estado de la app).
+
+def _drillhole_to_dict(dh: DrillHole) -> Dict:
+    return {
+        "holeid": dh.holeid, "x_utm": dh.x_utm, "y_utm": dh.y_utm, "z_utm": dh.z_utm,
+        "length": dh.length, "surveys": dh.surveys, "trace": dh.trace,
+        "trace_extended": dh.trace_extended,
+        "lithology": dh.lithology, "structures": dh.structures,
+        "geomec": dh.geomec, "density": dh.density, "warnings": dh.warnings,
+        "banda": dh.banda, "estado": dh.estado, "dist_min_m": dh.dist_min_m,
+        "malla_cercana": dh.malla_cercana, "metros_dentro": dh.metros_dentro,
+        "metros_por_unidad": dh.metros_por_unidad, "n_estructuras": dh.n_estructuras,
+        "rqd_mediana": dh.rqd_mediana, "rmr_mediana": dh.rmr_mediana,
+        "seleccion_manual": dh.seleccion_manual,
+    }
+
+
+def _drillhole_from_dict(d: Dict) -> DrillHole:
+    dh = DrillHole(holeid=d["holeid"], x_utm=d["x_utm"], y_utm=d["y_utm"], z_utm=d["z_utm"],
+                   length=d.get("length"))
+    dh.surveys = [tuple(s) for s in d.get("surveys", [])]
+    dh.trace = [tuple(p) for p in d.get("trace", [])]
+    dh.trace_extended = d.get("trace_extended", False)
+    dh.lithology = d.get("lithology", [])
+    dh.structures = d.get("structures", [])
+    dh.geomec = d.get("geomec", [])
+    dh.density = d.get("density", [])
+    dh.warnings = d.get("warnings", [])
+    dh.banda = d.get("banda")
+    dh.estado = d.get("estado")
+    dh.dist_min_m = d.get("dist_min_m")
+    dh.malla_cercana = d.get("malla_cercana")
+    dh.metros_dentro = d.get("metros_dentro", 0.0)
+    dh.metros_por_unidad = d.get("metros_por_unidad", {})
+    dh.n_estructuras = d.get("n_estructuras", 0)
+    dh.rqd_mediana = d.get("rqd_mediana")
+    dh.rmr_mediana = d.get("rmr_mediana")
+    dh.seleccion_manual = d.get("seleccion_manual")
+    return dh
+
+
 def save_project(path):
     """
     Guarda el estado actual en `path` (archivo .gwz, ZIP).
@@ -3047,6 +3772,9 @@ def save_project(path):
         "excel_data": excel_data,
         "parse_warnings": parse_warnings,
         "wz_state": wz_state,
+        # (P2-T2.6) Sondajes + selección (auto o manual) + reparto espacial.
+        "drillholes": {hid: _drillhole_to_dict(dh) for hid, dh in drillholes.items()},
+        "spatial_bands": spatial_bands,
     }
     tris_npz = {}
     for ln, lay in layers.items():
@@ -3076,6 +3804,7 @@ def load_project(path):
     excel_data.clear(); parse_warnings.clear()
     geomech_bands["by_pair"].clear(); geomech_bands["by_lito"].clear()
     geomech_bands["by_caseron"].clear(); geomech_bands["records"].clear()
+    drillholes.clear(); spatial_bands.clear()
 
     # Restaurar pozos
     for wn, wd in proj.get("wells", {}).items():
@@ -3116,6 +3845,11 @@ def load_project(path):
     wz_state.update(proj.get("wz_state", {}))
     if proj.get("geomech_records"):
         index_geomech_bands(proj["geomech_records"])
+    # (P2-T2.6) Restaurar sondajes: la selección manual del usuario debe
+    # sobrevivir a guardar/cargar el proyecto.
+    for hid, dd in proj.get("drillholes", {}).items():
+        drillholes[hid] = _drillhole_from_dict(dd)
+    spatial_bands.update(proj.get("spatial_bands", {}))
     # (P1-T1.7) Restaurar vocabulario, exclusiones y confirmaciones de sitio.
     # Si el proyecto es anterior a P1 no trae vocabulario: se resiembra el
     # registro por defecto en vez de quedar vacío (que bloquearía todo).
@@ -3583,6 +4317,10 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
         # principal, no escondido en el panel de vocabulario.
         html.Div(id="vocab-badge", className="d-flex align-items-center",
                  style={"marginRight":"10px"}),
+        # (P2-T2.6) Contador de sondajes seleccionados, visible desde la vista
+        # principal igual que el badge de vocabulario.
+        html.Div(id="drillhole-badge", className="d-flex align-items-center",
+                 style={"marginRight":"10px"}),
         html.Div([html.Label("Color:", style={"fontSize":"11px","color":"#aaa","marginRight":"4px"}),
                   dcc.Dropdown(id="color-by",
                     options=[{"label":v[0],"value":k} for k,v in COLOR_FIELDS.items()],
@@ -3615,6 +4353,8 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
     dcc.Upload(id="up-geomech", multiple=False, children=html.Div(), style={"display":"none"}),
     dcc.Upload(id="up-project", multiple=False, children=html.Span(""), accept=".gwz",
                style={"display":"none"}),
+    dcc.Upload(id="up-drillhole", multiple=True, children=html.Div(), accept=".csv",
+               style={"display":"none"}),
     dcc.Download(id="download"),
     dcc.Download(id="download-project"),
     dcc.Download(id="download-kit"),
@@ -3644,6 +4384,13 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
         dbc.ModalBody(id="vocab-modal-body", style={"maxHeight":"75vh","overflowY":"auto"}),
         dbc.ModalFooter(dbc.Button("Cerrar", id="close-vocab", size="sm", color="secondary")),
     ], id="vocab-modal", size="xl", is_open=False, scrollable=True),
+    # (P2-T2.6) Panel de sondajes: lista con selección, métricas por pozo,
+    # reparto espacial y cruce traza↔malla.
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("Sondajes — selección de pozos relevantes")),
+        dbc.ModalBody(id="drillhole-modal-body", style={"maxHeight":"75vh","overflowY":"auto"}),
+        dbc.ModalFooter(dbc.Button("Cerrar", id="close-drillhole", size="sm", color="secondary")),
+    ], id="drillhole-modal", size="xl", is_open=False, scrollable=True),
 ])
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -4202,6 +4949,261 @@ def on_vocab_import(content, fname, ref):
     return ref + 1, msg, True
 
 
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  P2-T2.6 — PANEL DE SONDAJES                                            ║
+# ║  Lista con casillas, ordenable, estado del cruce, métricas por pozo,    ║
+# ║  reparto espacial y anulación manual en ambos sentidos.                 ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+_DH_SORT_FIELDS = [
+    ("holeid", "Hole ID"), ("banda", "Banda"), ("estado", "Estado"),
+    ("metros_dentro", "Metros dentro"), ("n_estructuras", "N° estructuras"),
+    ("rqd_mediana", "RQD mediana"), ("rmr_mediana", "RMR mediana"),
+    ("dist_min_m", "Distancia mín."),
+]
+_DH_ESTADO_COLOR = {"intersecta": "success", "cercano": "warning", "lejano": "secondary"}
+_DH_ESTADO_LABEL = {"intersecta": "Intersecta", "cercano": "Cercano", "lejano": "Lejano"}
+
+
+def _dh_sort_key(dh, field):
+    """Los None quedan siempre al final, sea cual sea el orden (asc/desc)."""
+    v = getattr(dh, field, None)
+    return (v is None, v if v is not None else "")
+
+
+def _dh_badge_children():
+    if not drillholes:
+        return dbc.Button("🗿 Sondajes", id="btn-open-drillhole", color="link", size="sm",
+                          disabled=True, style={"padding": "0", "fontSize": "10px",
+                                                "textDecoration": "none", "color": "#555"})
+    n_sel = sum(1 for dh in drillholes.values() if dh.seleccionado())
+    return dbc.Button(
+        dbc.Badge(f"🗿 {n_sel}/{len(drillholes)} sondajes", color="secondary",
+                 style={"fontSize": "10px"}),
+        id="btn-open-drillhole", color="link", size="sm",
+        style={"padding": "0", "textDecoration": "none"})
+
+
+@app.callback(Output("drillhole-badge", "children"), Input("refresh", "data"))
+def render_drillhole_badge(_):
+    return _dh_badge_children()
+
+
+def _dh_row(dh: DrillHole):
+    sel = dh.seleccionado()
+    manual = dh.seleccion_manual is not None
+    mpu = " · ".join(f"{u} {m:.1f}m"
+                     for u, m in sorted(dh.metros_por_unidad.items(), key=lambda kv: -kv[1])[:4])
+    if dh.estado == "intersecta":
+        detalle = f"{dh.metros_dentro:.1f} m dentro"
+    elif dh.dist_min_m is not None:
+        detalle = f"{_num_cl(dh.dist_min_m, 1)} m a «{dh.malla_cercana}»"
+    else:
+        detalle = "sin mallas de referencia cargadas"
+    return dbc.ListGroupItem([
+        dbc.Row([
+            dbc.Col(dbc.Checkbox(id={"type": "dh-sel", "index": dh.holeid}, value=sel),
+                    width="auto"),
+            dbc.Col(html.Div([
+                html.B(dh.holeid, style={"fontSize": "11px"}),
+                html.Span(f"  {dh.banda or '—'}", style={"color": "#888", "fontSize": "10px"}),
+                dbc.Badge(_DH_ESTADO_LABEL.get(dh.estado, "sin mallas"),
+                         color=_DH_ESTADO_COLOR.get(dh.estado, "dark"),
+                         className="ms-1", style={"fontSize": "9px"}),
+                dbc.Badge("✎ manual", color="info", className="ms-1",
+                         style={"fontSize": "9px"}) if manual else None,
+                dbc.Button("↺", id={"type": "dh-clear-override", "index": dh.holeid}, size="sm",
+                          color="link", style={"fontSize": "10px", "padding": "0 0 0 4px"}
+                          ) if manual else None,
+            ]), width=True),
+        ], className="g-1 align-items-center"),
+        html.Small(f"{detalle} · {dh.n_estructuras} estruct."
+                  + (f" · RQD {dh.rqd_mediana:.0f}" if dh.rqd_mediana is not None else "")
+                  + (f" · RMR {dh.rmr_mediana:.0f}" if dh.rmr_mediana is not None else ""),
+                  style={"color": "#888", "fontSize": "9px", "display": "block", "marginLeft": "26px"}),
+        html.Small(mpu, style={"color": "#666", "fontSize": "9px", "display": "block",
+                              "marginLeft": "26px"}) if mpu else None,
+    ], style={"background": "transparent", "borderBottom": "1px solid #222", "padding": "6px 8px"})
+
+
+def _drillhole_panel_body(sort_field="holeid", desc=False):
+    if not drillholes:
+        return [dbc.Alert(
+            "Sin sondajes cargados. Sube los seis CSV (header, survey, lithology, "
+            "structure, geomec y density; nombres tolerantes, p.ej. 'MPC_header.csv').",
+            color="dark", style={"fontSize": "11px"})]
+
+    holes = sorted(drillholes.values(), key=lambda dh: _dh_sort_key(dh, sort_field), reverse=desc)
+    n_sel = sum(1 for dh in drillholes.values() if dh.seleccionado())
+    n_int = sum(1 for dh in drillholes.values() if dh.estado == "intersecta")
+    n_cer = sum(1 for dh in drillholes.values() if dh.estado == "cercano")
+    n_lej = sum(1 for dh in drillholes.values() if dh.estado == "lejano")
+    n_none = sum(1 for dh in drillholes.values() if dh.estado is None)
+
+    band_rows = []
+    for lbl in ("Sur", "Centro", "Norte"):
+        b = spatial_bands.get(lbl)
+        if not b: continue
+        cota = (f"{b['cota_min']:.0f}–{b['cota_max']:.0f}" if b["cota_min"] is not None else "—")
+        band_rows.append(html.Small(
+            f"{lbl}: {b['n_pozos']} pozos · {b['m_litologia']:.1f} m litología · "
+            f"{b['n_estructuras']} estructuras · cota {cota}",
+            style={"display": "block", "fontSize": "10px", "color": "#aaa"}))
+
+    return [
+        dbc.Alert([
+            html.B(f"{len(drillholes)} sondajes cargados · {n_sel} seleccionados"), html.Br(),
+            html.Small(
+                f"Intersecta {n_int} · Cercano {n_cer} · Lejano {n_lej}"
+                + (f" · sin mallas de referencia {n_none}" if n_none else ""),
+                style={"fontSize": "10px", "color": "#aaa"}),
+        ], color="dark", style={"fontSize": "11px", "padding": "8px 12px"}),
+        card("Reparto espacial (tercios geométricos norte-sur)", band_rows or [
+            html.Small("Sin traza calculada todavía.", style={"color": "#666", "fontSize": "10px"})]),
+        card("Cruce traza↔malla", [
+            html.Small("Contra las mallas de litología cargadas (representan caserones/"
+                      "dominios). Los pozos cercanos no seleccionan por defecto, pero "
+                      "siguen siendo útiles para la interpolación al modelo de bloques.",
+                      style={"color": "#888", "fontSize": "10px", "display": "block",
+                             "marginBottom": "6px"}),
+            dbc.Row([
+                dbc.Col([html.Small("Umbral 'cercano' [m]", style={"color": "#888", "display": "block"}),
+                        dbc.Input(id="dh-near-input", type="number", value=DRILLHOLE_NEAR_DISTANCE_M,
+                                  step=1, size="sm", style={"fontSize": "11px"})], width=4),
+                dbc.Col(dbc.Button("🔄 Recalcular selección", id="btn-dh-recalc", color="info",
+                                   outline=True, size="sm", className="mt-4"), width="auto"),
+            ], className="g-2"),
+        ]),
+        card("Pozos", [
+            dbc.Row([
+                dbc.Col([html.Small("Ordenar por", style={"color": "#888", "display": "block"}),
+                        dcc.Dropdown(id="dh-sort-field",
+                                    options=[{"label": l, "value": k} for k, l in _DH_SORT_FIELDS],
+                                    value=sort_field, clearable=False,
+                                    style={"fontSize": "10px"})], width=8),
+                dbc.Col([html.Small("Orden", style={"color": "#888", "display": "block"}),
+                        dbc.Checklist(id="dh-sort-desc", options=[{"label": " desc", "value": 1}],
+                                     value=[1] if desc else [], switch=True,
+                                     style={"fontSize": "10px"})], width=4),
+            ], className="g-2 mb-2"),
+            dbc.ListGroup([_dh_row(dh) for dh in holes], flush=True,
+                         style={"maxHeight": "340px", "overflowY": "auto"}),
+        ]),
+    ]
+
+
+@app.callback(Output("drillhole-modal", "is_open"), Output("drillhole-modal-body", "children"),
+              Input("btn-open-drillhole", "n_clicks"), Input("btn-open-drillhole-step1", "n_clicks"),
+              Input("close-drillhole", "n_clicks"), Input("refresh", "data"),
+              Input("dh-sort-field", "value"), Input("dh-sort-desc", "value"),
+              State("drillhole-modal", "is_open"), prevent_initial_call=True)
+def toggle_drillhole_modal(open_c, open_c1, close_c, _ref, sort_field, sort_desc, is_open):
+    trig = callback_context.triggered_id
+    if trig in ("btn-open-drillhole", "btn-open-drillhole-step1"):
+        return True, _drillhole_panel_body(sort_field or "holeid", bool(sort_desc))
+    if trig == "close-drillhole":
+        return False, no_update
+    if is_open:
+        return no_update, _drillhole_panel_body(sort_field or "holeid", bool(sort_desc))
+    return no_update, no_update
+
+
+@app.callback(
+    Output("refresh", "data", allow_duplicate=True),
+    Output("toast", "children", allow_duplicate=True),
+    Output("toast", "is_open", allow_duplicate=True),
+    Input("up-drillhole", "contents"), State("up-drillhole", "filename"),
+    State("refresh", "data"), prevent_initial_call=True,
+)
+def on_drillhole_upload(contents_list, filenames, ref):
+    """
+    (T2.1) Sube hasta seis CSV a la vez; el kind de cada uno se adivina por
+    el nombre de archivo (guess_drillhole_kind). Un archivo no reconocible se
+    reporta, no se descarta en silencio. Al terminar de cargar, corre el
+    pipeline completo (T2.2-T2.5) automáticamente.
+    """
+    if not contents_list: return no_update, no_update, no_update
+    files, no_reconocidos, errs = {}, [], []
+    for content, fname in zip(contents_list, filenames):
+        kind = guess_drillhole_kind(fname)
+        if kind is None:
+            no_reconocidos.append(fname); continue
+        try:
+            _, b64 = content.split(",", 1)
+            files[kind] = base64.b64decode(b64)
+        except Exception as e:
+            errs.append(f"{fname}: {e}")
+    try:
+        res = load_drillhole_csvs(files)
+    except Exception as e:
+        return no_update, f"🚫 No se pudieron cargar los sondajes: {e}", True
+    refresh_drillhole_selection()
+    parts = [f"✅ {res['holes']} sondajes cargados"]
+    if res["faltantes"]: parts.append(f"sin {', '.join(res['faltantes'])}")
+    if no_reconocidos: parts.append(f"sin reconocer: {', '.join(no_reconocidos)}")
+    n_warn = len(res["warnings"])
+    if n_warn: parts.append(f"{n_warn} advertencia(s) — ver panel de sondajes")
+    if errs: parts.append(f"Err: {'; '.join(errs)}")
+    return ref + 1, " · ".join(parts), True
+
+
+@app.callback(
+    Output("refresh", "data", allow_duplicate=True),
+    Output("toast", "children", allow_duplicate=True),
+    Output("toast", "is_open", allow_duplicate=True),
+    Input("btn-dh-recalc", "n_clicks"), State("dh-near-input", "value"),
+    State("refresh", "data"), prevent_initial_call=True,
+)
+def on_drillhole_recalc(n, near_v, ref):
+    if not n: return no_update, no_update, no_update
+    if not drillholes:
+        return no_update, "🚫 No hay sondajes cargados.", True
+    try:
+        near_m = float(near_v) if near_v not in (None, "") else DRILLHOLE_NEAR_DISTANCE_M
+    except (TypeError, ValueError):
+        return no_update, f"🚫 Umbral 'cercano' inválido: «{near_v}».", True
+    refresh_drillhole_selection(near_m=near_m)
+    n_int = sum(1 for dh in drillholes.values() if dh.estado == "intersecta")
+    n_cer = sum(1 for dh in drillholes.values() if dh.estado == "cercano")
+    n_lej = sum(1 for dh in drillholes.values() if dh.estado == "lejano")
+    return (ref + 1,
+           f"✅ Cruce recalculado (umbral {near_m:g} m): {n_int} intersecta · "
+           f"{n_cer} cercano · {n_lej} lejano.", True)
+
+
+@app.callback(Output("refresh", "data", allow_duplicate=True),
+              Input({"type": "dh-sel", "index": ALL}, "value"),
+              State({"type": "dh-sel", "index": ALL}, "id"),
+              State("refresh", "data"), prevent_initial_call=True)
+def on_drillhole_select(values, ids, ref):
+    """
+    (T2.6) Anulación manual en ambos sentidos: marcar o desmarcar una casilla
+    fija `seleccion_manual` explícitamente, y esa marca sobrevive a un
+    recálculo del cruce (refresh_drillhole_selection no la toca).
+    """
+    trig = callback_context.triggered_id
+    if not isinstance(trig, dict): return no_update
+    hid = trig["index"]
+    dh = drillholes.get(hid)
+    if dh is None: return no_update
+    val = callback_context.triggered[0]["value"]
+    dh.seleccion_manual = bool(val)
+    return ref + 1
+
+
+@app.callback(Output("refresh", "data", allow_duplicate=True),
+              Input({"type": "dh-clear-override", "index": ALL}, "n_clicks"),
+              State("refresh", "data"), prevent_initial_call=True)
+def on_drillhole_clear_override(clicks, ref):
+    """Revierte una anulación manual a la selección automática (por estado)."""
+    trig = callback_context.triggered_id
+    if not isinstance(trig, dict) or not any(c for c in clicks if c): return no_update
+    dh = drillholes.get(trig["index"])
+    if dh is None: return no_update
+    dh.seleccion_manual = None
+    return ref + 1
+
+
 @app.callback(
     Output("wz-content","children"), Output("pills-bar","children"),
     Input("active-step","data"), Input("refresh","data"),
@@ -4607,7 +5609,7 @@ def do_preview_cross(n, ref):
     return ref+1, f"✅ Cruce ejecutado: {n_dom}/{len(all_pts)} pts dentro de alguna malla, {n_ucs} con UCS asignado.", True
 
 for btn_id, upload_id in [("btn-dxf","up-dxf"),("btn-xml","up-xml"),("btn-excel","up-excel"),
-                          ("btn-geomech","up-geomech")]:
+                          ("btn-geomech","up-geomech"),("btn-drillhole","up-drillhole")]:
     app.clientside_callback(
         f"""function(n){{if(n){{var e=document.querySelector('#{upload_id} input[type=file]');if(e)e.click();}}return window.dash_clientside.no_update;}}""",
         Output(btn_id,"n_clicks"), Input(btn_id,"n_clicks"), prevent_initial_call=True,
@@ -5328,6 +6330,20 @@ def _step1():
                        style={"color":"#aaa","display":"block","marginBottom":"8px"}),
             dbc.Button([f"🧪 Cargar Excel geomecánico ({len(geomech_bands['records'])} bandas)"],
                        id="btn-geomech", color="secondary", outline=True, size="sm"),
+        ]),
+        card("Sondajes con testigo (P2)", [
+            html.Small("header · survey · lithology · structure · geomec · density "
+                       "(6 CSV, ';' / latin-1). Fuente de verdad INDEPENDIENTE del MWD: "
+                       "desurvey por curvatura mínima y cruce traza↔malla determinan "
+                       "qué pozos son relevantes para las mallas de litología cargadas.",
+                       style={"color":"#aaa","display":"block","marginBottom":"8px"}),
+            dbc.Row([
+                dbc.Col(dbc.Button(f"🗿 Cargar CSV de sondajes ({len(drillholes)} cargados)",
+                                    id="btn-drillhole", color="secondary", outline=True, size="sm"),
+                        width="auto"),
+                dbc.Col(dbc.Button("Ver / seleccionar pozos →", id="btn-open-drillhole-step1",
+                                    color="link", size="sm") if drillholes else None, width="auto"),
+            ], className="g-2"),
         ]),
         card("Proyecto (.gwz)", [
             html.Small("Guarda/carga toda la sesión (pozos, DXF, configuración). "

@@ -515,7 +515,7 @@ def t17_persistence():
     data = json.loads(blob)
     check(data["schema"] == "mwd-geomech-vocabulario", "el JSON declara su esquema")
     check(data["sitio_activo"] == "MPC", "el JSON declara el sitio")
-    check(len(data["atributos"]) == 11, "exporta los 11 atributos",
+    check(len(data["atributos"]) == 19, "exporta los 19 atributos (11 P1 + 8 estructuras P2)",
           len(data["atributos"]))
     check(any(a["id"] == "Bht" and a["ucs_media"] == 155.5 for a in data["atributos"]),
           "las ediciones numéricas viajan en el export")
@@ -536,7 +536,7 @@ def t17_persistence():
     gw.pending_aliases.clear(); gw.attribute_exclusions.clear()
     res = gw.import_vocabulary(blob, replace=True)
     check(not res["errores"], "la importación no arroja errores", res["errores"])
-    check(len(gw.attr_registry) == 11, "11 atributos restaurados", len(gw.attr_registry))
+    check(len(gw.attr_registry) == 19, "19 atributos restaurados", len(gw.attr_registry))
     check(gw.attr_registry["Bht"].ucs_media == 155.5, "valor editado sobrevive")
     check(gw.attr_registry["Kfa"].ucs_sd is None,
           "el None de ucs_sd sobrevive (no se convierte en 0)")
