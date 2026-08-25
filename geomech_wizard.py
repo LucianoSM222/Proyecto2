@@ -2444,54 +2444,95 @@ def parse_dq(path, fname):
     return {"plan_id": plan_id, "tiros": tiros}
 
 def parse_mw(path, fname):
-    """Val = LT | ROP | PP | FP(Feed=AP) | DP | RP | FLP(Flush=FP). Simba COPROD."""
-    try: root = ET.parse(path).getroot()
-    except Exception as e: raise RuntimeError(f"XML ilegible: {e}")
-    pn = root.find(f".//{IR}PlanIdRef")
-    plan_id = (pn.text or "").strip() if pn is not None else ""
-    hn = root.find(f".//{DR}MWDholeId")
-    hole_id = (hn.text or "").strip() if hn is not None else None
+    """
+    Val = LT | ROP | PP | FP(Feed=AP) | DP | RP | FLP(Flush=FP). Simba COPROD.
+
+    (E.3 — Escala) Streaming con ET.iterparse en vez de ET.parse().getroot():
+    con ~150 pozos por caserón, materializar los 150 árboles DOM completos en
+    memoria a la vez no es viable en Colab. Cada <Sample> se procesa y se
+    libera (elem.clear()) apenas se extrae su <Val>, en vez de acumular el
+    documento entero antes de empezar. PlanIdRef/MWDholeId/MWDparams
+    aparecen antes que los <Sample> en el orden del documento IREDES, así
+    que un solo pase basta.
+    """
+    plan_id, hole_id = "", None
+    declarados: List[str] = []
+    declarados_cerrado = False
+    n_extra_decl = 0
+
+    def _cerrar_declarados():
+        nonlocal declarados_cerrado, n_extra_decl
+        if declarados_cerrado: return
+        declarados_cerrado = True
+        # Orden inmutable de `Val`: LT | ROP | PP | FP | DP | RP | FLP. Exactamente 7.
+        # Los equipos declaran a veces columnas extra (Simba COPROD emite OPT1,
+        # "DRMWDoption"); se descartan del uso, pero la convención exige
+        # REPORTARLAS UNA VEZ en la carga: un campo excedente silencioso es
+        # indistinguible de un cambio de esquema del equipo, que sí
+        # invalidaría el orden de los 7.
+        n_extra_decl = max(len(declarados) - MWD_VAL_FIELDS, 0)
+        if n_extra_decl:
+            log_warn(f'MWD "{fname}": {n_extra_decl} campo(s) excedente(s) declarado(s) '
+                     f'y descartado(s): {", ".join(declarados[MWD_VAL_FIELDS:])}. '
+                     f'Se usan los {MWD_VAL_FIELDS} de la convención '
+                     f'({" | ".join(MWD_VAL_ORDER)}).')
+
+    puntos, largo_max, skipped, t0 = [], 0.0, 0, time.time()
+    n_extra_val = 0             # muestras con más valores que campos declarados
+    n_procesadas = 0
+    try:
+        for _, elem in ET.iterparse(path, events=("end",)):
+            tag = elem.tag
+            if tag == f"{IR}PlanIdRef":
+                if not plan_id: plan_id = (elem.text or "").strip()
+                elem.clear()
+            elif tag == f"{DR}MWDholeId":
+                if hole_id is None: hole_id = (elem.text or "").strip() or None
+                elem.clear()
+            elif tag == f"{DR}Parameter":
+                declarados.append((elem.text or "").strip())
+                elem.clear()
+            elif tag == f"{DR}Sample":
+                _cerrar_declarados()   # todo <Parameter> ya cerró antes que el primer <Sample>
+                if n_procesadas % 512 == 0 and time.time() - t0 > PARSE_BUDGET_S:
+                    log_warn(f'MWD "{fname}": timeout tras procesar {n_procesadas} '
+                             f'muestra(s); el resto del archivo se omite.')
+                    elem.clear()
+                    break
+                try:
+                    vn = elem.find(f"{DR}Val")
+                    if vn is None or not vn.text: skipped += 1
+                    else:
+                        parts = [float(x) for x in vn.text.strip().split()]
+                        if len(parts) < 7: skipped += 1
+                        else:
+                            if len(parts) > MWD_VAL_FIELDS and not n_extra_decl: n_extra_val += 1
+                            lt, rop, pp, ap, dp, rp, flp = parts[:7]
+                            if not all(np.isfinite(v) for v in (lt,rop,pp,ap,dp,rp,flp)):
+                                skipped += 1
+                            else:
+                                se = (pp + rp + ap) / (rop + EPS)
+                                puntos.append(MWDPoint(
+                                    largo=lt, vel=rop, pp=pp, pa=ap, pd=dp, pr=rp, pf=flp,
+                                    se=se, t=0.0, raw_vel=rop, raw_pp=pp, raw_pa=ap,
+                                    raw_pd=dp, raw_pr=rp, raw_pf=flp,
+                                ))
+                                if lt > largo_max: largo_max = lt
+                except Exception:
+                    skipped += 1
+                n_procesadas += 1
+                elem.clear()
+    except Exception as e:
+        raise RuntimeError(f"XML ilegible: {e}")
+    _cerrar_declarados()   # archivo sin ningún <Sample>: igual se reporta el excedente
+
     if not hole_id:
         m = re.search(r"H(\d+)_", fname, re.I)
         if m: hole_id = m.group(1)
     if not plan_id:
         m2 = re.search(r"MW(.+?)H\d+_", fname, re.I)
         if m2: plan_id = m2.group(1)
-    # Orden inmutable de `Val`: LT | ROP | PP | FP | DP | RP | FLP. Exactamente 7.
-    # Los equipos declaran a veces columnas extra (Simba COPROD emite OPT1,
-    # "DRMWDoption"); se descartan del uso, pero la convención exige REPORTARLAS
-    # UNA VEZ en la carga: un campo excedente silencioso es indistinguible de un
-    # cambio de esquema del equipo, que sí invalidaría el orden de los 7.
-    declarados = [(p.text or "").strip()
-                  for p in root.findall(f".//{DR}MWDparams/{DR}Parameter")]
-    n_extra_decl = max(len(declarados) - MWD_VAL_FIELDS, 0)
-    if n_extra_decl:
-        log_warn(f'MWD "{fname}": {n_extra_decl} campo(s) excedente(s) declarado(s) '
-                 f'y descartado(s): {", ".join(declarados[MWD_VAL_FIELDS:])}. '
-                 f'Se usan los {MWD_VAL_FIELDS} de la convención '
-                 f'({" | ".join(MWD_VAL_ORDER)}).')
-    samples = root.findall(f".//{DR}Sample")
-    puntos, largo_max, skipped, t0 = [], 0.0, 0, time.time()
-    n_extra_val = 0            # muestras con más valores que campos declarados
-    for i, s in enumerate(samples):
-        if i % 512 == 0 and time.time() - t0 > PARSE_BUDGET_S:
-            log_warn(f'MWD "{fname}": timeout, omitidas {len(samples)-i} muestras.'); break
-        try:
-            vn = s.find(f"{DR}Val")
-            if vn is None or not vn.text: skipped += 1; continue
-            parts = [float(x) for x in vn.text.strip().split()]
-            if len(parts) < 7: skipped += 1; continue
-            if len(parts) > MWD_VAL_FIELDS and not n_extra_decl: n_extra_val += 1
-            lt, rop, pp, ap, dp, rp, flp = parts[:7]
-            if not all(np.isfinite(v) for v in (lt,rop,pp,ap,dp,rp,flp)):
-                skipped += 1; continue
-            se = (pp + rp + ap) / (rop + EPS)
-            puntos.append(MWDPoint(
-                largo=lt, vel=rop, pp=pp, pa=ap, pd=dp, pr=rp, pf=flp, se=se, t=0.0,
-                raw_vel=rop, raw_pp=pp, raw_pa=ap, raw_pd=dp, raw_pr=rp, raw_pf=flp,
-            ))
-            if lt > largo_max: largo_max = lt
-        except: skipped += 1
+
     if skipped: log_warn(f'MWD "{fname}": {skipped} muestras omitidas.')
     # Excedente NO declarado en MWDparams: se reporta igual, una sola vez.
     if n_extra_val:
@@ -4950,15 +4991,43 @@ def build_well_report_figure(well_name, hist_vars=None, profile_var="di"):
     )
     return fig
 
+# (E.4 — Escala) El visor 3D es el único gráfico que dibuja TODOS los pozos
+# de un caserón a la vez (~262.500 puntos en escala real); el resto de los
+# gráficos son por-pozo y quedan chicos por construcción (un pozo real no
+# supera unos pocos miles de muestras). Ningún gráfico debe recibir 262.500
+# puntos como marcadores — se recorta la VISTA, nunca la población que usan
+# los cálculos.
+MAX_VIZ_POINTS = 5000
+
+def _submuestrear_indices(n: int, max_n: int) -> List[int]:
+    """
+    Índices espaciados regularmente para submuestrear `n` elementos a como
+    máximo `max_n`, preservando el orden — a diferencia de un muestreo
+    aleatorio, esto conserva la continuidad espacial de una traza (línea +
+    marcadores) y garantiza que el primer punto (el collar del pozo) quede
+    incluido siempre.
+    """
+    if n <= max_n or n == 0:
+        return list(range(n))
+    step = n / max_n
+    return [int(i * step) for i in range(max_n)]
+
 def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
     """
     hidden_layers / hidden_wells: sets de nombres a OCULTAR (checkbox destildado).
     Se usa 'visible' (no se omite la traza) para que Plotly conserve el índice
     de trazas estable entre renders y uirevision funcione correctamente.
+
+    (E.4) La VISTA se recorta a MAX_VIZ_POINTS puntos en total, repartidos
+    proporcionalmente entre pozos (uno con más metraje aporta más puntos a
+    la vista). well.points NUNCA se toca — el recorte vive solo en las
+    listas locales que arma esta función para dibujar.
     """
     hidden_layers = hidden_layers or set()
     hidden_wells  = hidden_wells or set()
     fig = go.Figure()
+    n_total_pts = sum(len(w.points) for w in wells.values())
+    ratio = (MAX_VIZ_POINTS / n_total_pts) if n_total_pts > MAX_VIZ_POINTS else 1.0
     label, cmin, cmax, categorical = COLOR_FIELDS.get(color_by, ("",0,1,False))
     cat_map = {}
     if categorical:
@@ -4981,9 +5050,22 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
             hoverinfo="name+text",text=[f"{name} | {ucs_txt}"]*len(ii),
             showlegend=True,legendgroup="dxf",
             visible=True if name not in hidden_layers else "legendonly"))
+    n_dibujados = 0
     for wn, well in wells.items():
-        pts = well.points
-        if not pts: continue
+        pts_full = well.points
+        if not pts_full: continue
+        # (E.4) Recorte SOLO de la vista: `pts` local, well.points intacto.
+        if ratio < 1.0:
+            # int() (piso), no round(): redondear cada pozo hacia arriba de
+            # forma independiente puede acumular y superar MAX_VIZ_POINTS
+            # entre varios pozos aunque cada uno individualmente respete la
+            # proporción — el piso garantiza que la suma nunca lo supere.
+            max_n_well = max(1, int(len(pts_full) * ratio))
+            idx_view = _submuestrear_indices(len(pts_full), max_n_well)
+            pts = [pts_full[i] for i in idx_view]
+        else:
+            pts = pts_full
+        n_dibujados += len(pts)
         is_visible = True if wn not in hidden_wells else "legendonly"
         xs = [p.este for p in pts]; ys = [p.norte for p in pts]; zs = [p.cota for p in pts]
         # collar
@@ -5021,13 +5103,21 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
                             colorbar=dict(title=dict(text=label,font=dict(size=10)),
                                           thickness=14,len=0.55,x=1.02)),legendgroup="wells",
                 visible=is_visible))
+    # (E.4) El conteo real se declara SIEMPRE, se haya recortado la vista o
+    # no — omitirlo cuando "por suerte" cabe entero sería el mismo default
+    # silencioso que el proyecto prohíbe en todo lo demás: el usuario nunca
+    # debería tener que adivinar si está viendo el 100% o una muestra.
+    titulo_conteo = (f"Mostrando {n_dibujados:,} de {n_total_pts:,} puntos MWD"
+                     .replace(",", "."))
     fig.update_layout(paper_bgcolor="#0d0d1a",
+        title=dict(text=titulo_conteo, font=dict(size=11, color="#888"),
+                   x=0.01, xanchor="left", y=0.99, yanchor="top"),
         scene=dict(
             xaxis=dict(title=dict(text="Este (UTM m)",font=dict(size=11)),gridcolor="#222"),
             yaxis=dict(title=dict(text="Norte (UTM m)",font=dict(size=11)),gridcolor="#222"),
             zaxis=dict(title=dict(text="Cota (m.s.n.m.)",font=dict(size=11)),gridcolor="#222"),
             bgcolor="#070711",aspectmode="data",camera=dict(eye=dict(x=1.6,y=1.6,z=0.9))),
-        margin=dict(l=0,r=0,t=0,b=0),
+        margin=dict(l=0,r=0,t=24,b=0),
         legend=dict(font=dict(size=10),bgcolor="rgba(0,0,0,0.5)",x=0.01,y=0.99,
                     bordercolor="#333",borderwidth=1),
         uirevision="viewport")

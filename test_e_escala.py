@@ -19,12 +19,21 @@ caché se reorienta a ese cuello de botella real:
         callback que la dispare dos veces sin que nada relevante haya
         cambiado no vuelva a recorrer los puntos ("ningún callback puede
         disparar una reclasificación completa").
+  E.3   parse_mw() en streaming (ET.iterparse + elem.clear()) en vez de
+        materializar el árbol XML completo antes de procesar: con ~150
+        pozos por caserón, tenerlos todos como DOM completo en memoria a
+        la vez no es viable en Colab.
+  E.4   Submuestreo para la VISTA del visor 3D (build_3d_figure): ningún
+        gráfico recibe 262.500 puntos como marcadores. El conteo real
+        siempre se declara en el gráfico, se haya recortado o no; los
+        CÁLCULOS (entrenamiento, DI, dominios) siguen usando la población
+        completa — el recorte es solo del dibujo.
 
 Usa los DXF reales del repo (FM2.dxf, Bht.dxf) para el caso end-to-end; el
 resto son fixtures sintéticas mínimas.
 """
 
-import os, sys, glob, shutil, hashlib, time
+import os, sys, glob, shutil, hashlib, time, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -288,6 +297,284 @@ def e2c_memoiza_reclasificaciones_redundantes():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# E.3 — Parseo por bloques: parse_mw() ya no materializa el árbol XML
+# completo en memoria antes de procesar. Usa ET.iterparse en modo streaming
+# y libera cada <Sample> (elem.clear()) apenas se extrae su <Val> — con
+# ~150 pozos por caserón, no es viable tener las 150 árboles DOM completos
+# en memoria a la vez (E.1/E.3).
+
+MW_REAL_PATH = os.path.join(HERE, "test_data", "MWPCS_1043_PR01_TH_P07H9_260314_0048.xml")
+_TIENE_MW_REAL = os.path.exists(MW_REAL_PATH)
+
+
+def _mk_synthetic_mw_xml(path, n_samples, extra_param=True):
+    """Genera un MWD IREDES sintético con n_samples <Sample>, para perfilar
+    memoria a una escala que los fixtures reales del repo no alcanzan."""
+    params = [
+        '<Parameter Unit="m" Full="LengthTag">LT</Parameter>',
+        '<Parameter Unit="m/min" Full="PenetrRate">PR</Parameter>',
+        '<Parameter Unit="Bar" Full="PercPressure">PP</Parameter>',
+        '<Parameter Unit="Bar" Full="FeedPressure">FP</Parameter>',
+        '<Parameter Unit="Bar" Full="DampPressure">DP</Parameter>',
+        '<Parameter Unit="Bar" Full="RotPressure">RP</Parameter>',
+        '<Parameter Unit="Bar" Full="FlushPressure">FLP</Parameter>',
+    ]
+    if extra_param:
+        params.append('<Parameter Unit="LogPoint" Full="DRMWDoption">OPT1</Parameter>')
+    samples = []
+    for i in range(n_samples):
+        lt = i * 0.02
+        samples.append(
+            f"<Sample><TiStamp>2026-01-01T00:00:{i%60:02d}</TiStamp>"
+            f"<Val>{lt:.3f} 1.0 150.0 40.0 100.0 55.0 6.0 0 </Val></Sample>")
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<DRMWD xmlns="http://www.iredes.org/xml/DrillRig" xmlns:IR="http://www.iredes.org/xml">
+  <IR:PlanIdRef>SYN_PLAN</IR:PlanIdRef>
+  <MWDholeId>1</MWDholeId>
+  <CompactMWDdata>
+    <MWDparams>
+      {''.join(params)}
+    </MWDparams>
+    {''.join(samples)}
+  </CompactMWDdata>
+</DRMWD>
+"""
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(xml)
+
+
+def _parse_mw_old_style(path, fname):
+    """
+    Copia congelada de la implementación PRE-E.3 de parse_mw (ET.parse +
+    findall, árbol completo en memoria), conservada SOLO para comparar
+    memoria/resultado contra la versión en streaming. No se usa en
+    producción.
+    """
+    import xml.etree.ElementTree as ET
+    try: root = ET.parse(path).getroot()
+    except Exception as e: raise RuntimeError(f"XML ilegible: {e}")
+    pn = root.find(f".//{gw.IR}PlanIdRef")
+    plan_id = (pn.text or "").strip() if pn is not None else ""
+    hn = root.find(f".//{gw.DR}MWDholeId")
+    hole_id = (hn.text or "").strip() if hn is not None else None
+    if not hole_id:
+        import re
+        m = re.search(r"H(\d+)_", fname, re.I)
+        if m: hole_id = m.group(1)
+    samples = root.findall(f".//{gw.DR}Sample")
+    puntos, largo_max, skipped = [], 0.0, 0
+    for s in samples:
+        vn = s.find(f"{gw.DR}Val")
+        if vn is None or not vn.text: skipped += 1; continue
+        parts = [float(x) for x in vn.text.strip().split()]
+        if len(parts) < 7: skipped += 1; continue
+        lt, rop, pp, ap, dp, rp, flp = parts[:7]
+        se = (pp + rp + ap) / (rop + gw.EPS)
+        puntos.append(gw.MWDPoint(largo=lt, vel=rop, pp=pp, pa=ap, pd=dp, pr=rp, pf=flp,
+                                  se=se, t=0.0))
+        if lt > largo_max: largo_max = lt
+    for p in puntos: p.t = p.largo/largo_max if largo_max > 0 else 0.0
+    return {"plan_id": plan_id, "hole_id": hole_id, "largo_max": largo_max, "puntos": puntos}
+
+
+def e3_streaming_mismo_resultado_que_antes():
+    section("E.3 — El parseo en streaming da EXACTAMENTE el mismo resultado")
+    if not _TIENE_MW_REAL:
+        print("  ⊘ omitido: falta test_data/MWPCS_1043_PR01_TH_P07H9_260314_0048.xml")
+        return
+    fname = os.path.basename(MW_REAL_PATH)
+    nuevo = gw.parse_mw(MW_REAL_PATH, fname)
+    viejo = _parse_mw_old_style(MW_REAL_PATH, fname)
+
+    check(nuevo["plan_id"] == viejo["plan_id"], "mismo plan_id", (nuevo["plan_id"], viejo["plan_id"]))
+    check(nuevo["hole_id"] == viejo["hole_id"], "mismo hole_id")
+    check(len(nuevo["puntos"]) == len(viejo["puntos"]),
+          "mismo número de puntos", (len(nuevo["puntos"]), len(viejo["puntos"])))
+    check(abs(nuevo["largo_max"] - viejo["largo_max"]) < 1e-9, "mismo largo_max")
+    campos = ("largo", "vel", "pp", "pa", "pd", "pr", "pf", "se", "t")
+    iguales = all(
+        all(abs(getattr(pn, c) - getattr(pv, c)) < 1e-9 for c in campos)
+        for pn, pv in zip(nuevo["puntos"], viejo["puntos"])
+    )
+    check(iguales, "todos los puntos son idénticos campo a campo, streaming vs. árbol completo")
+
+
+def e3_streaming_libera_memoria():
+    section("E.3 — El streaming usa memoria pico MENOR que materializar el árbol completo")
+    import tracemalloc
+    tmp = tempfile.NamedTemporaryFile(suffix=".xml", delete=False)
+    tmp.close()
+    try:
+        _mk_synthetic_mw_xml(tmp.name, n_samples=30_000)
+
+        tracemalloc.start()
+        gw.parse_mw(tmp.name, "grande.xml")
+        _, peak_nuevo = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+
+        tracemalloc.start()
+        _parse_mw_old_style(tmp.name, "grande.xml")
+        _, peak_viejo = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+
+        print(f"  · pico streaming: {peak_nuevo/1e6:.2f} MB · "
+              f"pico árbol completo: {peak_viejo/1e6:.2f} MB")
+        check(peak_nuevo < peak_viejo,
+              "el streaming pica MENOS memoria que ET.parse + findall sobre el árbol completo",
+              (peak_nuevo, peak_viejo))
+    finally:
+        os.unlink(tmp.name)
+
+
+def e3_xml_malformado_lanza_error():
+    section("E.3 — XML ilegible falla ruidosamente, no en silencio")
+    tmp = tempfile.NamedTemporaryFile(suffix=".xml", delete=False, mode="w", encoding="utf-8")
+    tmp.write("esto no es XML en absoluto <<<")
+    tmp.close()
+    try:
+        gw.parse_mw(tmp.name, "roto.xml")
+        ok = False
+    except RuntimeError as e:
+        ok = "ilegible" in str(e)
+    check(ok, "un XML malformado lanza RuntimeError con 'ilegible' en el mensaje")
+    os.unlink(tmp.name)
+
+
+def e3_timeout_omite_el_resto_sin_reventar():
+    section("E.3 — El presupuesto de tiempo sigue cortando el parseo sin excepción")
+    tmp = tempfile.NamedTemporaryFile(suffix=".xml", delete=False)
+    tmp.close()
+    try:
+        _mk_synthetic_mw_xml(tmp.name, n_samples=5000)
+        orig_budget = gw.PARSE_BUDGET_S
+        gw.PARSE_BUDGET_S = 0.0
+        try:
+            gw.parse_warnings.clear()
+            mw = gw.parse_mw(tmp.name, "presupuesto.xml")
+        finally:
+            gw.PARSE_BUDGET_S = orig_budget
+        check(len(mw["puntos"]) < 5000,
+              "con presupuesto agotado, se detiene antes de terminar", len(mw["puntos"]))
+        check(any("timeout" in w for w in gw.parse_warnings),
+              "el corte por timeout queda declarado, no silencioso", gw.parse_warnings)
+    finally:
+        os.unlink(tmp.name)
+
+
+def e3_excedente_sigue_funcionando_en_streaming():
+    section("E.3 — La convención de <Val> (3.x / Paso 0) sigue intacta en streaming")
+    tmp = tempfile.NamedTemporaryFile(suffix=".xml", delete=False)
+    tmp.close()
+    try:
+        _mk_synthetic_mw_xml(tmp.name, n_samples=10, extra_param=True)
+        gw.parse_warnings.clear()
+        mw = gw.parse_mw(tmp.name, "excedente.xml")
+        check(len(mw["puntos"]) == 10, "los 10 puntos se parsean pese al campo excedente")
+        avisos = [w for w in gw.parse_warnings if "excedente" in w]
+        check(len(avisos) == 1, "el campo excedente sigue reportándose EXACTAMENTE una vez",
+              avisos)
+        check("OPT1" in avisos[0], "el aviso sigue nombrando el campo descartado")
+    finally:
+        os.unlink(tmp.name)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# E.4 — Submuestreo para visualización: ningún gráfico debe recibir 262.500
+# puntos como marcadores. build_3d_figure() (el único visor que dibuja TODOS
+# los pozos de un caserón a la vez, el resto son por-pozo y quedan chicos por
+# construcción) recorta la VISTA a MAX_VIZ_POINTS, declara el conteo real
+# siempre —se haya recortado o no— y nunca toca la población que usan los
+# cálculos (well.points sigue completo).
+
+def _mk_well_puntos(wn, n, este0=0.0):
+    pts = [gw.MWDPoint(largo=i * 0.02, vel=1.0, pp=100.0, pa=50.0, pd=40.0, pr=30.0, pf=8.0,
+                       se=100.0, t=0.0, este=este0 + i * 0.02, norte=0.0, cota=-i * 0.02)
+           for i in range(n)]
+    gw.wells[wn] = gw.Well(well_name=wn, plan_id="P", hole_id=wn, points=pts)
+    return gw.wells[wn]
+
+
+def e4_submuestrear_indices_respeta_max():
+    section("E.4 — _submuestrear_indices(): nunca supera max_n, conserva orden y extremos")
+    check(gw._submuestrear_indices(100, 5000) == list(range(100)),
+          "si ya cabe, devuelve TODOS los índices sin recortar")
+    idx = gw._submuestrear_indices(10_000, 1000)
+    check(len(idx) == 1000, "recorta a exactamente max_n índices", len(idx))
+    check(idx == sorted(idx) and len(set(idx)) == len(idx),
+          "los índices quedan ordenados y sin repetir")
+    check(idx[0] == 0, "el primer índice (collar) siempre queda incluido", idx[0])
+    check(idx[-1] >= 9000, "el muestreo cubre hasta cerca del final, no solo el principio",
+          idx[-1])
+    check(gw._submuestrear_indices(0, 100) == [], "cero elementos no revienta")
+
+
+def e4_figura_3d_no_supera_el_tope():
+    section("E.4 — build_3d_figure() nunca dibuja más de MAX_VIZ_POINTS marcadores")
+    reset_registry()
+    _mk_well_puntos("W1", 3000, este0=0.0)
+    _mk_well_puntos("W2", 3000, este0=100.0)
+    _mk_well_puntos("W3", 3000, este0=200.0)
+    n_total_real = sum(len(w.points) for w in gw.wells.values())
+    check(n_total_real > gw.MAX_VIZ_POINTS,
+          "la fixture realmente supera el tope (si no, el test no prueba nada)", n_total_real)
+
+    fig = gw.build_3d_figure(color_by="se")
+    n_dibujados = sum(len(tr.x) for tr in fig.data if tr.type == "scatter3d"
+                      and tr.mode and "markers" in tr.mode and len(tr.x) > 1)
+    check(n_dibujados <= gw.MAX_VIZ_POINTS,
+          f"el total de marcadores dibujados ({n_dibujados}) respeta MAX_VIZ_POINTS "
+          f"({gw.MAX_VIZ_POINTS})", n_dibujados)
+    check(n_dibujados > 0, "sí se dibuja algo (no quedó vacío)")
+
+    titulo = str(fig.layout.title.text) if fig.layout.title and fig.layout.title.text else ""
+    titulo_sin_puntos_miles = titulo.replace(".", "")
+    check(str(n_total_real) in titulo_sin_puntos_miles,
+          "el título declara el conteo REAL de puntos (población completa)", titulo)
+    check(any(ch.isdigit() for ch in titulo) and "mostrando" in titulo.lower(),
+          "el título declara cuántos se están mostrando, con la palabra 'mostrando'", titulo)
+    reset_registry()
+
+
+def e4_figura_3d_declara_conteo_aunque_no_recorte():
+    section("E.4 — El conteo real se declara SIEMPRE, incluso sin recortar")
+    reset_registry()
+    _mk_well_puntos("W1", 50)
+    n_total_real = len(gw.wells["W1"].points)
+    check(n_total_real <= gw.MAX_VIZ_POINTS, "la fixture cabe entera (caso sin recorte)")
+
+    fig = gw.build_3d_figure(color_by="se")
+    titulo = str(fig.layout.title.text) if fig.layout.title and fig.layout.title.text else ""
+    check(titulo != "", "el título existe aunque no haya recorte (nunca queda implícito)")
+    check(str(n_total_real) in titulo,
+          "declara el conteo real también cuando se muestra el 100%", titulo)
+
+    n_dibujados = sum(len(tr.x) for tr in fig.data if tr.type == "scatter3d"
+                      and tr.mode and "markers" in tr.mode and len(tr.x) > 1)
+    check(n_dibujados == n_total_real,
+          "sin recorte, se dibujan TODOS los puntos reales, ni uno menos", n_dibujados)
+    reset_registry()
+
+
+def e4_submuestreo_no_toca_la_poblacion_real():
+    section("E.4 — El recorte es SOLO del dibujo: la población real queda intacta")
+    reset_registry()
+    _mk_well_puntos("W1", 8000)
+    n_antes = len(gw.wells["W1"].points)
+
+    gw.build_3d_figure(color_by="se")
+
+    n_despues = len(gw.wells["W1"].points)
+    check(n_antes == n_despues == 8000,
+          "well.points NO se mutó ni se recortó por dibujar la figura",
+          (n_antes, n_despues))
+    n_calculo = len(list(gw.all_points()))
+    check(n_calculo == 8000,
+          "los cálculos (all_points, entrenamiento, DI) siguen viendo la población completa",
+          n_calculo)
+    reset_registry()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 ALL_TESTS = [
     e2a_hash_contenido,
     e2a_cache_evita_reparseo,
@@ -297,6 +584,15 @@ ALL_TESTS = [
     e2b_firma_cambia_con_lo_relevante,
     e2b_firma_estable_con_lo_irrelevante,
     e2c_memoiza_reclasificaciones_redundantes,
+    e3_streaming_mismo_resultado_que_antes,
+    e3_streaming_libera_memoria,
+    e3_xml_malformado_lanza_error,
+    e3_timeout_omite_el_resto_sin_reventar,
+    e3_excedente_sigue_funcionando_en_streaming,
+    e4_submuestrear_indices_respeta_max,
+    e4_figura_3d_no_supera_el_tope,
+    e4_figura_3d_declara_conteo_aunque_no_recorte,
+    e4_submuestreo_no_toca_la_poblacion_real,
 ]
 
 
