@@ -4073,6 +4073,387 @@ def concordance_report(fuente: str = "sondajes", capas=None) -> Dict:
             "terminologia": TERMINOLOGIA_C}
 
 
+# ─── C.3 · DIAGNÓSTICO PRINCIPAL — concordancia vs distancia al sondaje ──────
+
+def distancia_a_sondaje(este: float, norte: float, cota: float) -> Optional[float]:
+    """
+    Distancia euclidiana al punto más cercano de cualquier traza de sondaje.
+    None si no hay sondajes cargados — un 0 ahí sería una mentira cómoda: no
+    es que el punto esté sobre un sondaje, es que no hay con qué medir.
+    """
+    mejor = None
+    for dh in drillholes.values():
+        if not dh.trace: continue
+        t = np.asarray(dh.trace, dtype=np.float64)
+        d = np.sqrt(((t[:, 1:4] - np.array([este, norte, cota])) ** 2).sum(axis=1)).min()
+        mejor = d if mejor is None else min(mejor, d)
+    return float(mejor) if mejor is not None else None
+
+
+def ucs_a_litologia(ucs: float) -> Optional[str]:
+    """
+    Litología cuya banda de UCS queda más cerca del valor predicho.
+
+    El modelo predice UCS continua, pero la concordancia se juzga contra una
+    LITOLOGÍA logueada. Traducir de vuelta es una decisión declarada, no un
+    hecho: dos unidades con bandas traslapadas (ver B.7) son intrínsecamente
+    confundibles a partir del UCS solo, y la matriz de confusión de C.6
+    cruza justamente eso.
+    """
+    if ucs is None or not np.isfinite(ucs): return None
+    mejor, mejor_d = None, None
+    for a in attr_registry.values():
+        if not a.usa_banda_ucs() or not a.tiene_banda_ucs(): continue
+        ancla = a.ucs_ancla()
+        if ancla is None: continue
+        lo = a.ucs_min if a.ucs_min is not None else ancla
+        hi = a.ucs_max if a.ucs_max is not None else ancla
+        d = 0.0 if lo <= ucs <= hi else min(abs(ucs - lo), abs(ucs - hi))
+        if mejor_d is None or d < mejor_d:
+            mejor, mejor_d = a.id, d
+    return mejor
+
+
+def _lito_de_sondaje(este: float, norte: float, cota: float,
+                     tol_m: float = 3.0) -> Optional[str]:
+    """Unidad logueada en el testigo, en el tramo más cercano al punto dado."""
+    mejor, mejor_d = None, None
+    for dh in drillholes.values():
+        if not dh.trace or not dh.lithology: continue
+        t = np.asarray(dh.trace, dtype=np.float64)
+        dd = np.sqrt(((t[:, 1:4] - np.array([este, norte, cota])) ** 2).sum(axis=1))
+        i = int(dd.argmin())
+        if mejor_d is not None and dd[i] >= mejor_d: continue
+        prof = float(t[i, 0])
+        for L in dh.lithology:
+            try: f, to = float(L.get("from")), float(L.get("to"))
+            except (TypeError, ValueError): continue
+            if f <= prof <= to:
+                u = L.get("unidad") or L.get("lito")
+                if u: mejor, mejor_d = u, float(dd[i])
+                break
+    return mejor if (mejor_d is not None and mejor_d <= tol_m) else None
+
+
+def _pares_contraste(fuente: str = "sondajes", capas=None):
+    """
+    Pares (punto, lito_predicha, lito_contraste, distancia_a_sondaje) para los
+    puntos con predicción y una fuente de contraste disponible.
+    """
+    out = []
+    for w in wells.values():
+        for p in w.points:
+            if p.ucs_ml is None: continue
+            pred = ucs_a_litologia(p.ucs_ml)
+            if pred is None: continue
+            if fuente == "sondajes":
+                real = _lito_de_sondaje(p.este, p.norte, p.cota)
+            else:
+                real = p.lito
+            if real is None: continue
+            out.append((p, pred, real, distancia_a_sondaje(p.este, p.norte, p.cota)))
+    return out
+
+
+def concordance_vs_distance(fuente: str = "sondajes", capas=None, n_bins: int = 5) -> Dict:
+    """
+    (C.3 — DIAGNÓSTICO PRINCIPAL) Concordancia en función de la distancia al
+    sondaje más cercano, con la PENDIENTE reportada, no solo el gráfico.
+
+    Lectura del signo (C.3):
+      · alta cerca y DECAE al alejarse → la malla se degrada lejos del dato y
+        el MWD aporta donde la interpolación ya no tiene información. Es el
+        mejor resultado posible: valida el MWD y cuantifica el alcance útil
+        de la malla.
+      · plana → la malla es tan buena lejos como cerca; el MWD no agrega.
+      · BAJA cerca de los sondajes → el problema es del modelo: ahí la malla
+        está anclada al dato duro y no puede estar equivocada.
+    """
+    guard = circularity_check(capas if fuente == "malla" else [])
+    if guard:
+        return {"status": "rechazado", "motivo": guard, "terminologia": TERMINOLOGIA_C}
+    pares = [x for x in _pares_contraste(fuente, capas) if x[3] is not None]
+    if len(pares) < 10:
+        return {"status": "sin_datos",
+                "motivo": (f"Solo {len(pares)} punto(s) con predicción y fuente de "
+                           f"contraste con distancia medible; se necesitan 10."),
+                "terminologia": TERMINOLOGIA_C}
+    d = np.array([x[3] for x in pares], dtype=np.float64)
+    ok = np.array([x[1] == x[2] for x in pares], dtype=np.float64)
+    bordes = np.linspace(d.min(), d.max(), n_bins + 1)
+    bins = []
+    for i in range(n_bins):
+        m = (d >= bordes[i]) & (d <= bordes[i + 1] if i == n_bins - 1 else d < bordes[i + 1])
+        if not m.any(): continue
+        bins.append({"d_min": round(float(bordes[i]), 2), "d_max": round(float(bordes[i + 1]), 2),
+                     "n": int(m.sum()), "concordancia": round(float(ok[m].mean()), 4)})
+    # Pendiente sobre los puntos, no sobre los bins: no depende del binning.
+    pend = float(np.polyfit(d, ok, 1)[0]) if d.std() > 0 else 0.0
+    if pend < -1e-4:
+        interp = ("La concordancia DECAE al alejarse del sondaje: la malla se degrada "
+                  "lejos del dato duro y el MWD aporta información donde la "
+                  "interpolación ya no la tiene. Es el mejor resultado posible — "
+                  "valida el MWD y cuantifica el alcance útil de la malla.")
+    elif pend > 1e-4:
+        interp = ("La concordancia es MÁS BAJA cerca de los sondajes, donde la malla "
+                  "está anclada al dato duro y no puede estar equivocada. El problema "
+                  "es del modelo, no de la malla: revisar antes de seguir.")
+    else:
+        interp = ("La concordancia es plana con la distancia: la malla es tan buena "
+                  "lejos como cerca del dato, y el MWD no agrega información "
+                  "geológica en este conjunto.")
+    return {"status": "ok", "fuente": fuente, "nivel": 1 if fuente == "sondajes" else 2,
+            "n": len(pares), "bins": bins,
+            "pendiente": round(pend, 6),
+            "pendiente_unidad": "Δconcordancia por metro de distancia al sondaje",
+            "concordancia_global": round(float(ok.mean()), 4),
+            "interpretacion": interp, "terminologia": TERMINOLOGIA_C}
+
+
+# ─── C.4 · ESTRUCTURA ESPACIAL DEL DESACUERDO ───────────────────────────────
+
+def distancia_a_borde_malla(este: float, norte: float, cota: float,
+                            capa: str) -> Optional[float]:
+    """
+    Distancia al borde más cercano del bbox de la malla. Aproximación
+    deliberada y declarada: la distancia exacta a la superficie triangulada
+    es cara, y para separar "a uno o dos metros de un borde" de "en el
+    interior macizo" —que es lo que C.4 necesita distinguir— el bbox basta.
+    """
+    lay = layers.get(capa)
+    if lay is None: return None
+    p = np.array([este, norte, cota], dtype=np.float64)
+    dentro = np.all((p >= lay.bbox_min) & (p <= lay.bbox_max))
+    if not dentro: return 0.0
+    return float(np.min(np.concatenate([p - lay.bbox_min, lay.bbox_max - p])))
+
+
+BORDE_MALLA_M = 2.0     # "a uno o dos metros de un borde" (C.4)
+
+
+def disagreement_vs_mesh_edge(fuente: str = "sondajes", capas=None) -> Dict:
+    """
+    (C.4) Clasifica cada punto DISCORDANTE por su distancia al borde de malla:
+    cerca del borde es precisión de interpolación, esperable; en el interior
+    macizo de un cuerpo es un problema real que hay que investigar. La
+    distinción separa "la malla está corrida" de "el modelo está mal".
+    """
+    guard = circularity_check(capas if fuente == "malla" else [])
+    if guard:
+        return {"status": "rechazado", "motivo": guard, "terminologia": TERMINOLOGIA_C}
+    pares = _pares_contraste(fuente, capas)
+    if not pares:
+        return {"status": "sin_datos",
+                "motivo": "No hay puntos con predicción y fuente de contraste.",
+                "terminologia": TERMINOLOGIA_C}
+    disc = [(p, pr, re) for p, pr, re, _ in pares if pr != re]
+    if not disc:
+        return {"status": "sin_desacuerdos", "n_pares": len(pares),
+                "terminologia": TERMINOLOGIA_C}
+    dists, interior = [], []
+    for p, pr, re in disc:
+        d = distancia_a_borde_malla(p.este, p.norte, p.cota, p.capa_lito) if p.capa_lito else None
+        if d is None: continue
+        dists.append(d)
+        if d > BORDE_MALLA_M:
+            interior.append({"este": round(p.este, 2), "norte": round(p.norte, 2),
+                             "cota": round(p.cota, 2), "d_borde_m": round(d, 2),
+                             "predicha": pr, "contraste": re, "capa": p.capa_lito})
+    if not dists:
+        return {"status": "sin_datos",
+                "motivo": "Los puntos discordantes no tienen capa de litología asociada.",
+                "terminologia": TERMINOLOGIA_C}
+    arr = np.array(dists)
+    hist, bordes = np.histogram(arr, bins=min(10, max(3, len(arr) // 5)))
+    return {"status": "ok", "n_discordantes": len(disc), "n_medidos": len(dists),
+            "histograma": {"conteo": hist.tolist(),
+                           "bordes_m": [round(float(b), 2) for b in bordes]},
+            "cerca_del_borde": int((arr <= BORDE_MALLA_M).sum()),
+            "interior_macizo": int((arr > BORDE_MALLA_M).sum()),
+            "umbral_borde_m": BORDE_MALLA_M,
+            "zonas_interior": interior[:200],
+            "interpretacion": (
+                f"{int((arr <= BORDE_MALLA_M).sum())} desacuerdo(s) a ≤{BORDE_MALLA_M:g} m "
+                f"de un borde: precisión de interpolación, esperable. "
+                f"{int((arr > BORDE_MALLA_M).sum())} en el interior macizo de un cuerpo: "
+                f"ahí el desacuerdo no se explica por el borde y hay que investigarlo."),
+            "terminologia": TERMINOLOGIA_C}
+
+
+def interior_disagreement_zones(fuente: str = "sondajes", capas=None) -> List[Dict]:
+    """(C.7) Zonas de desacuerdo interior con coordenadas, para geología."""
+    rep = disagreement_vs_mesh_edge(fuente, capas)
+    return rep.get("zonas_interior", []) if rep.get("status") == "ok" else []
+
+
+# ─── C.5 · DESFASE DE CONTACTOS ─────────────────────────────────────────────
+
+def contact_offset_report(max_busqueda_m: float = 10.0) -> Dict:
+    """
+    (C.5) Para cada contacto que predice la malla, el desfase δ hasta la firma
+    detectada por el MWD (pico de DI). Reporta media, mediana, desviación y
+    sesgo.
+
+    · δ con SESGO SISTEMÁTICO  → la malla está desplazada, y δ cuantifica cuánto.
+    · δ SIMÉTRICO con dispersión → ruido de interpolación.
+
+    Ese δ es el margen operacional de la función de anticipación: cuántos
+    metros antes del contacto previsto conviene bajar PP.
+    """
+    deltas = []
+    for wn, w in wells.items():
+        pts = w.points
+        if len(pts) < 3: continue
+        # Contactos de la malla: donde cambia la litología a lo largo del pozo.
+        contactos = [pts[i].largo for i in range(1, len(pts))
+                     if pts[i].lito != pts[i - 1].lito and (pts[i].lito or pts[i - 1].lito)]
+        if not contactos: continue
+        picos = [lp for lp, _, _ in di_peaks(w)]
+        if not picos: continue
+        pa = np.array(picos, dtype=np.float64)
+        for c in contactos:
+            d = pa - c                      # signo: + el pico va DESPUÉS del contacto
+            j = int(np.abs(d).argmin())
+            if abs(d[j]) <= max_busqueda_m:
+                deltas.append(float(d[j]))
+    if len(deltas) < 3:
+        return {"status": "sin_datos",
+                "motivo": (f"Solo {len(deltas)} contacto(s) con firma MWD a menos de "
+                           f"{max_busqueda_m:g} m; se necesitan 3 para hablar de sesgo."),
+                "terminologia": TERMINOLOGIA_C}
+    a = np.array(deltas)
+    media, mediana, sd = float(a.mean()), float(np.median(a)), float(a.std())
+    sesgo = float(((a - media) ** 3).mean() / (sd ** 3)) if sd > 0 else 0.0
+    sistematico = abs(media) > sd / 2 if sd > 0 else abs(media) > 0
+    interp = (
+        f"δ medio {media:+.2f} m con desviación {sd:.2f} m: "
+        + ("SESGO SISTEMÁTICO — la malla está desplazada y δ cuantifica cuánto. "
+           f"Margen operacional sugerido para la anticipación: {abs(media):.1f} m "
+           "antes del contacto previsto."
+           if sistematico else
+           "distribución simétrica alrededor de cero — es ruido de interpolación, "
+           "no un desplazamiento de la malla."))
+    return {"status": "ok", "n": len(deltas), "media": round(media, 3),
+            "mediana": round(mediana, 3), "desviacion": round(sd, 3),
+            "sesgo": round(sesgo, 3), "sistematico": bool(sistematico),
+            "margen_operacional_m": round(abs(media), 2) if sistematico else None,
+            "interpretacion": interp, "terminologia": TERMINOLOGIA_C}
+
+
+# ─── C.6 · MATRIZ DE CONFUSIÓN, CRUZADA CON EL TRASLAPE DE BANDAS ───────────
+
+def confusion_matrix_report(fuente: str = "sondajes", capas=None) -> Dict:
+    """
+    (C.6) Matriz de confusión entre la litología predicha por MWD y la de la
+    fuente de contraste. Reporta concordancia global, por unidad, y los pares
+    que más se confunden.
+
+    Y los CRUZA con B.7: las unidades cuyas bandas de UCS se traslapan
+    deberían ser las que más se confunden — si se confunden unidades de
+    bandas bien separadas, hay algo más ocurriendo, y eso es lo que hay que
+    mirar.
+    """
+    guard = circularity_check(capas if fuente == "malla" else [])
+    if guard:
+        return {"status": "rechazado", "motivo": guard, "terminologia": TERMINOLOGIA_C}
+    pares = _pares_contraste(fuente, capas)
+    if len(pares) < 5:
+        return {"status": "sin_datos",
+                "motivo": f"Solo {len(pares)} par(es) predicción↔contraste; se necesitan 5.",
+                "terminologia": TERMINOLOGIA_C}
+    unidades = sorted({x[1] for x in pares} | {x[2] for x in pares})
+    idx = {u: i for i, u in enumerate(unidades)}
+    M = np.zeros((len(unidades), len(unidades)), dtype=int)
+    for _, pred, real, _ in pares:
+        M[idx[real], idx[pred]] += 1          # filas = contraste, columnas = predicha
+    diag = int(np.trace(M)); total = int(M.sum())
+    por_unidad = {}
+    for u in unidades:
+        i = idx[u]; n = int(M[i].sum())
+        if n: por_unidad[u] = {"n": n, "concordancia": round(float(M[i, i] / n), 4)}
+    confundidos = []
+    for i, ui in enumerate(unidades):
+        for j, uj in enumerate(unidades):
+            if i == j or M[i, j] == 0: continue
+            confundidos.append({"contraste": ui, "predicha": uj, "n": int(M[i, j])})
+    confundidos.sort(key=lambda c: -c["n"])
+
+    # Cruce con B.7: ¿los pares confundidos son los de bandas traslapadas?
+    traslape = ucs_band_overlap_report()
+    pares_trasl = {frozenset((p["a"], p["b"])) for p in traslape["confianza"]}
+    cruce = []
+    for c in confundidos[:10]:
+        par = frozenset((c["contraste"], c["predicha"]))
+        se_traslapan = par in pares_trasl
+        cruce.append({**c, "bandas_se_traslapan": se_traslapan,
+                      "nota": ("esperable: sus bandas de UCS se traslapan (B.7)"
+                               if se_traslapan else
+                               "ATENCIÓN: bandas bien separadas y aun así se confunden — "
+                               "hay algo más ocurriendo que el traslape de UCS")})
+    return {"status": "ok", "fuente": fuente, "unidades": unidades,
+            "matriz": M.tolist(), "orden": "filas=contraste, columnas=predicha por MWD",
+            "n": total, "concordancia_global": round(diag / total, 4) if total else None,
+            "por_unidad": por_unidad, "pares_confundidos": confundidos[:20],
+            "cruce_traslape_ucs": cruce, "terminologia": TERMINOLOGIA_C}
+
+
+# ─── C.7 · SALIDAS ──────────────────────────────────────────────────────────
+
+def concordance_full_report(fuente: str = "sondajes", capas=None) -> Dict:
+    """(C.7) Reporte completo: encuadre + C.3 a C.6 en una sola llamada."""
+    return {
+        "encuadre": ("ANÁLISIS DE CONCORDANCIA, NO VALIDACIÓN. La malla no es verdad "
+                     "terreno: es una interpolación construida desde los sondajes, "
+                     "restringida junto al sondaje e hipótesis progresivamente más "
+                     "débil al alejarse. Un desacuerdo no es un error del MWD hasta "
+                     "demostrar cuál de los dos falla. Terminología: "
+                     + TERMINOLOGIA_C + "."),
+        "fuente": fuente, "capas": sorted(capas or []),
+        "c3": concordance_vs_distance(fuente, capas),
+        "c4": disagreement_vs_mesh_edge(fuente, capas),
+        "c5": contact_offset_report(),
+        "c6": confusion_matrix_report(fuente, capas),
+        "terminologia": TERMINOLOGIA_C,
+    }
+
+
+def export_concordance_csv(full: Optional[Dict] = None) -> str:
+    """(C.7) Reporte de concordancia como CSV plano, con el encuadre arriba."""
+    full = full if full is not None else concordance_full_report()
+    filas = []
+    c3 = full.get("c3", {})
+    if c3.get("status") == "ok":
+        for b in c3["bins"]:
+            filas.append({"seccion": "C.3 concordancia vs distancia",
+                          "clave": f"{b['d_min']}-{b['d_max']} m",
+                          "valor": b["concordancia"], "n": b["n"]})
+        filas.append({"seccion": "C.3 concordancia vs distancia", "clave": "pendiente",
+                      "valor": c3["pendiente"], "n": c3["n"]})
+    c4 = full.get("c4", {})
+    if c4.get("status") == "ok":
+        filas.append({"seccion": "C.4 desacuerdo", "clave": "cerca del borde",
+                      "valor": c4["cerca_del_borde"], "n": c4["n_medidos"]})
+        filas.append({"seccion": "C.4 desacuerdo", "clave": "interior macizo",
+                      "valor": c4["interior_macizo"], "n": c4["n_medidos"]})
+    c5 = full.get("c5", {})
+    if c5.get("status") == "ok":
+        for k in ("media", "mediana", "desviacion", "sesgo"):
+            filas.append({"seccion": "C.5 desfase de contactos", "clave": k,
+                          "valor": c5[k], "n": c5["n"]})
+    c6 = full.get("c6", {})
+    if c6.get("status") == "ok":
+        filas.append({"seccion": "C.6 confusión", "clave": "concordancia global",
+                      "valor": c6["concordancia_global"], "n": c6["n"]})
+        for u, v in c6["por_unidad"].items():
+            filas.append({"seccion": "C.6 confusión", "clave": f"concordancia {u}",
+                          "valor": v["concordancia"], "n": v["n"]})
+    cab = "\n".join("# " + l for l in [
+        full["encuadre"], f"fuente de contraste: {full.get('fuente')}",
+        f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
+    df = pd.DataFrame(filas or [{"seccion": "—", "clave": "sin datos", "valor": "", "n": 0}])
+    return cab + "\n" + df.to_csv(index=False)
+
+
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║  P3-3.9 — ARMAZÓN DEL REPORTE DE JUSTIFICACIÓN DE VARIABLES             ║
 # ║                                                                          ║

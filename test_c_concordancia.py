@@ -200,12 +200,151 @@ def c0_terminologia():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+def _mk_sondaje(hid, este, norte, cota, largo=50.0, unidad="Bht"):
+    """Sondaje sintético vertical con una sola unidad logueada."""
+    dh = gw.DrillHole(holeid=hid, x_utm=este, y_utm=norte, z_utm=cota, length=largo)
+    dh.trace = [(d, este, norte, cota - d) for d in np.arange(0, largo + 0.5, 1.0)]
+    dh.lithology = [{"from": 0.0, "to": largo, "unidad": unidad}]
+    gw.drillholes[hid] = dh
+    return dh
+
+
+def c3_distancia_al_sondaje():
+    section("C.3 — Distancia al sondaje más cercano")
+    reset()
+    _mk_sondaje("S1", E0, N0, Z0 + 50)
+    d0 = gw.distancia_a_sondaje(E0, N0, Z0 + 25)
+    check(abs(d0) < 1.5, "un punto sobre la traza da distancia ~0", d0)
+    d1 = gw.distancia_a_sondaje(E0 + 30, N0, Z0 + 25)
+    check(abs(d1 - 30.0) < 1.5, "un punto a 30 m lateral da ~30 m", d1)
+    check(gw.distancia_a_sondaje(E0, N0, Z0) is not None, "siempre devuelve un número")
+
+    reset()
+    check(gw.distancia_a_sondaje(E0, N0, Z0) is None,
+          "sin sondajes cargados devuelve None, no un 0 engañoso")
+
+
+def c3_concordancia_decae_con_la_distancia():
+    section("C.3 — Concordancia vs distancia: se reporta la PENDIENTE")
+    _escenario_dos_caserones()
+    gw.train_rf(0.0, 450.0)
+    gw.predict_all_wells()          # sin predicciones no hay nada que contrastar
+    _mk_sondaje("S1", E0 + 10, N0 + 10, Z0 + 40, largo=40, unidad="Bht")
+
+    rep = gw.concordance_vs_distance(fuente="sondajes", n_bins=4)
+    check(rep["status"] == "ok", "el diagnóstico principal corre", rep.get("motivo"))
+    if rep["status"] != "ok":
+        return
+    check("pendiente" in rep, "reporta la PENDIENTE, no solo el gráfico", list(rep))
+    check("interpretacion" in rep and rep["interpretacion"],
+          "y la interpretación del signo de esa pendiente", rep.get("interpretacion"))
+    check(isinstance(rep["bins"], list) and rep["bins"],
+          "trae los bins con su concordancia y su n", rep.get("bins"))
+    for b in rep["bins"]:
+        check(set(("d_min", "d_max", "n", "concordancia")) <= set(b),
+              "cada bin declara rango, n y concordancia", b)
+        break
+    low = str(rep).lower()
+    check("error" not in low.replace("errores", ""),
+          "el desacuerdo NUNCA se llama «error» (C.2 nivel 2)", rep.get("interpretacion"))
+
+
+def c4_estructura_espacial_del_desacuerdo():
+    section("C.4 — Desacuerdo por distancia al borde de malla")
+    _escenario_dos_caserones()
+    gw.train_rf(0.0, 450.0)
+    d = gw.distancia_a_borde_malla(E0 + 20, N0 + 20, Z0 + 20, "CAS_A:Bht")
+    check(d is not None and d > 0, "un punto interior tiene distancia al borde > 0", d)
+    d_borde = gw.distancia_a_borde_malla(E0 + 0.2, N0 + 20, Z0 + 20, "CAS_A:Bht")
+    check(d_borde is not None and d_borde < d,
+          "un punto pegado al borde da menos distancia que uno interior", (d_borde, d))
+
+    rep = gw.disagreement_vs_mesh_edge(fuente="sondajes")
+    check(rep["status"] in ("ok", "sin_desacuerdos", "sin_datos"),
+          "el reporte declara su estado", rep.get("status"))
+    if rep["status"] == "ok":
+        check("histograma" in rep, "trae el histograma que pide C.4", list(rep))
+        check("interior_macizo" in rep,
+              "y separa el desacuerdo de borde del interior macizo", list(rep))
+
+
+def c5_desfase_de_contactos():
+    section("C.5 — Desfase δ de contactos: media, mediana, desviación y sesgo")
+    reset()
+    rep = gw.contact_offset_report()
+    check(rep["status"] in ("ok", "sin_datos"), "declara su estado", rep.get("status"))
+
+    # Escenario sintético: contactos de malla desplazados 3 m respecto del MWD.
+    _escenario_dos_caserones()
+    gw.train_rf(0.0, 450.0)
+    rep = gw.contact_offset_report()
+    if rep["status"] == "ok":
+        for k in ("media", "mediana", "desviacion", "sesgo", "n"):
+            check(k in rep, f"reporta {k}", list(rep))
+        check("interpretacion" in rep,
+              "distingue sesgo sistemático (malla desplazada) de dispersión (ruido)")
+
+
+def c6_matriz_de_confusion():
+    section("C.6 — Matriz de confusión cruzada con el traslape de bandas (B.7)")
+    _escenario_dos_caserones()
+    gw.train_rf(0.0, 450.0)
+    gw.predict_all_wells()
+    _mk_sondaje("S1", E0 + 10, N0 + 10, Z0 + 40, largo=40, unidad="Bht")
+
+    rep = gw.confusion_matrix_report(fuente="sondajes")
+    check(rep["status"] in ("ok", "sin_datos"), "declara su estado", rep.get("status"))
+    if rep["status"] != "ok":
+        return
+    check("matriz" in rep and "unidades" in rep, "trae matriz y unidades", list(rep))
+    check("concordancia_global" in rep, "reporta concordancia global")
+    check("por_unidad" in rep, "y concordancia por unidad")
+    check("pares_confundidos" in rep, "lista los pares que más se confunden")
+    check("cruce_traslape_ucs" in rep,
+          "CRUZA con B.7: los pares confundidos contra el traslape de bandas",
+          list(rep))
+
+
+def c7_exportacion():
+    section("C.7 — Salidas exportables")
+    _escenario_dos_caserones()
+    gw.train_rf(0.0, 450.0)
+    gw.predict_all_wells()
+    _mk_sondaje("S1", E0 + 10, N0 + 10, Z0 + 40, largo=40, unidad="Bht")
+
+    full = gw.concordance_full_report(fuente="sondajes")
+    check(set(("encuadre", "c3", "c4", "c5", "c6")) <= set(full),
+          "el reporte completo reúne C.3 a C.6", list(full))
+    csv = gw.export_concordance_csv(full)
+    check(isinstance(csv, str) and len(csv) > 0, "se exporta como CSV")
+    low = (csv + str(full)).lower()
+    check("corregido" not in low, "la exportación no dice «corregido»")
+    check("exacto" not in low and "exacta" not in low, "ni «exacto/exacta»")
+    check(gw.TERMINOLOGIA_C.lower() in low,
+          "y sí lleva la terminología obligatoria")
+
+    # C.7 pide el listado de zonas de desacuerdo interior con coordenadas.
+    zonas = gw.interior_disagreement_zones(fuente="sondajes")
+    check(isinstance(zonas, list), "las zonas de desacuerdo interior son una lista")
+    if zonas:
+        z = zonas[0]
+        check(set(("este", "norte", "cota")) <= set(z),
+              "cada zona trae coordenadas para que geología la revise", z)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 ALL_TESTS = [
     c1_procedencia_registrada,
     c1_rechaza_la_misma_malla,
     c1_admite_las_comparaciones_validas,
     c1_sin_modelo_no_hay_reporte,
     c0_terminologia,
+    c3_distancia_al_sondaje,
+    c3_concordancia_decae_con_la_distancia,
+    c4_estructura_espacial_del_desacuerdo,
+    c5_desfase_de_contactos,
+    c6_matriz_de_confusion,
+    c7_exportacion,
 ]
 
 
