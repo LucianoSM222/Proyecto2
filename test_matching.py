@@ -402,6 +402,118 @@ def test_campo_excedente_se_reporta():
     return True
 
 
+# ─── Fusión de DQ hermanos del MISMO plan (carga a escala) ───────────────────
+# Un abanico real se re-releva varias veces: PCS_1043 trae 56 archivos DQ para
+# 34 planes, y P107 solo tiene cuatro revisiones (23, 14, 13 y 13 tiros).
+# Quedarse con UNA sola —la primera o la última que llegue— pierde los tiros
+# que solo aparecen en las otras, y con ellos el MWD que los referencia: sin
+# fusionar, PCS_1043 daba 345 pozos ambiguos de 468; fusionando, 9.
+#
+# Pero fusionar en silencio sería igual de malo: 138 de 344 tiros repetidos
+# traen coordenadas DISTINTAS entre revisiones (mediana 1,3 m, 34 casos sobre
+# 20 m). Ese desacuerdo es un dato geológico, no ruido, y debe declararse.
+
+def _mk_dq(plan_id, tiros, fecha=""):
+    return {"plan_id": plan_id, "tiros": tiros, "fecha": fecha, "fname": f"{plan_id}_{fecha}.xml"}
+
+
+def _tiro(e, n, z, largo=10.0):
+    return {"collar": {"este": e, "norte": n, "cota": z},
+            "final_pt": {"este": e + largo, "norte": n, "cota": z}}
+
+
+def test_merge_dq_une_tiros_de_revisiones():
+    """Los tiros que solo existen en una revisión NO se pierden."""
+    _reset_state()
+    dqs = [
+        _mk_dq("P1", {"1": _tiro(0, 0, 0), "2": _tiro(1, 0, 0)}, fecha="2026-01-01T00:00:00"),
+        _mk_dq("P1", {"2": _tiro(1, 0, 0), "3": _tiro(2, 0, 0)}, fecha="2026-01-02T00:00:00"),
+    ]
+    merged, rep = gw.merge_dq_siblings(dqs)
+    assert set(merged) == {"P1"}, f"debe quedar un solo plan: {list(merged)}"
+    assert set(merged["P1"]["tiros"]) == {"1", "2", "3"}, (
+        f"los tres tiros deben sobrevivir la fusión: {sorted(merged['P1']['tiros'])}")
+    assert rep["n_planes"] == 1 and rep["n_archivos"] == 2
+    assert rep["n_tiros"] == 3, rep
+    assert not rep["conflictos"], f"tiros idénticos no son conflicto: {rep['conflictos']}"
+    print(f"[TEST merge-dq] OK — 2 revisiones → 3 tiros únicos, 0 conflictos.")
+    return True
+
+
+def test_merge_dq_gana_el_mas_reciente_y_lo_declara():
+    """Ante coordenadas distintas para el mismo tiro gana la revisión más
+    reciente, y el desacuerdo se REPORTA con su magnitud."""
+    _reset_state()
+    dqs = [
+        _mk_dq("P1", {"1": _tiro(0, 0, 0)}, fecha="2026-01-01T00:00:00"),
+        _mk_dq("P1", {"1": _tiro(30, 40, 0)}, fecha="2026-03-01T00:00:00"),   # 50 m
+    ]
+    merged, rep = gw.merge_dq_siblings(dqs)
+    c = merged["P1"]["tiros"]["1"]["collar"]
+    assert (c["este"], c["norte"]) == (30, 40), f"debe ganar el más reciente: {c}"
+    assert len(rep["conflictos"]) == 1, rep["conflictos"]
+    con = rep["conflictos"][0]
+    assert con["plan_id"] == "P1" and con["hole_id"] == "1"
+    assert abs(con["dist_m"] - 50.0) < 1e-6, con
+    assert "2026-03-01" in con["gana"], con
+
+    # El orden de llegada NO decide: fusionar al revés da el mismo ganador.
+    merged2, _ = gw.merge_dq_siblings(list(reversed(dqs)))
+    c2 = merged2["P1"]["tiros"]["1"]["collar"]
+    assert (c2["este"], c2["norte"]) == (30, 40), (
+        f"el ganador debe depender de la fecha, no del orden de carga: {c2}")
+    print("[TEST merge-dq] OK — gana el más reciente, conflicto de 50 m declarado.")
+    return True
+
+
+def test_merge_dq_avisa_desplazamientos_grandes():
+    """Un desplazamiento sobre el umbral se registra como advertencia visible."""
+    _reset_state()
+    gw.parse_warnings.clear()
+    dqs = [
+        _mk_dq("P1", {"1": _tiro(0, 0, 0)}, fecha="2026-01-01T00:00:00"),
+        _mk_dq("P1", {"1": _tiro(0, 0, 0.05)}, fecha="2026-02-01T00:00:00"),   # 5 cm
+        _mk_dq("P2", {"9": _tiro(0, 0, 0)}, fecha="2026-01-01T00:00:00"),
+        _mk_dq("P2", {"9": _tiro(0, 0, 99.0)}, fecha="2026-02-01T00:00:00"),   # 99 m
+    ]
+    _, rep = gw.merge_dq_siblings(dqs)
+    grandes = [c for c in rep["conflictos"] if c["dist_m"] > gw.DQ_MERGE_WARN_M]
+    assert len(grandes) == 1 and grandes[0]["plan_id"] == "P2", rep["conflictos"]
+    avisos = [w for w in gw.parse_warnings if "P2" in w and "9" in w]
+    assert avisos, f"el desplazamiento grande debe avisarse: {gw.parse_warnings}"
+    print(f"[TEST merge-dq] OK — 5 cm no alarma, 99 m sí ({len(grandes)} aviso).")
+    return True
+
+
+def test_merge_dq_ignora_planes_vacios():
+    """Un archivo sin plan_id o sin tiros (p.ej. un plan de perforación mal
+    clasificado como DQ) no puede entrar como plan fantasma."""
+    _reset_state()
+    dqs = [
+        _mk_dq("", {}, fecha="2026-01-01T00:00:00"),
+        _mk_dq("P1", {}, fecha="2026-01-01T00:00:00"),
+        _mk_dq("P2", {"1": _tiro(0, 0, 0)}, fecha="2026-01-01T00:00:00"),
+    ]
+    merged, rep = gw.merge_dq_siblings(dqs)
+    assert set(merged) == {"P2"}, f"solo el plan con tiros sobrevive: {list(merged)}"
+    assert rep["n_descartados"] == 2, rep
+    print("[TEST merge-dq] OK — plan vacío y plan sin tiros descartados y contados.")
+    return True
+
+
+def test_parse_dq_expone_fecha():
+    """parse_dq debe traer la fecha del DQ: sin ella no hay criterio de
+    'más reciente' que no sea el orden arbitrario del sistema de archivos."""
+    require_real_data(DQ=DQ_PATH)
+    _reset_state()
+    dq = gw.parse_dq(DQ_PATH, os.path.basename(DQ_PATH))
+    assert "fecha" in dq, f"parse_dq debe exponer 'fecha': {list(dq)}"
+    assert dq["fecha"], "la fecha no puede venir vacía en un DQ real"
+    assert dq.get("fname"), "parse_dq debe recordar de qué archivo vino"
+    print(f"[TEST merge-dq] OK — parse_dq expone fecha={dq['fecha']}.")
+    return True
+
+
 if __name__ == "__main__":
     print("=" * 70)
     print("  test_matching.py — validación T1 (matching robusto MW↔DQ)")
@@ -424,6 +536,11 @@ if __name__ == "__main__":
     _run(test_multi_dq_hermanos, "TEST c")
     _run(test_end_to_end, "TEST e2e")
     _run(test_campo_excedente_se_reporta, "campo-excedente")
+    _run(test_merge_dq_une_tiros_de_revisiones, "merge-dq-une")
+    _run(test_merge_dq_gana_el_mas_reciente_y_lo_declara, "merge-dq-reciente")
+    _run(test_merge_dq_avisa_desplazamientos_grandes, "merge-dq-avisa")
+    _run(test_merge_dq_ignora_planes_vacios, "merge-dq-vacios")
+    _run(test_parse_dq_expone_fecha, "merge-dq-fecha")
     if _have_real_hermanos():
         _run(test_real_hermanos_exact, "hermanos-exact")
         _run(test_real_fallback_no_exact, "hermanos-fallback")

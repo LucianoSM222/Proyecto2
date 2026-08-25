@@ -2424,6 +2424,12 @@ def parse_dq(path, fname):
         }
     pn = root.find(f".//{IR}PlanIdRef")
     plan_id = (pn.text or "").strip() if pn is not None else ""
+    # Fecha de emisión del DQ: es el criterio para decidir cuál revisión de un
+    # mismo abanico gana cuando dos discrepan (ver merge_dq_siblings). Sin
+    # ella el "ganador" dependería del orden en que el sistema de archivos
+    # devuelve los nombres, que es arbitrario.
+    fn = root.find(f".//{IR}FileCreateDate")
+    fecha = (fn.text or "").strip() if fn is not None else ""
     tiros, skipped, t0 = {}, 0, time.time()
     hq_list = root.findall(f".//{DR}HoleQualityData")
     for h, hq in enumerate(hq_list):
@@ -2441,7 +2447,104 @@ def parse_dq(path, fname):
             tiros[hid] = {"collar":lu(*coords[:3]), "final_pt":lu(*coords[3:])}
         except: skipped += 1
     if skipped: log_warn(f'DQ "{fname}": {skipped} tiros omitidos.')
-    return {"plan_id": plan_id, "tiros": tiros}
+    return {"plan_id": plan_id, "tiros": tiros, "fecha": fecha, "fname": fname}
+
+
+# Desplazamiento de collar entre revisiones de un mismo tiro sobre el cual el
+# desacuerdo deja de ser tolerancia de relevamiento y pasa a ser un hallazgo
+# que hay que mirar. En PCS_1043 la mediana de los tiros que difieren es
+# 1,3 m, pero hay 34 casos sobre 20 m: no son la misma perforación.
+DQ_MERGE_WARN_M = 5.0
+
+
+def merge_dq_siblings(dq_list: List[Dict]) -> Tuple[Dict[str, Dict], Dict]:
+    """
+    Fusiona los DQ que comparten plan_id (revisiones sucesivas del mismo
+    abanico) en un solo plan por id, uniendo sus tiros.
+
+    Un abanico real se re-releva varias veces y cada revisión trae un
+    subconjunto distinto de tiros: PCS_1043 llega con 56 archivos DQ para 34
+    planes, y el plan P107 tiene cuatro revisiones con 23, 14, 13 y 13 tiros.
+    Quedarse con UNA sola —la primera o la última en llegar— pierde los tiros
+    que solo aparecen en las otras, y con ellos todo el MWD que los
+    referencia (sin fusionar: 345 de 468 pozos ambiguos; fusionando: 9).
+
+    Cuando dos revisiones dan coordenadas DISTINTAS para el mismo tiro gana
+    la más reciente por `fecha`, pero el desacuerdo NUNCA se resuelve en
+    silencio: se devuelve en el reporte con su magnitud, y los que superan
+    DQ_MERGE_WARN_M quedan además como advertencia visible. Un collar que se
+    corre 20 m entre revisiones es un dato geológico, no ruido.
+
+    Devuelve (merged, reporte):
+      merged   {plan_id: {"plan_id","tiros","fecha","fname"}}
+      reporte  {"n_archivos","n_planes","n_tiros","n_descartados","conflictos"}
+               conflictos: [{plan_id, hole_id, dist_m, gana, pierde}, ...]
+    """
+    # Orden estable por fecha: el último en escribirse gana, y como el orden
+    # es por fecha (no por el orden de llegada de los archivos), el resultado
+    # no depende de cómo el sistema de archivos devolvió los nombres.
+    ordenados = sorted(dq_list, key=lambda d: (d.get("fecha") or "", d.get("fname") or ""))
+    merged: Dict[str, Dict] = {}
+    procedencia: Dict[Tuple[str, str], Dict] = {}   # (plan,hole) -> dq que lo puso
+    conflictos: List[Dict] = []
+    n_descartados = 0
+    for dq in ordenados:
+        pid = (dq.get("plan_id") or "").strip()
+        tiros = dq.get("tiros") or {}
+        # Sin plan_id o sin tiros no hay nada que fusionar: un archivo así
+        # (p.ej. un plan de perforación mal clasificado como DQ) entraría
+        # como plan fantasma y contaminaría el matching.
+        if not pid or not tiros:
+            n_descartados += 1
+            continue
+        destino = merged.setdefault(
+            pid, {"plan_id": pid, "tiros": {}, "fecha": dq.get("fecha", ""),
+                  "fname": dq.get("fname", "")})
+        for hid, t in tiros.items():
+            previo = destino["tiros"].get(hid)
+            if previo is not None:
+                d = _collar_dist(previo, t)
+                if d > 1e-3:
+                    antes = procedencia.get((pid, hid), {})
+                    conflictos.append({
+                        "plan_id": pid, "hole_id": hid, "dist_m": round(d, 3),
+                        "gana": f'{dq.get("fname","?")} ({dq.get("fecha","sin fecha")})',
+                        "pierde": f'{antes.get("fname","?")} ({antes.get("fecha","sin fecha")})',
+                    })
+            destino["tiros"][hid] = t
+            procedencia[(pid, hid)] = dq
+        # El plan hereda la fecha/archivo de la revisión más reciente que lo tocó.
+        destino["fecha"] = dq.get("fecha", "")
+        destino["fname"] = dq.get("fname", "")
+
+    grandes = [c for c in conflictos if c["dist_m"] > DQ_MERGE_WARN_M]
+    for c in grandes[:20]:
+        log_warn(f'DQ "{c["plan_id"]}" tiro {c["hole_id"]}: el collar se desplaza '
+                 f'{c["dist_m"]:g} m entre revisiones. Se usa {c["gana"]}, se descarta '
+                 f'{c["pierde"]}. Verifica cuál corresponde al pozo perforado.')
+    if len(grandes) > 20:
+        log_warn(f'DQ: {len(grandes)-20} desplazamiento(s) grande(s) más, no listados.')
+    if conflictos:
+        log_warn(f'DQ: {len(conflictos)} tiro(s) con coordenadas distintas entre '
+                 f'revisiones del mismo plan ({len(grandes)} sobre {DQ_MERGE_WARN_M:g} m). '
+                 f'Gana siempre la revisión más reciente.')
+    if n_descartados:
+        log_warn(f'DQ: {n_descartados} archivo(s) sin plan_id o sin tiros, descartados.')
+    reporte = {
+        "n_archivos": len(dq_list), "n_planes": len(merged),
+        "n_tiros": sum(len(v["tiros"]) for v in merged.values()),
+        "n_descartados": n_descartados, "conflictos": conflictos,
+    }
+    return merged, reporte
+
+
+def _collar_dist(a: Dict, b: Dict) -> float:
+    """Distancia entre los collares de dos versiones del mismo tiro."""
+    try:
+        ca, cb = a["collar"], b["collar"]
+        return float(np.sqrt(sum((ca[k] - cb[k]) ** 2 for k in ("este", "norte", "cota"))))
+    except Exception:
+        return 0.0
 
 def parse_mw(path, fname):
     """
@@ -6453,7 +6556,7 @@ def on_dxf(contents_list, filenames, ref):
 )
 def on_xml(contents_list, filenames, ref):
     if not contents_list: return no_update, no_update, no_update
-    dq_results, mw_by_hole, errs = {}, {}, []
+    dq_list, mw_by_hole, errs = [], {}, []
     for content, fname in zip(contents_list, filenames):
         try:
             _, b64 = content.split(",", 1)
@@ -6465,8 +6568,11 @@ def on_xml(contents_list, filenames, ref):
                 root_tag = root.tag
             except: root_tag = ""
             if is_dq(fname, root_tag):
-                dq = parse_dq(tmp, fname)
-                dq_results[dq["plan_id"]] = dq
+                # Se ACUMULAN los DQ, no se indexan por plan_id: varios
+                # archivos pueden ser revisiones del mismo abanico y cada
+                # una traer tiros distintos. La fusión (y el reporte de sus
+                # desacuerdos) ocurre después, en merge_dq_siblings.
+                dq_list.append(parse_dq(tmp, fname))
             else:
                 mw = parse_mw(tmp, fname)
                 key = f"{mw['plan_id']}_H{mw['hole_id'] or 'X'}"
@@ -6474,6 +6580,7 @@ def on_xml(contents_list, filenames, ref):
             os.unlink(tmp)
         except Exception as e:
             errs.append(f"{fname}: {e}")
+    dq_results, dq_rep = merge_dq_siblings(dq_list)
     counts = match_and_place_wells(dq_results, mw_by_hole)
     if wells:
         wz_state['step1']['xml_loaded'] = True
@@ -6485,6 +6592,12 @@ def on_xml(contents_list, filenames, ref):
     if counts.get("fuera_sitio"):
         parts.append(f"🚫 {counts['fuera_sitio']} FUERA DEL SITIO {active_site()['id']} "
                      f"(no cargados — ver advertencias)")
+    if dq_rep["n_archivos"] > dq_rep["n_planes"]:
+        parts.append(f"{dq_rep['n_archivos']} DQ → {dq_rep['n_planes']} planes "
+                     f"({dq_rep['n_tiros']} tiros)")
+    if dq_rep["conflictos"]:
+        parts.append(f"{len(dq_rep['conflictos'])} tiro(s) con coordenadas distintas "
+                     f"entre revisiones ⚠")
     if errs: parts.append(f"Err: {'; '.join(errs)}")
     return ref+1, " · ".join(parts), True
 
