@@ -1035,12 +1035,31 @@ def training_blockers() -> List[Dict]:
     for lay in layers.values():
         for aid in (getattr(lay, "atributos", None) or {}).values():
             if aid: presentes.add(aid)
+    # (A.4) Rol de las identidades que TODAVÍA no están en el registro. Una
+    # capa sin vocabulario asignado igual declara su rol vía layer_role_ids()
+    # —que arma la identidad con el nombre de la capa bajo su `kind`—, y ese
+    # rol basta para saber si le corresponde banda de UCS. Sin esto, una
+    # falla sin alias bloqueaba el entrenamiento solo por no estar
+    # registrada, aunque una estructura nunca vaya a tener ensayo uniaxial:
+    # con los datos reales de Pucobre eran 10 fallas bloqueando (FChavito,
+    # FPaola, FM1-FM4, FI1-FI3).
+    rol_por_identidad: Dict[str, str] = {}
+    for lay in layers.values():
+        for rol, ident in layer_role_ids(lay).items():
+            if ident: rol_por_identidad.setdefault(ident, rol)
+    for p in all_points():
+        for rol, ident in (getattr(p, "atributos", None) or {}).items():
+            if ident: rol_por_identidad.setdefault(ident, rol)
+
     out = []
     for aid in sorted(presentes):
         if aid in attribute_exclusions: continue
         a = attr_registry.get(aid)
         if a is None:
-            out.append({"id": aid, "nombre": aid, "rol": "?",
+            rol = rol_por_identidad.get(aid, "?")
+            # Solo los roles que llevan banda de UCS pueden bloquear.
+            if rol != "?" and rol not in ROLES_CON_BANDA_UCS: continue
+            out.append({"id": aid, "nombre": aid, "rol": rol,
                         "motivo": "no está en el registro de vocabulario",
                         "metros": attribute_meters.get(aid), "puntos": counts.get(aid, 0)})
             continue

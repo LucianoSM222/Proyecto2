@@ -855,6 +855,38 @@ def a4_bloqueo_solo_litologias():
           "Fk se declara apto: su rol no lleva banda")
     reset_registry()
 
+    # Una malla de ESTRUCTURA cuyo nombre todavía no resuelve a ningún
+    # atributo canónico tampoco puede bloquear: layer_role_ids() le arma una
+    # identidad de rol estructura a partir del nombre de la capa, y una
+    # estructura nunca va a tener banda de UCS (A.4). Antes bloqueaba solo
+    # por no estar en el registro (rol "?"), y con los datos reales de
+    # Pucobre eso dejaba el entrenamiento colgado de 10 fallas sin
+    # vocabulario (FChavito, FPaola, FM1-FM4, FI1-FI3).
+    #
+    # El atributo desconocido llega a training_blockers por los PUNTOS ya
+    # clasificados (attribute_point_counts), no por la capa: por eso el
+    # fixture pone puntos con la identidad puesta, como los deja
+    # classify_all_wells.
+    _mk_layer("malla_FPaola", kind="estructura")
+    p_est = gw.MWDPoint(largo=0.0, vel=1, pp=1, pa=1, pd=1, pr=1, pf=1, se=1, t=0.0)
+    p_est.atributos = {"estructura": "malla_FPaola"}
+    gw.wells["W_est"] = gw.Well(well_name="W_est", plan_id="P", hole_id="1", points=[p_est])
+    bl = gw.training_blockers()
+    check(not bl,
+          "una malla de estructura SIN vocabulario asignado NO bloquea (A.4)",
+          [(b["id"], b["rol"], b["motivo"]) for b in bl])
+
+    # Pero una identidad de LITOLOGÍA sin vocabulario sí sigue bloqueando:
+    # ahí el hueco es real, porque esa malla debería aportar banda de UCS.
+    p_lit = gw.MWDPoint(largo=0.0, vel=1, pp=1, pa=1, pd=1, pr=1, pf=1, se=1, t=0.0)
+    p_lit.atributos = {"litologia": "malla_lito_rara"}
+    gw.wells["W_lit"] = gw.Well(well_name="W_lit", plan_id="P", hole_id="2", points=[p_lit])
+    ids = {b["id"] for b in gw.training_blockers()}
+    check(ids == {"malla_lito_rara"},
+          "una identidad de litología sin vocabulario SÍ bloquea, y se la nombra", ids)
+    gw.wells.clear()
+    reset_registry()
+
 
 def a7_exencion_fixture():
     section("A.7 — Exención explícita del guardián para fixtures")
