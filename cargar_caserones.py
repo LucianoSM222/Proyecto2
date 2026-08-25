@@ -112,7 +112,12 @@ def cargar_xml(caseron: str, dq_paths: List[str], mw_paths: List[str],
         n_pts += len(mw["puntos"])
         mw_by_hole.setdefault(f"{mw['plan_id']}_H{mw['hole_id'] or 'X'}", []).append(mw)
 
+    antes = set(gw.wells)
     counts = gw.match_and_place_wells(dq_results, mw_by_hole)
+    # El caserón se DECLARA en el pozo, no se deja derivar del nombre: es la
+    # agrupación de LOCO-CV, y una litología cruza caserones pero un pozo no.
+    for wn in set(gw.wells) - antes:
+        gw.wells[wn].caseron = caseron
     return {"dq": dq_rep, "n_pozos_mw": len(mw_by_hole), "n_puntos": n_pts,
             "err_mw": err_mw, "match": counts, "t": round(time.time()-t0, 1)}
 

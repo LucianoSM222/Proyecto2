@@ -46,8 +46,10 @@ def section(t):
 
 # ─────────────────────────────────────────────────────────────────────────────
 class FakeWell:
-    def __init__(self, points):
+    def __init__(self, points, caseron=None, plan_id=""):
         self.points = points
+        self.caseron = caseron
+        self.plan_id = plan_id
 
 
 def reset():
@@ -395,6 +397,39 @@ def t39_reporte_justificacion_variables():
               "el motivo explica exactamente qué falta para poder correr la ablación")
     finally:
         gw._resolve_caseron = orig_resolve
+
+    # 3.9b-bis — El caserón de un punto lo define su POZO, no su litología.
+    # Una litología cruza varios caserones por definición (con los datos
+    # reales, Bht está en los tres cargados), así que resolver el caserón
+    # desde la litología devuelve None por ambigüedad y la ablación quedaba
+    # declarada como "sin caserones" aunque hubiera tres. Un pozo, en cambio,
+    # pertenece a exactamente un caserón.
+    reset()
+    add_domain("Kfa", 120.0)
+    add_domain("Bht", 200.0)
+    rng_b = np.random.default_rng(3)
+    for cas in ("CAS_A", "CAS_B", "CAS_C"):
+        for i in range(3):
+            pts = [mk_point(j, "Kfa" if j % 2 else "Bht", pp=float(rng_b.uniform(1, 9)),
+                            vel=float(rng_b.uniform(1, 9)))
+                   for j in range(20)]
+            gw.wells[f"{cas}_P{i}"] = FakeWell(pts, caseron=cas, plan_id=f"{cas}_PR01_TH_P{i}")
+    check(gw.caseron_de_pozo(gw.wells["CAS_A_P0"]) == "CAS_A",
+          "caseron_de_pozo() usa el caserón declarado del pozo",
+          gw.caseron_de_pozo(gw.wells["CAS_A_P0"]))
+
+    # La MISMA litología aparece en los tres caserones: resolverla por
+    # litología daría None (ambigua), por pozo da los tres.
+    check(gw._resolve_caseron("Bht") is None,
+          "resolver por litología es ambiguo cuando cruza caserones (por eso no sirve)")
+    abl = gw.cota_ablation_report()
+    check(abl["status"] == "ok",
+          "con 3 caserones agrupados POR POZO, la ablación sí corre", abl.get("motivo"))
+    if abl["status"] == "ok":
+        check(sorted(abl["caserones"]) == ["CAS_A", "CAS_B", "CAS_C"],
+              "los tres caserones entran al LOCO-CV", abl["caserones"])
+        check(abl["loco_sin_cota"][0] is not None,
+              "LOCO-CV produce un R² real, no un motivo de omisión", abl["loco_sin_cota"])
 
     # 3.9c — correlación: par colineal detectado y sugerencia razonable.
     reset()

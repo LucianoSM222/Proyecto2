@@ -1326,6 +1326,10 @@ class Well:
     # planes hermanos), cada uno con su error de coherencia de largo. Se usa
     # para poblar el dropdown de reasignación manual de pozos ambiguos.
     dq_candidates: List[Dict] = field(default_factory=list)
+    # Caserón al que pertenece el pozo. Es la agrupación correcta para
+    # LOCO-CV: una litología cruza varios caserones, un pozo no. Si queda
+    # None, caseron_de_pozo() lo deriva del prefijo del plan_id.
+    caseron: Optional[str] = None
 
 # Estado global
 layers: Dict[str, Layer] = {}
@@ -3858,14 +3862,40 @@ def model_comparison_report(with_se=True, ucs_min=None, ucs_max=None):
             "n_grupos": n_grupos, "k_splits": k, "rows": rows}
 
 
-def _point_caseron_map(pts):
-    """{id(punto): caserón|None}, vía _resolve_caseron (cacheado por litología)."""
+def caseron_de_pozo(well) -> Optional[str]:
+    """
+    Caserón al que pertenece un pozo.
+
+    El caserón de un punto lo define su POZO —el abanico perforado—, no la
+    litología que lo contiene: una litología cruza varios caserones por
+    definición (en los datos reales de MPC, Bht está en los tres cargados),
+    así que resolver el caserón desde la litología devuelve None por
+    ambigüedad. Un pozo, en cambio, pertenece a exactamente uno.
+
+    Prioridad: el caserón DECLARADO en el pozo; si no lo tiene, se deriva
+    del prefijo del plan_id ("PCS_1043_PR01_TH_P07" -> "PCS_1043"), que es
+    la convención de nomenclatura de Pucobre. La derivación es una
+    heurística sobre el nombre, así que solo se usa cuando no hay dato
+    explícito, y nunca sobrescribe uno.
+    """
+    c = getattr(well, "caseron", None)
+    if c: return c
+    pid = getattr(well, "plan_id", "") or ""
+    m = re.match(r"^([A-Za-z]+_\d+)", pid)
+    return m.group(1) if m else None
+
+
+def _point_caseron_map(pts_por_pozo):
+    """
+    {id(punto): caserón|None} a partir del POZO de cada punto.
+
+    `pts_por_pozo` es un iterable de (punto, nombre_de_pozo).
+    """
     cache, out = {}, {}
-    for p in pts:
-        lito = p.lito or p.lito_inferida
-        if lito not in cache:
-            cache[lito] = _resolve_caseron(lito)
-        out[id(p)] = cache[lito]
+    for p, wn in pts_por_pozo:
+        if wn not in cache:
+            cache[wn] = caseron_de_pozo(wells.get(wn)) if wn in wells else None
+        out[id(p)] = cache[wn]
     return out
 
 
@@ -3900,7 +3930,7 @@ def cota_ablation_report(ucs_min=None, ucs_max=None):
     if len(candidatos) < 10:
         return {"status": "sin_datos",
                 "motivo": f"Insuficientes puntos de entrenamiento ({len(candidatos)} < 10)."}
-    caseron_map = _point_caseron_map([c[0] for c in candidatos])
+    caseron_map = _point_caseron_map([(c[0], c[1]) for c in candidatos])
     caserones = sorted({c for c in caseron_map.values() if c})
     if len(caserones) < 2:
         return {"status": "sin_caserones",
