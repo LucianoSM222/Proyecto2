@@ -178,7 +178,10 @@ def caso4_composicion():
     mk_layer("caja_Bht", BOX_GRANDE, {"litologia": "Bht"})
     mk_layer("caja_Fk", BOX_CRUZADA, {"alteracion": "Fk"})
     # Bht no trae banda de laboratorio; se le asigna una para verificar herencia.
-    gw.attr_registry["Bht"].ucs_media = 150.0
+    # (Adenda B) ucs_ancla() prioriza ucs_central sobre ucs_media desde que
+    # Bht trae su propio ucs_central=128,1; para verificar herencia hay que
+    # pisar el campo que realmente decide el ancla.
+    gw.attr_registry["Bht"].ucs_central = 150.0
     gw.attr_registry["Bht"].calidad = 3
     p = clasificar([DENTRO])[0]
     check(not p.ambiguo, "roles distintos NO son conflicto", p.ambiguo_motivo)
@@ -248,7 +251,10 @@ def caso6_equivalencia_empaquetado():
 
     # (a) Identidad estricta: la MISMA geometría, empaquetada de las dos formas.
     reset()
-    gw.attr_registry["Bht"].ucs_media = 150.0
+    # (Adenda B) ucs_ancla() prioriza ucs_central sobre ucs_media desde que
+    # Bht trae su propio ucs_central=128,1; para verificar herencia hay que
+    # pisar el campo que realmente decide el ancla.
+    gw.attr_registry["Bht"].ucs_central = 150.0
     gw.attr_registry["Bht"].calidad = 3
     mk_layer("caja_Bht", BOX_GRANDE, {"litologia": "Bht"})
     mk_layer("caja_Fk", BOX_GRANDE, {"alteracion": "Fk"})
@@ -258,7 +264,10 @@ def caso6_equivalencia_empaquetado():
     amb_sep = gw.overlap_stats["n_ambiguos"]
 
     reset()
-    gw.attr_registry["Bht"].ucs_media = 150.0
+    # (Adenda B) ucs_ancla() prioriza ucs_central sobre ucs_media desde que
+    # Bht trae su propio ucs_central=128,1; para verificar herencia hay que
+    # pisar el campo que realmente decide el ancla.
+    gw.attr_registry["Bht"].ucs_central = 150.0
     gw.attr_registry["Bht"].calidad = 3
     mk_layer("Bht_Fk", BOX_GRANDE, {"litologia": "Bht", "alteracion": "Fk"})
     p_cmp = clasificar([DENTRO])[0]
@@ -273,7 +282,10 @@ def caso6_equivalencia_empaquetado():
 
     # (b) Ruta real de DXF: una malla A_B.dxf cuyo NOMBRE se descompone.
     reset()
-    gw.attr_registry["Bht"].ucs_media = 150.0
+    # (Adenda B) ucs_ancla() prioriza ucs_central sobre ucs_media desde que
+    # Bht trae su propio ucs_central=128,1; para verificar herencia hay que
+    # pisar el campo que realmente decide el ancla.
+    gw.attr_registry["Bht"].ucs_central = 150.0
     gw.attr_registry["Bht"].calidad = 3
     tmp = os.path.join(tempfile.mkdtemp(), "Bht_Fk.dxf")
     _dxf_compuesto(tmp, BOX_GRANDE)
@@ -300,7 +312,10 @@ def caso6_equivalencia_empaquetado():
 
     # (c) Traslape parcial: solo la intersección se compone.
     reset()
-    gw.attr_registry["Bht"].ucs_media = 150.0
+    # (Adenda B) ucs_ancla() prioriza ucs_central sobre ucs_media desde que
+    # Bht trae su propio ucs_central=128,1; para verificar herencia hay que
+    # pisar el campo que realmente decide el ancla.
+    gw.attr_registry["Bht"].ucs_central = 150.0
     gw.attr_registry["Bht"].calidad = 3
     mk_layer("caja_Bht", BOX_GRANDE, {"litologia": "Bht"})
     mk_layer("caja_Fk", BOX_CRUZADA, {"alteracion": "Fk"})
@@ -336,7 +351,10 @@ def contador_en_reporte():
     section("El contador de ambiguos es accesible desde el reporte de entrenamiento")
     reset()
     gw.attr_registry["Kfa"].ucs_media = 289.6
-    gw.attr_registry["Bht"].ucs_media = 150.0
+    # (Adenda B) ucs_ancla() prioriza ucs_central sobre ucs_media desde que
+    # Bht trae su propio ucs_central=128,1; para verificar herencia hay que
+    # pisar el campo que realmente decide el ancla.
+    gw.attr_registry["Bht"].ucs_central = 150.0
     gw.attr_registry["Bht"].calidad = 3
     mk_layer("caja_Kfa", BOX_GRANDE, {"litologia": "Kfa"})
     mk_layer("caja_Bht", BOX_CRUZADA, {"litologia": "Bht"})

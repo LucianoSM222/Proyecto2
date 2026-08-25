@@ -77,7 +77,7 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | 0 | Preparación del repositorio | — | ✅ |
 | 1 | P1 Fundaciones | `docs/P1_fundaciones.md` | ✅ `ff8f6d5` |
 | 1b | Adenda A · roles y composición | `docs/P1b_roles_composicion.md` | ✅ `01253e0` |
-| 1c | Adenda B · registro de Bht | `docs/P1c_adendaB_bht.md` | ⬜ pendiente |
+| 1c | Adenda B · registro de Bht | `docs/P1c_adendaB_bht.md` | ✅ |
 | 2 | P2 Sondajes | `docs/P2_sondajes.md` | ✅ `5307a61` |
 | 3 | P3 Correcciones de uso | `docs/P3_correcciones.md` | ✅ `19cee91` |
 | 4 | E Escala | `docs/E_escala.md` | ⬜ pendiente |

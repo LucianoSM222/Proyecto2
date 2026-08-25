@@ -246,6 +246,13 @@ QUALITY_PI_FACTOR = {0: None, 1: 1.00, 2: 1.30, 3: 1.60, 4: 2.00}
 # El Albitófiro de Karzulovic carece de desviación estándar, lo que sugiere una
 # única probeta: se acepta el valor, pero la incertidumbre debe reflejarlo.
 SINGLE_SPECIMEN_PI_FACTOR = 1.35
+# (P1c-B.5) Umbral de coeficiente de variación sobre el que la interfaz alerta
+# y el intervalo de predicción se ensancha. Bht mide CV=0,57 (cuatro métodos
+# independientes, convergentes) frente a CV~0,10-0,21 de las demás unidades
+# con banda: la etiqueta no es menos confiable, es intrínsecamente más ancha,
+# y el intervalo debe reflejar eso en vez de fingir la misma precisión.
+HIGH_CV_THRESHOLD = 0.35
+HIGH_CV_PI_FACTOR = 1.30
 
 
 # (A.1) Roles del vocabulario. Enumeración EXTENSIBLE: agregar un rol nuevo es
@@ -291,6 +298,23 @@ class Attribute:
     poisson: Optional[float] = None
     densidad: Optional[float] = None         # t/m³
     notas: str = ""
+    # (P1c-B.4) Cuatro campos que distinguen DOS conceptos que NO son lo
+    # mismo, deliberadamente separados para no poder confundirlos:
+    #   ucs_central                  el valor con el que el modelo ENTRENA
+    #                                 (p.ej. σci de un ajuste Hoek-Brown — no
+    #                                 necesariamente la media aritmética de
+    #                                 probetas, por eso un nombre distinto de
+    #                                 ucs_media).
+    #   dispersion_min/dispersion_max variabilidad OBSERVADA del material
+    #                                 (rango real de resultados de ensayo).
+    # ucs_min/ucs_max siguen siendo la banda de CONFIANZA sobre ucs_central,
+    # igual que para el resto del vocabulario. Declarar la dispersión como si
+    # fuera la banda de confianza afirmaría una homogeneidad que los datos no
+    # respaldan (Bht: banda 100-145 vs. dispersión real 64,5-296,9).
+    ucs_central: Optional[float] = None
+    dispersion_min: Optional[float] = None
+    dispersion_max: Optional[float] = None
+    ucs_cv: Optional[float] = None
 
     def usa_banda_ucs(self) -> bool:
         """
@@ -303,10 +327,19 @@ class Attribute:
     def tiene_banda_ucs(self) -> bool:
         """True si hay un ancla de UCS utilizable como etiqueta de entrenamiento."""
         if not self.usa_banda_ucs(): return False
-        return any(v is not None for v in (self.ucs_media, self.ucs_min, self.ucs_max))
+        return any(v is not None for v in
+                   (self.ucs_central, self.ucs_media, self.ucs_min, self.ucs_max))
 
     def ucs_ancla(self) -> Optional[float]:
-        """Valor puntual de UCS a usar como etiqueta. None si no hay banda."""
+        """
+        Valor puntual de UCS a usar como etiqueta. None si no hay banda.
+
+        `ucs_central` tiene prioridad cuando existe: es el valor documentado
+        explícitamente como central (p.ej. σci de Hoek-Brown), distinto de
+        una media aritmética de probetas. Para el vocabulario prepoblado
+        antes de B.4, que no lo trae, el comportamiento es idéntico a antes.
+        """
+        if self.ucs_central is not None: return float(self.ucs_central)
         if self.ucs_media is not None: return float(self.ucs_media)
         if self.ucs_min is not None and self.ucs_max is not None:
             return (float(self.ucs_min) + float(self.ucs_max)) / 2.0
@@ -314,10 +347,15 @@ class Attribute:
             if v is not None: return float(v)
         return None
 
+    def alta_variabilidad(self) -> bool:
+        """(B.5) True si el CV documentado supera el umbral de alerta."""
+        return self.ucs_cv is not None and self.ucs_cv > HIGH_CV_THRESHOLD
+
     def pi_factor(self) -> Optional[float]:
         """
         Factor de ensanche del intervalo de predicción, según la calidad del
-        ancla y si proviene de una sola probeta. None si el atributo no es
+        ancla, si proviene de una sola probeta, y (B.5) si el CV documentado
+        excede el umbral de alta variabilidad. None si el atributo no es
         entrenable (calidad 0 o sin banda).
         """
         base = QUALITY_PI_FACTOR.get(self.calidad)
@@ -325,6 +363,8 @@ class Attribute:
         f = base
         if self.ucs_sd is None and (self.ucs_n is None or self.ucs_n <= 1):
             f *= SINGLE_SPECIMEN_PI_FACTOR
+        if self.alta_variabilidad():
+            f *= HIGH_CV_PI_FACTOR
         return round(f, 4)
 
     def entrenable(self) -> Tuple[bool, str]:
@@ -409,13 +449,71 @@ def seed_attribute_registry(force: bool = False):
                          "Karzulovic reporta por litología, no por litología×alteración. "
                          "Por eso no participa del chequeo de bloqueo (A.4). "
                          + COLISION_FK_KFA)),
+        # (P1c-Adenda B) Brecha Hidrotermal, registrada tras el ajuste Hoek-Brown.
+        #
+        # LA TRAMPA DEL PROMEDIO 198,19: la hoja UCS-TX de BRECHA_2.XLS lista
+        # ocho probetas BHT con σ1 promedio 198,19 MPa (fila 14). Ese promedio
+        # NO es UCS — seis de las ocho son ensayos TRIAXIALES; su σ3 vive en
+        # la hoja Envolvente, no en UCS-TX, y con los parámetros de abajo 6 MPa
+        # de confinamiento agregan ~35% (σ1≈173 para un material de σci=128).
+        # Toda lectura futura de ese libro DEBE filtrar por σ3=0 antes de
+        # calcular estadísticas de UCS. La hoja RocData es la ENTRADA del
+        # software (listado ensayo a ensayo TRX/UCS/UCS DEF/TID), no su
+        # salida: ajusta una envolvente a pares (σ3,σ1), no convierte desde
+        # módulo de Young ni velocidad de onda.
+        #
+        # AJUSTE HOEK-BROWN (roca intacta, s=1, a=0,5) sobre los 25 ensayos de
+        # compresión del libro (15 triaxiales + 10 uniaxiales):
+        #   σci=128,1 MPa · mi=14,77 · RMSE=51,8 MPa
+        # Validado contra 18 ensayos brasileños que NO entraron en el ajuste:
+        # predice σt=-8,63 MPa; lo medido da media -7,78 (rango -5,39 a
+        # -10,25) — la forma de la envolvente es correcta.
+        #
+        # CORROBORACIÓN INDEPENDIENTE por carga puntual (PLT_MPC-NIVEL_175-
+        # CZ_06_Sector_CAS1004S_CAP_5, 30 bloques irregulares con alteración
+        # silícea, nivel 175, ensayados 30-03-2026 y 09-04-2026), separado por
+        # modo de rotura porque solo la rotura por matriz representa roca
+        # intacta: por matriz n=16 media 112,1 mediana 111,5 CV 0,563; por
+        # discontinuidad n=13 media 120,1 mediana 113,9 CV 0,353; promedio de
+        # informe (n=29) 119,7.
+        #
+        # CONVERGENCIA de cuatro métodos independientes — dos laboratorios,
+        # tres tipos de ensayo, dos sectores: σci Hoek-Brown 128,1 · promedio
+        # de los 10 uniaxiales 123,9 · carga puntual informe (n=29) 119,7 ·
+        # carga puntual por matriz (n=16) 112,1.
+        #
+        # VERIFICACIÓN REGISTRADA: excluir las probetas de densidad anómala
+        # (muestras 2 y 3, ρ=3,18 y 4,15 g/cm³) NO produce la banda 100-145 —
+        # retira los valores altos (182,4 y 169,1) y baja la media a 110,9.
+        # La densidad bimodal (1-5: 3,15-4,15 · 6-10: 2,63-2,77) tampoco
+        # explica la variabilidad de UCS: muestra 7 (ρ=2,63) da 296,9 y
+        # muestra 6 (ρ=2,64) da 69,0.
         Attribute(id="Bht", nombre_oficial="Brecha Hidrotermal", rol="litologia", nivel="unidad",
-                  calidad=0, densidad=2.97,
-                  notas=("SIN UCS DE LABORATORIO — en gestión con geología. "
-                         "33% del metraje MPC (576,9 m). No es una brecha débil: "
-                         "RQD mediana 92,0 (mejor que el Albitófiro) y densidad media "
+                  ucs_central=128.1,
+                  # ucs_min/ucs_max: banda de CONFIANZA sobre ucs_central, no
+                  # el rango de resistencia del material (ver dispersion_*).
+                  ucs_min=100.0, ucs_max=145.0,
+                  # dispersion_min/dispersion_max: variabilidad OBSERVADA
+                  # (cuatro métodos independientes miden CV~0,56, no ~0,09).
+                  dispersion_min=64.5, dispersion_max=296.9, ucs_cv=0.57,
+                  mi=14.77, calidad=1, densidad=2.97,
+                  fuente=("Hoek-Brown ajustado sobre 25 ensayos, BRECHA_2.XLS, "
+                          "Laboratorio Punta del Cobre 19-06-2022. Corroborado por "
+                          "carga puntual n=16 rotura por matriz, CAS1004S nivel 175, "
+                          "marzo-abril 2026. σt ajustado -7,8 MPa (validado contra 18 "
+                          "ensayos brasileños no usados en el ajuste)."),
+                  notas=("33% del metraje MPC (576,9 m). No es una brecha débil: RQD "
+                         "mediana 92,0 (mejor que el Albitófiro) y densidad media "
                          "2,97 t/m³ (máx 4,09), coherente con brecha mineralizada bien "
-                         "cementada (magnetita/sulfuros).")),
+                         "cementada (magnetita/sulfuros). "
+                         "ALERTA DE VARIABILIDAD (B.5, CV=0,57>0,35): la granularidad "
+                         "de la etiqueta acota el techo del modelo — con todo Bht "
+                         "etiquetado en 128,1, el modelo no puede predecir nada "
+                         "distinto de eso dentro de Bht. Esto NO es un defecto de "
+                         "resolución punto a punto (esa sí se cumple para dominio y "
+                         "DI): es que la variabilidad interna de Bht excede la "
+                         "resolución alcanzable para UCS, y se declara como "
+                         "limitación, no se oculta ensanchando la banda de confianza.")),
         Attribute(id="Kpcli", nombre_oficial="Lavas Inferiores", rol="litologia", nivel="unidad",
                   calidad=0,
                   notas="Sin UCS de laboratorio. 1,2% del metraje MPC (20,8 m)."),
@@ -484,6 +582,62 @@ def seed_attribute_registry(force: bool = False):
 def attribute_children(attr_id: str) -> List[str]:
     """Ids de las subunidades cuyo padre es `attr_id`."""
     return [a.id for a in attr_registry.values() if a.padre == attr_id]
+
+
+UCS_OVERLAP_CRITERIA = ("confianza", "dispersion")
+
+
+def _ucs_overlap_range(a: Attribute, criterio: str) -> Optional[Tuple[float, float]]:
+    """
+    Rango UCS de `a` bajo el criterio pedido (P1c-B.7).
+
+    "dispersion" usa dispersion_min/dispersion_max cuando la unidad los
+    reporta (hoy, solo Bht); las unidades que no tienen dispersión propia
+    documentada no fingen tenerla — caen a su banda de confianza, que es lo
+    único que hay. "confianza" usa siempre ucs_min/ucs_max (la banda que ya
+    trae TODO el vocabulario, sea o no la misma unidad la que reporta
+    dispersión aparte).
+    """
+    if criterio == "dispersion" and a.dispersion_min is not None and a.dispersion_max is not None:
+        return (float(a.dispersion_min), float(a.dispersion_max))
+    if a.ucs_min is not None and a.ucs_max is not None:
+        return (float(a.ucs_min), float(a.ucs_max))
+    v = a.ucs_ancla()
+    return (v, v) if v is not None else None
+
+
+def ucs_band_overlap_matrix(criterio: str = "confianza") -> List[Dict]:
+    """
+    (P1c-B.7) Pares de litologías cuyas bandas de UCS se traslapan bajo
+    `criterio` ("confianza" o "dispersion"). Solo litologías con banda
+    utilizable (entrenables); una unidad sin banda no puede traslaparse con
+    nada porque no tiene rango que comparar.
+    """
+    if criterio not in UCS_OVERLAP_CRITERIA:
+        raise ValueError(f"criterio debe ser uno de {UCS_OVERLAP_CRITERIA}: «{criterio}»")
+    unidades = [a for a in attr_registry.values() if a.usa_banda_ucs() and a.tiene_banda_ucs()]
+    rangos = {a.id: r for a in unidades if (r := _ucs_overlap_range(a, criterio)) is not None}
+    pares = []
+    ids = sorted(rangos)
+    for i in range(len(ids)):
+        for j in range(i + 1, len(ids)):
+            a_id, b_id = ids[i], ids[j]
+            (amin, amax), (bmin, bmax) = rangos[a_id], rangos[b_id]
+            if amax >= bmin and bmax >= amin:
+                pares.append({"a": a_id, "b": b_id, "rango_a": (amin, amax),
+                             "rango_b": (bmin, bmax), "criterio": criterio})
+    return pares
+
+
+def ucs_band_overlap_report() -> Dict[str, List[Dict]]:
+    """
+    (P1c-B.7) Matriz de traslape de bandas UCS bajo AMBOS criterios a la vez.
+    Reportar solo uno fingiría un único panorama donde hay dos: bajo la
+    dispersión observada Bht se traslapa con todo (incluido el Albitófiro);
+    bajo la banda de confianza el panorama es distinto. La diferencia entre
+    ambos ES el hallazgo — no un desacuerdo a resolver eligiendo uno.
+    """
+    return {c: ucs_band_overlap_matrix(c) for c in UCS_OVERLAP_CRITERIA}
 
 
 def validate_attribute_tree() -> List[str]:
@@ -4346,7 +4500,10 @@ def load_project(path):
 # Exporta/importa atributos + alias + exclusiones justificadas. Legible por
 # humanos, versionable, y publicable como anexo de la memoria.
 
-VOCAB_SCHEMA_VERSION = 1
+# (P1c-B.4) v2: agrega ucs_central, dispersion_min, dispersion_max, ucs_cv.
+# Compatible hacia atrás: import_vocabulary filtra por Attribute.__dataclass_
+# fields__, así que un registro v1 sin estos campos carga igual (quedan None).
+VOCAB_SCHEMA_VERSION = 2
 
 
 def export_vocabulary() -> Dict:
@@ -4382,7 +4539,9 @@ def export_vocabulary_json(indent: int = 2) -> str:
 def export_vocabulary_csv() -> str:
     """Vista tabular de los atributos (una fila por atributo), separador ';'."""
     cols = ["id", "nombre_oficial", "sitio", "rol", "nivel", "padre", "ucs_min", "ucs_max",
-            "ucs_media", "ucs_sd", "ucs_n", "calidad", "calidad_etiqueta", "pi_factor",
+            "ucs_media", "ucs_central", "ucs_sd", "ucs_n", "ucs_cv",
+            "dispersion_min", "dispersion_max", "alta_variabilidad",
+            "calidad", "calidad_etiqueta", "pi_factor",
             "excluido", "justificacion_exclusion", "mi", "modulo_E", "poisson",
             "densidad", "fuente", "fecha", "alias", "notas"]
     rows = []
@@ -4393,8 +4552,11 @@ def export_vocabulary_csv() -> str:
         rows.append({
             "id": a.id, "nombre_oficial": a.nombre_oficial, "sitio": a.sitio,
             "rol": a.rol, "nivel": a.nivel, "padre": a.padre or "", "ucs_min": a.ucs_min,
-            "ucs_max": a.ucs_max, "ucs_media": a.ucs_media, "ucs_sd": a.ucs_sd,
-            "ucs_n": a.ucs_n, "calidad": a.calidad,
+            "ucs_max": a.ucs_max, "ucs_media": a.ucs_media, "ucs_central": a.ucs_central,
+            "ucs_sd": a.ucs_sd, "ucs_n": a.ucs_n, "ucs_cv": a.ucs_cv,
+            "dispersion_min": a.dispersion_min, "dispersion_max": a.dispersion_max,
+            "alta_variabilidad": "sí" if a.alta_variabilidad() else "no",
+            "calidad": a.calidad,
             "calidad_etiqueta": QUALITY_LABELS.get(a.calidad, "?"),
             "pi_factor": a.pi_factor(), "excluido": "sí" if exc else "no",
             "justificacion_exclusion": (exc or {}).get("justificacion", ""),
@@ -4930,8 +5092,10 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 _VOCAB_NUM_FIELDS = [
-    ("ucs_min", "UCS mín"), ("ucs_max", "UCS máx"), ("ucs_media", "UCS media"),
-    ("ucs_sd", "UCS SD"), ("ucs_n", "n probetas"),
+    ("ucs_min", "UCS mín (confianza)"), ("ucs_max", "UCS máx (confianza)"),
+    ("ucs_media", "UCS media"), ("ucs_central", "UCS central"),
+    ("ucs_sd", "UCS SD"), ("ucs_n", "n probetas"), ("ucs_cv", "CV"),
+    ("dispersion_min", "Dispersión mín"), ("dispersion_max", "Dispersión máx"),
     ("mi", "mi"), ("modulo_E", "E [GPa]"), ("poisson", "ν"), ("densidad", "γ [t/m³]"),
 ]
 
@@ -4988,6 +5152,11 @@ def _attr_row(a: Attribute):
                       style={"fontSize": "9px"}),
             html.Span(f"  · {jer}", style={"color": "#888", "fontSize": "10px"}),
             html.Span("  ", style={"marginRight": "6px"}), estado,
+            # (P1c-B.5) CV > umbral: la etiqueta es intrínsecamente más ancha,
+            # no menos confiable — se declara junto al atributo, no se oculta.
+            html.Span([html.Span("  ", style={"marginRight": "4px"}),
+                      dbc.Badge(f"⚠ alta variabilidad (CV={a.ucs_cv:.2f})", color="warning",
+                                style={"fontSize": "9px"})]) if a.alta_variabilidad() else None,
         ]),
     ]
     if con_banda:
@@ -5137,6 +5306,45 @@ def _vocab_panel_body():
         ov_body = [html.Small("Sin clasificación ejecutada todavía.",
                               style={"color": "#666", "fontSize": "10px"})]
 
+    # ── Matriz de traslape de bandas UCS, ambos criterios (P1c-B.7) ─────────
+    # NO es la resolución geométrica de arriba (esa es sobre puntos MWD contra
+    # mallas DXF, A.5). Esta es entre las BANDAS de UCS de las litologías: qué
+    # tan bien separadas están las etiquetas que el modelo tiene que aprender
+    # a distinguir. Se reportan los DOS criterios lado a lado, nunca uno solo:
+    # dan panoramas distintos y la diferencia es el hallazgo.
+    ucs_ov = ucs_band_overlap_report()
+
+    def _fmt_par(p):
+        ra, rb = p["rango_a"], p["rango_b"]
+        return html.Small(
+            f"{p['a']} [{ra[0]:g}–{ra[1]:g}]  ↔  {p['b']} [{rb[0]:g}–{rb[1]:g}]",
+            style={"fontSize": "9px", "display": "block", "color": "#E74C3C",
+                   "fontFamily": "monospace"})
+
+    ucs_ov_body = [
+        html.Small(
+            "Bandas de UCS entre litologías con etiqueta utilizable. La banda de "
+            "confianza es sobre el valor central; la dispersión es la variabilidad "
+            "OBSERVADA del material — pueden dar panoramas distintos (B.7).",
+            style={"color": "#888", "fontSize": "9px", "display": "block", "marginBottom": "6px"}),
+        dbc.Row([
+            dbc.Col([
+                html.Small(f"Banda de confianza — {len(ucs_ov['confianza'])} par(es)",
+                          style={"color": "#aaa", "fontSize": "10px", "fontWeight": "bold",
+                                 "display": "block", "marginBottom": "2px"}),
+            ] + ([_fmt_par(p) for p in ucs_ov["confianza"]] or
+                 [html.Small("Sin traslapes.", style={"color": "#5DCAA5", "fontSize": "9px"})]),
+                   width=6),
+            dbc.Col([
+                html.Small(f"Dispersión observada — {len(ucs_ov['dispersion'])} par(es)",
+                          style={"color": "#aaa", "fontSize": "10px", "fontWeight": "bold",
+                                 "display": "block", "marginBottom": "2px"}),
+            ] + ([_fmt_par(p) for p in ucs_ov["dispersion"]] or
+                 [html.Small("Sin traslapes.", style={"color": "#5DCAA5", "fontSize": "9px"})]),
+                   width=6),
+        ], className="g-2"),
+    ]
+
     return [
         dbc.Alert([
             html.B(f"Sitio activo: {s['display']} ({s['id']})"), html.Br(),
@@ -5158,6 +5366,7 @@ def _vocab_panel_body():
                                 "marginBottom": "6px"}),
               dbc.ListGroup(pend_body, flush=True)]),
         card("🔀 Resolución de traslapes (último cruce)", ov_body),
+        card("📊 Matriz de traslape de bandas UCS", ucs_ov_body),
 
         card(f"📖 Atributos — unidades ({len(unidades)})",
              [dbc.ListGroup([_attr_row(a) for a in sorted(unidades, key=lambda x: x.id)], flush=True)]),
@@ -5274,7 +5483,8 @@ def on_attr_num(values, ids, ref):
             rechazados.append(f"{a.id}.{f}: «{val}» no es número."); continue
         if not np.isfinite(x):
             rechazados.append(f"{a.id}.{f}: valor no finito."); continue
-        if f in ("ucs_min", "ucs_max", "ucs_media") and not (lo_f <= x <= hi_f):
+        if f in ("ucs_min", "ucs_max", "ucs_media", "ucs_central",
+                 "dispersion_min", "dispersion_max") and not (lo_f <= x <= hi_f):
             rechazados.append(f"{a.id}.{f}: {x:g} MPa fuera del rango físico "
                               f"[{lo_f:g}, {hi_f:g}]."); continue
         if f == "ucs_n": x = int(x)

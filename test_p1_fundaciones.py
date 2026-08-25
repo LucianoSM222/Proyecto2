@@ -126,12 +126,27 @@ def t12_attribute_registry():
     check((kfa.mi, kfa.modulo_E, kfa.poisson, kfa.densidad) == (11.3, 71.6, 0.15, 2.85),
           "Kfa: mi / E / ν / γ de la Tabla 3.2")
 
-    for aid in ("Bht", "Kpcli", "DL"):
+    for aid in ("Kpcli", "DL"):
         a = gw.attr_registry[aid]
         check(a.calidad == 0 and not a.tiene_banda_ucs(),
               f"{aid}: calidad 0 y sin banda de UCS")
-    check("en gestión con geología" in gw.attr_registry["Bht"].notas,
-          "el hueco de UCS de Bht está declarado, no es un bloqueo mudo")
+
+    # Bht (Adenda B): registrada con ajuste Hoek-Brown, ya NO es calidad 0.
+    bht = gw.attr_registry["Bht"]
+    check((bht.ucs_central, bht.ucs_min, bht.ucs_max) == (128.1, 100.0, 145.0),
+          "Bht: ucs_central 128,1, banda de confianza 100-145",
+          (bht.ucs_central, bht.ucs_min, bht.ucs_max))
+    check((bht.dispersion_min, bht.dispersion_max) == (64.5, 296.9),
+          "Bht: dispersión observada 64,5-296,9 (distinta de la banda de confianza)",
+          (bht.dispersion_min, bht.dispersion_max))
+    check(abs(bht.ucs_cv - 0.57) < 1e-9 and bht.mi == 14.77 and bht.calidad == 1,
+          "Bht: CV 0,57, mi 14,77, calidad 1 (ensayo del sitio)",
+          (bht.ucs_cv, bht.mi, bht.calidad))
+    check(bht.tiene_banda_ucs() and bht.ucs_ancla() == 128.1,
+          "Bht entrena con ucs_central (128,1), no con un promedio contaminado")
+    check(bht.alta_variabilidad(), "Bht: CV > 0,35 → alta variabilidad")
+    check("en gestión con geología" not in bht.notas,
+          "el hueco de UCS de Bht quedó resuelto, la nota vieja no sobrevive")
 
     # Jerarquía Brecha basal / Miembro Trinidad.
     hijos_basal = set(gw.attribute_children("Kpcsb_basal"))
@@ -155,8 +170,13 @@ def t12_attribute_registry():
     check(kfa.pi_factor() > lut.pi_factor(),
           "probeta única ensancha el intervalo respecto de una con SD",
           (kfa.pi_factor(), lut.pi_factor()))
-    check(gw.attr_registry["Bht"].pi_factor() is None,
+    check(gw.attr_registry["Kpcli"].pi_factor() is None,
           "calidad 0 no tiene factor: no es entrenable")
+    # (Adenda B) Bht: probeta única (sin SD) Y alta variabilidad (CV>0,35) se
+    # componen — el intervalo se ensancha por AMBAS razones, no una sola.
+    check(abs(gw.attr_registry["Bht"].pi_factor() - 1.755) < 1e-9,
+          "Bht: factor 1,00 (calidad 1) × 1,35 (probeta única) × 1,30 (CV alto)",
+          gw.attr_registry["Bht"].pi_factor())
 
     prev = lut.calidad
     lut.calidad = 3          # análogo del distrito
@@ -398,22 +418,25 @@ def t14_composition():
 def t15_blocking():
     section("T1.5 — Estado sin-asignar que bloquea")
     reset_registry()
+    # (Adenda B) Bht ya está registrada con banda de UCS (calidad 1) y no
+    # sirve como ejemplo de bloqueo: se usa Kpcsb_basal en su lugar, que sigue
+    # calidad 0 (unidad padre sin ensayo propio, sus subunidades sí lo tienen).
     _mk_layer("malla_Kfa", attr="Kfa")
-    _mk_layer("malla_Bht", attr="Bht")
+    _mk_layer("malla_basal", attr="Kpcsb_basal")
     _mk_layer("malla_Kpcli", attr="Kpcli")
     _mk_layer("malla_DL", attr="DL")
-    gw.attribute_meters.update({"Bht": 576.9, "Kpcli": 20.8, "DL": 3.1, "Kfa": 1176.3})
+    gw.attribute_meters.update({"Kpcsb_basal": 576.9, "Kpcli": 20.8, "DL": 3.1, "Kfa": 1176.3})
 
     bl = gw.training_blockers()
     ids = {b["id"] for b in bl}
-    check(ids == {"Bht", "Kpcli", "DL"},
+    check(ids == {"Kpcsb_basal", "Kpcli", "DL"},
           "bloquean exactamente los tres sin banda de UCS", ids)
     check("Kfa" not in ids, "Kfa no bloquea: tiene ancla de laboratorio")
 
     msg = gw.training_block_message(bl)
     check(msg.startswith("No se puede entrenar: 3 litologías sin banda de UCS asignada"),
           "el mensaje nombra cuántas litologías faltan", msg)
-    for frag in ("Bht 576,9 m", "Kpcli 20,8 m", "DL 3,1 m"):
+    for frag in ("Kpcsb_basal 576,9 m", "Kpcli 20,8 m", "DL 3,1 m"):
         check(frag in msg, f"el mensaje declara el metraje de {frag.split()[0]}", msg)
     check("excluir explícitamente" in msg,
           "el mensaje ofrece la vía de exclusión explícita", msg)
@@ -438,16 +461,16 @@ def t15_blocking():
     gw.exclude_attribute("DL", "Código sin identificar, 0,2% del metraje.")
     gw.exclude_attribute("Kpcli", "Lavas Inferiores sin ensayo, 1,2% del metraje.")
     ids = {b["id"] for b in gw.training_blockers()}
-    check(ids == {"Bht"}, "tras excluir DL y Kpcli solo queda Bht", ids)
+    check(ids == {"Kpcsb_basal"}, "tras excluir DL y Kpcli solo queda Kpcsb_basal", ids)
     check(gw.attribute_exclusions["DL"]["justificacion"].startswith("Código"),
           "la justificación queda registrada")
     check("fecha" in gw.attribute_exclusions["DL"], "la exclusión lleva fecha")
 
     # Asignar la banda faltante desbloquea.
-    gw.attr_registry["Bht"].ucs_media = 150.0
-    gw.attr_registry["Bht"].calidad = 3
+    gw.attr_registry["Kpcsb_basal"].ucs_media = 150.0
+    gw.attr_registry["Kpcsb_basal"].calidad = 3
     check(not gw.training_blockers(),
-          "asignar banda + calidad a Bht desbloquea el entrenamiento",
+          "asignar banda + calidad a Kpcsb_basal desbloquea el entrenamiento",
           gw.training_blockers())
     check(gw.training_block_message() is None, "sin bloqueadores no hay mensaje")
 
@@ -559,7 +582,9 @@ def t17_persistence():
 def t18_ui():
     section("T1.8 — Interfaz")
     reset_registry()
-    _mk_layer("malla_Bht", attr="Bht")
+    # (Adenda B) Bht ya tiene banda de UCS; Kpcli sigue sin ensayo y es el
+    # ejemplo que dispara el badge "sin UCS" que este test verifica.
+    _mk_layer("malla_Kpcli", attr="Kpcli")
     gw.resolve_or_note("Textito Raro", "dxf_layer")
     gw.site_guard(373936.0, 6960177.0, "Granate_lito", "malla DXF")
 
@@ -808,12 +833,13 @@ def a4_bloqueo_solo_litologias():
           gw.training_blockers())
     check(gw.training_block_message() is None, "no hay mensaje de bloqueo")
 
-    # Una litología sin banda SÍ bloquea, y se la nombra.
-    _mk_layer("capa_Bht", attr="Bht")
+    # Una litología sin banda SÍ bloquea, y se la nombra. (Adenda B: Bht ya
+    # tiene banda propia, se usa Kpcli como ejemplo de litología sin ensayo.)
+    _mk_layer("capa_Kpcli", attr="Kpcli")
     bl = gw.training_blockers()
-    check({b["id"] for b in bl} == {"Bht"},
+    check({b["id"] for b in bl} == {"Kpcli"},
           "una litología sin banda sí bloquea, y solo ella", {b["id"] for b in bl})
-    check("Bht" in gw.training_block_message(),
+    check("Kpcli" in gw.training_block_message(),
           "el mensaje la nombra", gw.training_block_message())
     check(bl[0]["rol"] == "litologia", "el bloqueador reporta su rol", bl[0])
 
@@ -821,7 +847,7 @@ def a4_bloqueo_solo_litologias():
     gw.attr_registry["FallaY"] = gw.Attribute(id="FallaY", nombre_oficial="Falla Y",
                                               rol="estructura", calidad=0)
     _mk_layer("capa_falla", attr="FallaY")
-    check({b["id"] for b in gw.training_blockers()} == {"Bht"},
+    check({b["id"] for b in gw.training_blockers()} == {"Kpcli"},
           "una estructura sin banda tampoco bloquea")
 
     # Y Fk sigue componiendo dominio pese a no tener banda.
