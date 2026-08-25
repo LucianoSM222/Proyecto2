@@ -36,11 +36,56 @@ LITOLOGIAS: Dict[str, tuple] = {
              "Lutitas normales (126,0 MPa), no a la unidad padre, que no "
              "tiene banda propia. " + _PROCEDENCIA),
     "Lavas": ("Kpcli",
-              "Lavas Inferiores. ATENCIÓN: Kpcli está en el registro con "
-              "calidad 0 y SIN banda de UCS, así que sus puntos no pueden "
-              "etiquetar y la litología bloquea el entrenamiento hasta que se "
-              "le asigne banda o se la excluya explícitamente. " + _PROCEDENCIA),
+              "Lavas Inferiores. La asignación se corrobora con la "
+              "estratigrafía: el informe geológico base sitúa Kpcli en la BASE "
+              "de la columna (bajo el Albitófiro, base no expuesta) y Kpcls "
+              "(Lavas Superiores) sobre el Miembro Trinidad; la malla Lavas.dxf "
+              "de PCS_1043 tiene el Z medio MÁS BAJO de las seis mallas del "
+              "caserón (320,4 m, contra Ka 413,6 · Kpcs 388,3 · Kpcsb 365,2 · "
+              "Kpcmix 354,2), que es la posición de las Inferiores. "
+              + _PROCEDENCIA),
 }
+
+# ── Bandas de UCS que NO vienen del registro prepoblado ─────────────────────
+# El registro se siembra con la Tabla 3.2 de Karzulovic (2005), que solo
+# caracteriza cinco unidades: Albitófiro, Brecha mixta, Brecha sedimentaria y
+# las dos lutitas. El informe geológico base de Pucobre confirma que su anexo
+# de ensayos cubre EXACTAMENTE esas cinco — ni las Lavas ni las Calizas de la
+# Formación Abundancia tienen ensayo de laboratorio ahí.
+#
+# atributo -> (ucs_min, ucs_max, ucs_media, calidad, fuente)
+BANDAS_UCS = {
+    "Kpcli": (150.0, 230.0, 190.0, 3,
+              "Rango aportado por el autor desde fuente propia (no está en el "
+              "informe geológico base ni en la Tabla 3.2 de Karzulovic). "
+              "Registrado con CALIDAD 3 (análogo del distrito) por no tener "
+              "identificada la campaña de ensayo, el n de probetas ni la "
+              "desviación: el intervalo de predicción se ensancha ×1,60 en "
+              "consecuencia. Ajustar la calidad a 1 desde el panel de "
+              "vocabulario en cuanto se identifique el informe de laboratorio."),
+}
+
+
+def aplicar_bandas_ucs(verbose: bool = True) -> List[tuple]:
+    """
+    Asigna las bandas de UCS que no trae el registro prepoblado. Cada una
+    lleva calidad y fuente EXPLÍCITAS: una banda sin procedencia declarada
+    es indistinguible de un número inventado, y el factor del intervalo de
+    predicción depende de esa calidad.
+    """
+    puestas = []
+    for attr_id, (lo, hi, media, calidad, fuente) in BANDAS_UCS.items():
+        a = gw.attr_registry.get(attr_id)
+        if a is None:
+            continue
+        a.ucs_min, a.ucs_max, a.ucs_media = lo, hi, media
+        a.calidad = calidad
+        a.fuente = fuente
+        puestas.append((attr_id, lo, hi, media, calidad))
+        if verbose:
+            print(f"  {attr_id:10s} UCS {lo:g}-{hi:g} (media {media:g}) "
+                  f"calidad {calidad} · PI ×{a.pi_factor():.2f}")
+    return puestas
 
 # ── Pendientes de resolver ───────────────────────────────────────────────────
 # No se asignan a nada: sin atributo canónico van a la bandeja de pendientes,
@@ -59,6 +104,7 @@ def aplicar_vocabulario_mpc(verbose: bool = True) -> Dict[str, List]:
     aplicado, lo que quedó pendiente, y las litologías que quedan SIN banda
     de UCS utilizable (que bloquearán el entrenamiento hasta resolverse).
     """
+    aplicar_bandas_ucs(verbose=verbose)
     aplicados, faltantes, sin_banda = [], [], []
     for texto, (attr_id, nota) in LITOLOGIAS.items():
         a = gw.attr_registry.get(attr_id)
