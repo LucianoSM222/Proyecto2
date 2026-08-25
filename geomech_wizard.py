@@ -1009,6 +1009,150 @@ def unexclude_attribute(attr_id: str):
     attribute_exclusions.pop(attr_id, None)
 
 
+# ─── ALTA Y BAJA DE ATRIBUTOS DESDE LA APLICACIÓN ───────────────────────────
+# El registro se siembra con la Tabla 3.2 de Karzulovic, que caracteriza cinco
+# unidades de Punta del Cobre. Pucobre opera TRES faenas con litologías
+# distintas, y el propio MPC ya tiene unidades fuera de esa tabla (las Calizas
+# de la Formación Abundancia; las mallas de PCS_1059). Sin alta/baja en
+# caliente, registrar cualquiera de ellas obliga a editar
+# seed_attribute_registry() en el fuente, lo que hace la plataforma
+# intransferible a otra faena sin un programador.
+
+def create_attribute(attr_id: str, nombre_oficial: str, rol: str = "litologia",
+                     nivel: str = "unidad", padre: Optional[str] = None,
+                     **campos) -> Attribute:
+    """
+    Registra un atributo canónico nuevo. Valida ANTES de tocar el registro:
+    un atributo a medias es peor que ninguno, porque contamina el
+    entrenamiento y la matriz de traslape sin que nada lo delate.
+
+    `campos` acepta el resto de los campos de Attribute (ucs_min, ucs_max,
+    ucs_media, ucs_central, dispersion_min/max, ucs_cv, ucs_sd, ucs_n,
+    calidad, fuente, mi, modulo_E, poisson, densidad, notas...).
+
+    Lanza ValueError con el motivo concreto; nunca corrige en silencio.
+    """
+    aid = (attr_id or "").strip()
+    nombre = (nombre_oficial or "").strip()
+    if not aid:
+        raise ValueError("El id del atributo no puede estar vacío.")
+    if not nombre:
+        raise ValueError(f"'{aid}': el nombre oficial no puede estar vacío.")
+    if aid in attr_registry:
+        raise ValueError(f"'{aid}' ya existe en el registro "
+                         f"({attr_registry[aid].nombre_oficial}). Edítalo en vez de "
+                         f"volver a crearlo, o usa otro id.")
+    if rol not in ATTR_ROLES:
+        raise ValueError(f"'{aid}': rol '{rol}' inválido. Válidos: {', '.join(ATTR_ROLES)}.")
+    if nivel not in ("unidad", "subunidad"):
+        raise ValueError(f"'{aid}': nivel '{nivel}' inválido (unidad | subunidad).")
+    if nivel == "subunidad":
+        if not padre:
+            raise ValueError(f"'{aid}': una subunidad debe declarar su unidad padre.")
+        p = attr_registry.get(padre)
+        if p is None:
+            raise ValueError(f"'{aid}': el padre '{padre}' no existe en el registro.")
+        if p.nivel != "unidad":
+            raise ValueError(f"'{aid}': el padre '{padre}' es una subunidad, no una unidad.")
+        if p.rol != rol:
+            raise ValueError(f"'{aid}': rol '{rol}' distinto del de su padre '{padre}' "
+                             f"('{p.rol}'). La jerarquía solo existe dentro de un rol.")
+    elif padre:
+        raise ValueError(f"'{aid}': es unidad pero declara padre '{padre}'.")
+
+    validos = set(Attribute.__dataclass_fields__)
+    desconocidos = set(campos) - validos
+    if desconocidos:
+        raise ValueError(f"'{aid}': campo(s) desconocido(s): {', '.join(sorted(desconocidos))}.")
+
+    # (T1.6) Límites físicos de UCS: se RECHAZA, nunca se trunca en silencio.
+    lo, hi = UCS_CONFIG["physical_min"], UCS_CONFIG["physical_max"]
+    for c in ("ucs_min", "ucs_max", "ucs_media", "ucs_central",
+              "dispersion_min", "dispersion_max"):
+        v = campos.get(c)
+        if v is None: continue
+        try: v = float(v)
+        except (TypeError, ValueError):
+            raise ValueError(f"'{aid}': {c}='{campos[c]}' no es un número.")
+        if not (lo <= v <= hi):
+            raise ValueError(f"'{aid}': {c}={v:g} MPa fuera del rango físico "
+                             f"[{lo:g}, {hi:g}]. No se trunca: corrige el valor.")
+        campos[c] = v
+    for lo_c, hi_c in (("ucs_min", "ucs_max"), ("dispersion_min", "dispersion_max")):
+        a_, b_ = campos.get(lo_c), campos.get(hi_c)
+        if a_ is not None and b_ is not None and a_ > b_:
+            raise ValueError(f"'{aid}': {lo_c}={a_:g} > {hi_c}={b_:g}.")
+    if "calidad" in campos and campos["calidad"] not in QUALITY_LABELS:
+        raise ValueError(f"'{aid}': calidad {campos['calidad']} fuera del catálogo "
+                         f"{sorted(QUALITY_LABELS)}.")
+    # (A.1) La banda de UCS es propiedad de la litología: ofrecérsela a otro
+    # rol dejaría el registro en un estado que validate_attribute_tree marca
+    # como inválido apenas se recargue.
+    if rol not in ROLES_CON_BANDA_UCS:
+        sucios = [c for c in ("ucs_min", "ucs_max", "ucs_media", "ucs_central",
+                              "ucs_sd", "ucs_n", "dispersion_min", "dispersion_max", "ucs_cv")
+                  if campos.get(c) is not None]
+        if sucios:
+            raise ValueError(f"'{aid}': el rol '{rol}' no lleva banda de UCS, pero se "
+                             f"le pasó {', '.join(sucios)}. La banda es propiedad de "
+                             f"la litología.")
+
+    a = Attribute(id=aid, nombre_oficial=nombre, rol=rol, nivel=nivel, padre=padre, **campos)
+    attr_registry[aid] = a
+    log_warn(f'Vocabulario: atributo "{aid}" ({nombre}) creado · rol={rol} · '
+             f'nivel={nivel}' + (f' · padre={padre}' if padre else '') +
+             (f' · UCS ancla={a.ucs_ancla():g} MPa' if a.ucs_ancla() is not None else
+              ' · SIN banda de UCS'))
+    return a
+
+
+def attribute_usage(attr_id: str) -> Dict:
+    """Dónde está en uso un atributo: capas, puntos clasificados y alias."""
+    capas = sorted(n for n, lay in layers.items()
+                   if attr_id in (getattr(lay, "atributos", None) or {}).values())
+    alias = sorted(al.texto_crudo for al in alias_registry.values()
+                   if attr_id in al.atributos.values())
+    return {"capas": capas, "puntos": attribute_point_counts().get(attr_id, 0),
+            "alias": alias, "hijos": sorted(attribute_children(attr_id))}
+
+
+def delete_attribute(attr_id: str, force: bool = False) -> Dict:
+    """
+    Elimina un atributo del registro. Si está EN USO —referenciado por capas
+    cargadas o por puntos ya clasificados— exige `force=True`: borrarlo en
+    silencio dejaría puntos apuntando a un id fantasma y el entrenamiento
+    etiquetaría contra un dominio que ya no existe.
+
+    Una unidad con subunidades NUNCA se borra (las dejaría huérfanas): hay
+    que borrar o reasignar las subunidades primero.
+
+    Los alias que apuntaban al atributo se van con él —quedarían resolviendo
+    a un id inexistente— y el reporte los nombra.
+    """
+    if attr_id not in attr_registry:
+        raise KeyError(f"Atributo '{attr_id}' no existe en el registro.")
+    uso = attribute_usage(attr_id)
+    if uso["hijos"]:
+        raise ValueError(f"'{attr_id}' tiene subunidades ({', '.join(uso['hijos'])}); "
+                         f"borrarlo las dejaría huérfanas. Bórralas o reasígnalas primero.")
+    if not force and (uso["capas"] or uso["puntos"]):
+        detalle = []
+        if uso["capas"]: detalle.append(f"{len(uso['capas'])} capa(s): {', '.join(uso['capas'][:5])}")
+        if uso["puntos"]: detalle.append(f"{uso['puntos']} punto(s) clasificado(s)")
+        raise ValueError(f"'{attr_id}' está en uso por {' y '.join(detalle)}. "
+                         f"Usa force=True si de verdad quieres borrarlo: los puntos "
+                         f"quedarán sin ese dominio hasta reclasificar.")
+    for texto in uso["alias"]:
+        alias_registry.pop(_norm_txt(texto), None)
+    attribute_exclusions.pop(attr_id, None)
+    attr_registry.pop(attr_id, None)
+    log_warn(f'Vocabulario: atributo "{attr_id}" eliminado' +
+             (f' · {uso["puntos"]} punto(s) quedan sin ese dominio hasta reclasificar'
+              if uso["puntos"] else '') +
+             (f' · alias arrastrados: {", ".join(uso["alias"])}' if uso["alias"] else ''))
+    return uso
+
+
 def attribute_point_counts() -> Dict[str, int]:
     """Puntos MWD clasificados por atributo, contando TODOS los roles del punto."""
     counts: Dict[str, int] = {}
@@ -5546,10 +5690,81 @@ def _attr_row(a: Attribute):
                        id={"type": "attr-excl-btn", "attr": a.id}, size="sm",
                        color="secondary" if exc else "warning", outline=True,
                        style={"fontSize": "10px", "marginLeft": "6px"}),
+            # (CRUD) Baja del atributo. delete_attribute() se niega si está en
+            # uso o si tiene subunidades; el aviso vuelve al toast.
+            dbc.Button("🗑 Eliminar", id={"type": "attr-del-btn", "attr": a.id},
+                       size="sm", color="danger", outline=True,
+                       style={"fontSize": "10px", "marginLeft": "6px"}),
         ], className="mt-1"),
         html.Small(a.notas, style={"color": "#666", "fontSize": "9px", "display": "block",
                                    "marginTop": "3px"}) if a.notas else None,
     ], style={"background": "transparent", "borderBottom": "1px solid #222", "padding": "8px 10px"})
+
+
+def _attr_alta_form():
+    """
+    (CRUD) Alta de un atributo canónico sin tocar el código. El registro se
+    siembra con la Tabla 3.2 de Karzulovic —cinco unidades de MPC—, pero
+    Pucobre opera tres faenas con litologías distintas: sin esto, llevar la
+    plataforma a otra faena exige un programador.
+
+    Los campos de banda de UCS se ofrecen siempre, pero el backend RECHAZA
+    la banda si el rol no la lleva (A.1): la validación vive en
+    create_attribute, no en el componente.
+    """
+    unidades_opts = [{"label": f"{a.id} — {a.nombre_oficial}", "value": a.id}
+                     for a in sorted(attr_registry.values(), key=lambda x: x.id)
+                     if a.nivel == "unidad"]
+    fila = lambda lbl, comp, w: dbc.Col(
+        [html.Small(lbl, style={"color": "#888", "fontSize": "9px", "display": "block"}), comp],
+        width=w)
+    inp = lambda f, **kw: dbc.Input(id={"type": "nuevo-attr", "field": f}, size="sm",
+                                    style={"fontSize": "10px"}, **kw)
+    return [
+        dbc.Row([
+            fila("Id (código de la malla)", inp("id", placeholder="Ka"), 3),
+            fila("Nombre oficial", inp("nombre_oficial", placeholder="Calizas Fm. Abundancia"), 5),
+            fila("Rol", dcc.Dropdown(id={"type": "nuevo-attr", "field": "rol"},
+                                     options=[{"label": r, "value": r} for r in ATTR_ROLES],
+                                     value="litologia", clearable=False,
+                                     style={"fontSize": "10px"}), 4),
+        ], className="g-1"),
+        dbc.Row([
+            fila("Nivel", dcc.Dropdown(id={"type": "nuevo-attr", "field": "nivel"},
+                                       options=[{"label": "unidad", "value": "unidad"},
+                                                {"label": "subunidad", "value": "subunidad"}],
+                                       value="unidad", clearable=False,
+                                       style={"fontSize": "10px"}), 3),
+            fila("Padre (solo subunidad)",
+                 dcc.Dropdown(id={"type": "nuevo-attr", "field": "padre"},
+                              options=unidades_opts, placeholder="—",
+                              style={"fontSize": "10px"}), 5),
+            fila("Calidad del ancla",
+                 dcc.Dropdown(id={"type": "nuevo-attr", "field": "calidad"},
+                              options=[{"label": f"{k} · {v}", "value": k}
+                                       for k, v in QUALITY_LABELS.items()],
+                              value=0, clearable=False, style={"fontSize": "10px"}), 4),
+        ], className="g-1 mt-1"),
+        dbc.Row([
+            fila("UCS mín [MPa]", inp("ucs_min", type="number"), 2),
+            fila("UCS máx [MPa]", inp("ucs_max", type="number"), 2),
+            fila("UCS media [MPa]", inp("ucs_media", type="number"), 2),
+            fila("mi", inp("mi", type="number"), 2),
+            fila("γ [t/m³]", inp("densidad", type="number"), 2),
+        ], className="g-1 mt-1"),
+        dbc.Row([
+            fila("Fuente (de dónde sale la banda)",
+                 inp("fuente", placeholder="informe, tabla, campaña de ensayo…"), 12),
+        ], className="g-1 mt-1"),
+        html.Div([
+            dbc.Button("➕ Registrar atributo", id="btn-nuevo-attr", size="sm",
+                       color="success", outline=True, style={"fontSize": "10px"}),
+            html.Small("  La banda de UCS solo aplica al rol litología; los límites "
+                       "físicos [0, 450] MPa se rechazan, no se truncan.",
+                       style={"color": "#666", "fontSize": "9px"}),
+        ], className="mt-2"),
+        html.Div(id="nuevo-attr-msg", className="mt-1"),
+    ]
 
 
 def _vocab_panel_body():
@@ -5719,6 +5934,7 @@ def _vocab_panel_body():
               dbc.ListGroup(pend_body, flush=True)]),
         card("🔀 Resolución de traslapes (último cruce)", ov_body),
         card("📊 Matriz de traslape de bandas UCS", ucs_ov_body),
+        card("➕ Registrar litología o estructura nueva", _attr_alta_form()),
 
         card(f"📖 Atributos — unidades ({len(unidades)})",
              [dbc.ListGroup([_attr_row(a) for a in sorted(unidades, key=lambda x: x.id)], flush=True)]),
@@ -5898,6 +6114,70 @@ def on_attr_exclude(clicks, justs, just_ids, ref):
         return no_update, f"🚫 {e}", True
     build_domain_index()
     return ref + 1, f"✅ «{aid}» excluido del entrenamiento. Justificación registrada.", True
+
+
+@app.callback(Output("refresh", "data", allow_duplicate=True),
+              Output("toast", "children", allow_duplicate=True),
+              Output("toast", "is_open", allow_duplicate=True),
+              Input("btn-nuevo-attr", "n_clicks"),
+              State({"type": "nuevo-attr", "field": ALL}, "value"),
+              State({"type": "nuevo-attr", "field": ALL}, "id"),
+              State("refresh", "data"), prevent_initial_call=True)
+def on_attr_create(n, values, ids, ref):
+    """
+    (CRUD) Alta de un atributo canónico desde la interfaz. Toda la validación
+    vive en create_attribute(), no aquí: el motivo del rechazo se muestra tal
+    cual lo declara el backend, para que el usuario sepa QUÉ corregir en vez
+    de recibir un "no se pudo".
+    """
+    if not n: return no_update, no_update, no_update
+    campos = {i["field"]: v for v, i in zip(values, ids)}
+    aid = (campos.pop("id", "") or "").strip()
+    nombre = (campos.pop("nombre_oficial", "") or "").strip()
+    rol = campos.pop("rol", "litologia") or "litologia"
+    nivel = campos.pop("nivel", "unidad") or "unidad"
+    padre = campos.pop("padre", None) or None
+    # Los campos vacíos se omiten en vez de mandarse como "" o 0: un vacío es
+    # "no informado", no "cero".
+    limpios = {k: v for k, v in campos.items() if v is not None and v != ""}
+    try:
+        a = create_attribute(aid, nombre, rol=rol, nivel=nivel, padre=padre, **limpios)
+    except (ValueError, KeyError, TypeError) as e:
+        return no_update, f"🚫 No se registró: {e}", True
+    build_domain_index()
+    ancla = a.ucs_ancla()
+    detalle = (f"UCS ancla {ancla:g} MPa · PI ×{a.pi_factor():.2f}"
+               if ancla is not None and a.pi_factor() is not None
+               else ("sin banda de UCS — bloqueará el entrenamiento hasta asignarla"
+                     if a.usa_banda_ucs() else f"rol {rol}: no lleva banda de UCS"))
+    return ref + 1, f"✅ «{aid}» ({nombre}) registrado · {detalle}.", True
+
+
+@app.callback(Output("refresh", "data", allow_duplicate=True),
+              Output("toast", "children", allow_duplicate=True),
+              Output("toast", "is_open", allow_duplicate=True),
+              Input({"type": "attr-del-btn", "attr": ALL}, "n_clicks"),
+              State("refresh", "data"), prevent_initial_call=True)
+def on_attr_delete(clicks, ref):
+    """
+    (CRUD) Baja de un atributo. El primer clic INTENTA la baja segura; si el
+    atributo está en uso, delete_attribute se niega y explica por qué. La
+    baja forzada no se ofrece desde aquí: perder el dominio de miles de
+    puntos clasificados no puede ser un clic accidental en una lista.
+    """
+    trig = callback_context.triggered_id
+    if not isinstance(trig, dict) or not any(c for c in clicks if c):
+        return no_update, no_update, no_update
+    aid = trig["attr"]
+    try:
+        uso = delete_attribute(aid)
+    except ValueError as e:
+        return no_update, f"🚫 {e}", True
+    except KeyError as e:
+        return no_update, f"🚫 {e}", True
+    build_domain_index()
+    extra = f" · alias arrastrados: {', '.join(uso['alias'])}" if uso["alias"] else ""
+    return ref + 1, f"🗑 «{aid}» eliminado del registro{extra}.", True
 
 
 @app.callback(Output("refresh", "data", allow_duplicate=True),
