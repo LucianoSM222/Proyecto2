@@ -81,7 +81,7 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | 2 | P2 Sondajes | `docs/P2_sondajes.md` | ✅ `5307a61` |
 | 3 | P3 Correcciones de uso | `docs/P3_correcciones.md` | ✅ `19cee91` |
 | 4 | E Escala | `docs/E_escala.md` | ✅ |
-| 5 | Entrenamiento y LOCO-CV | (prompt en la hoja de ruta) | ⬜ requiere caserones cargados |
+| 5 | Entrenamiento y LOCO-CV | (prompt en la hoja de ruta) | 🟡 entrenado sobre 3 caserones; LOCO-CV R²<0 → no generaliza entre caserones |
 | 6 | C Concordancia | `docs/C_concordancia.md` | ⬜ |
 | 7 | Curvas PP y prescripción | (prompt en la hoja de ruta) | ⬜ |
 | 8 | Discriminador fractura/contacto | (prompt en la hoja de ruta) | ⬜ |
