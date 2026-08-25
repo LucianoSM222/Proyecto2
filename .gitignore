@@ -1,2 +1,4 @@
 __pycache__/
 *.pyc
+.geomech_cache/
+.test_geomech_cache/

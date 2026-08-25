@@ -12,7 +12,7 @@
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
-import os, sys, json, time, base64, tempfile, re, warnings, threading, traceback, math
+import os, sys, json, time, base64, tempfile, re, warnings, threading, traceback, math, hashlib
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Tuple
@@ -2069,7 +2069,7 @@ def run_ml_task(ucs_min, ucs_max):
     try:
         task_log("Iniciando cruce geométrico DXF ↔ MWD...", "Cruce geométrico (Möller-Trumbore)", 5)
         t0 = time.time()
-        classify_all_wells()
+        classify_all_wells_cached()
         task_log(f"Cruce geométrico completado en {time.time()-t0:.1f}s.", progress=45)
 
         task_log("Construyendo índice de dominios...", "Índice de dominios", 50)
@@ -2286,6 +2286,116 @@ def parse_dxf(path, fname):
     if not tris: raise RuntimeError("sin caras 3DFACE válidas")
     if skipped: log_warn(f'DXF "{fname}": {skipped} caras omitidas.')
     return np.array(tris, dtype=np.float64), skipped
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  SESIÓN E — CACHÉ EN DISCO, orientada al cuello de botella REAL          ║
+# ║                                                                          ║
+# ║  E.5 (perfilado con archivos reales del repo) mostró que el ray casting ║
+# ║  no es el costo dominante: 1,6 s para clasificar 262.500 puntos contra  ║
+# ║  la malla más grande del repo (Bht.dxf, 92.918 triángulos). El costo    ║
+# ║  real es PARSEAR el DXF — 12,5 s y +210 MB solo para leer y triangular  ║
+# ║  esa misma malla, independiente de cuántos puntos se clasifiquen contra ║
+# ║  ella. El caché apunta ahí, no al ray casting.                          ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+CACHE_DIR = os.environ.get(
+    "GEOMECH_CACHE_DIR", os.path.join(os.getcwd(), ".geomech_cache"))
+DXF_CACHE_DIR = os.path.join(CACHE_DIR, "dxf")
+
+
+def _content_hash(data: bytes) -> str:
+    """Clave de caché determinística a partir de los bytes crudos del archivo."""
+    return hashlib.sha256(data).hexdigest()[:24]
+
+
+def parse_dxf_cached(raw_bytes: bytes, fname: str) -> Tuple[np.ndarray, int]:
+    """
+    Envoltorio con caché en disco sobre parse_dxf(), keyed por el HASH DEL
+    CONTENIDO del archivo — la geometría triangulada de una malla es una
+    función pura de sus propios bytes, NO depende del registro de
+    vocabulario (eso solo importa para clasificar, ver
+    vocab_classification_signature). Dos archivos con nombres distintos y
+    el mismo contenido comparten caché; el mismo nombre con contenido
+    distinto (una malla reemplazada) no colisiona nunca.
+
+    Escritura atómica: se escribe a un archivo temporal en el mismo
+    directorio y se renombra con os.replace() al terminar, para que una
+    interrupción a medio escribir nunca deje un .npz truncado que un
+    acierto de caché posterior leería como válido.
+    """
+    key = _content_hash(raw_bytes)
+    os.makedirs(DXF_CACHE_DIR, exist_ok=True)
+    cache_path = os.path.join(DXF_CACHE_DIR, f"{key}.npz")
+    if os.path.exists(cache_path):
+        data = np.load(cache_path)
+        tris, skipped = data["triangles"], int(data["skipped"])
+        if skipped:
+            log_warn(f'DXF "{fname}": {skipped} caras omitidas (desde caché).')
+        return tris, skipped
+    tmp = tempfile.NamedTemporaryFile(suffix=".dxf", delete=False)
+    try:
+        tmp.write(raw_bytes); tmp.close()
+        tris, skipped = parse_dxf(tmp.name, fname)
+    finally:
+        os.unlink(tmp.name)
+    # np.savez_compressed le añade ".npz" a un nombre de archivo que no
+    # termine en eso, así que se le pasa un file handle ya abierto (no
+    # aplica la magia de extensión) para poder controlar el nombre exacto
+    # del temporal y renombrarlo de forma atómica.
+    tmp_cache = f"{cache_path}.tmp{os.getpid()}"
+    with open(tmp_cache, "wb") as fh:
+        np.savez_compressed(fh, triangles=tris, skipped=np.array(skipped))
+    os.replace(tmp_cache, cache_path)
+    return tris, skipped
+
+
+def vocab_classification_signature() -> str:
+    """
+    Hash determinístico de TODO lo que afecta la salida de
+    classify_all_wells(): la geometría de cada malla cargada (por
+    contenido, no por nombre de archivo) más el rol/nivel/padre de cada
+    atributo del registro de vocabulario — que es exactamente lo que
+    layer_role_ids()/resolve_overlap_by_role() consultan.
+
+    Deliberadamente NO incluye banda de UCS, calidad, fuente ni
+    exclusiones: esos campos gobiernan el ENTRENAMIENTO (ver
+    training_composition_report), no la clasificación geométrica, y
+    cambiarlos no debe invalidar una clasificación ya calculada.
+    """
+    partes = []
+    for name, lay in sorted(layers.items()):
+        tris_hash = hashlib.sha256(lay.triangles.tobytes()).hexdigest()[:16]
+        atributos_str = ",".join(f"{k}={v}" for k, v in sorted((lay.atributos or {}).items()))
+        partes.append(f"L:{name}|{tris_hash}|{atributos_str}|"
+                      f"caseron={lay.caseron}|nivel={lay.nivel}")
+    for aid, a in sorted(attr_registry.items()):
+        partes.append(f"A:{aid}|rol={a.rol}|nivel={a.nivel}|padre={a.padre}")
+    blob = "\n".join(partes).encode("utf-8")
+    return hashlib.sha256(blob).hexdigest()[:24]
+
+
+_last_classify_signature: Optional[str] = None
+
+
+def classify_all_wells_cached(force: bool = False) -> bool:
+    """
+    (E.2, "ningún callback puede disparar una reclasificación completa")
+    Memoiza classify_all_wells() contra vocab_classification_signature():
+    si nada de lo que afecta la clasificación cambió desde la última
+    corrida, no se vuelve a recorrer ningún punto — el resultado ya escrito
+    en p.dominio/p.lito/... sigue siendo válido tal cual.
+
+    Devuelve True si reclasificó, False si reutilizó el resultado vigente.
+    `force=True` ignora la firma (para un botón explícito de "recalcular").
+    """
+    global _last_classify_signature
+    sig = vocab_classification_signature()
+    if not force and sig == _last_classify_signature:
+        return False
+    classify_all_wells()
+    _last_classify_signature = sig
+    return True
+
 
 def _fval(elem, tag, ns=""):
     node = elem.find(f"{ns}{tag}") if elem is not None else None
@@ -3929,7 +4039,7 @@ def export_di_rqd_csv():
     return pd.DataFrame(di_vs_rqd_by_caseron())
 
 def run_cross_ml(ucs_min=None, ucs_max=None):
-    classify_all_wells()
+    classify_all_wells_cached()
     build_domain_index()
     stats = train_rf(ucs_min, ucs_max)
     if "error" not in stats:
@@ -6197,10 +6307,11 @@ def on_dxf(contents_list, filenames, ref):
         try:
             _, b64 = content.split(",", 1)
             raw = base64.b64decode(b64)
-            with tempfile.NamedTemporaryFile(suffix=".dxf", delete=False) as f:
-                f.write(raw); tmp = f.name
-            tris, _ = parse_dxf(tmp, fname)
-            os.unlink(tmp)
+            # (Sesión E) parseo cacheado en disco por hash del contenido: el
+            # perfilado real mostró que parsear el DXF (no el ray casting)
+            # es el costo dominante — 12,5 s / +210 MB para una malla de
+            # ~93k triángulos, contra 1,6 s para clasificar 262.500 puntos.
+            tris, _ = parse_dxf_cached(raw, fname)
             name = Path(fname).stem
             bmin = tris.reshape(-1,3).min(0)
             bmax = tris.reshape(-1,3).max(0)
@@ -6353,7 +6464,7 @@ def do_preview_cross(n, ref):
         return no_update, "⚠ Carga al menos una malla DXF con UCS asignado primero.", True
     if not wells:
         return no_update, "⚠ Carga al menos un XML MWD primero.", True
-    classify_all_wells()
+    classify_all_wells_cached()
     build_domain_index()
     all_pts = list(all_points())
     n_ucs = sum(1 for p in all_pts if p.dominio and domains.get(p.dominio, {}).get("ucs_lab"))
