@@ -1454,6 +1454,12 @@ class MWDPoint:
     alteracion: Optional[str] = None
     ambiguo: bool = False
     ambiguo_motivo: Optional[str] = None
+    # (C.1) Capa DXF concreta que aportó la litología del punto. El dominio
+    # guarda el atributo canónico, que NO basta para la guardia de
+    # circularidad: la misma litología puede venir de la malla de tres
+    # caserones distintos, y comparar contra la malla que produjo la etiqueta
+    # es exactamente lo que hay que rechazar.
+    capa_lito: Optional[str] = None
 
     @property
     def atributo_id(self) -> Optional[str]:
@@ -3154,6 +3160,10 @@ def classify_all_wells():
             valid = np.all(np.isfinite(coords), axis=1)
             # Acumular TODOS los aciertos por punto y por rol, no solo el último.
             hits: List[Dict[str, List[str]]] = [{} for _ in pts]
+            # (C.1) Qué CAPA aportó cada identidad de litología. El dominio
+            # guarda el atributo canónico, que no alcanza para la guardia de
+            # circularidad: la misma litología puede venir de tres caserones.
+            capa_de: List[Dict[str, str]] = [{} for _ in pts]
             for name, layer in layer_items:
                 try:
                     roles = layer_role_ids(layer)
@@ -3164,13 +3174,15 @@ def classify_all_wells():
                     for i in np.where(mask)[0]:
                         for rol, ident in roles.items():
                             hits[i].setdefault(rol, []).append(ident)
+                            if rol == "litologia":
+                                capa_de[i].setdefault(ident, name)
                 except Exception as e:
                     log_warn(f'Clasificación "{name}" en "{wn}": {e}')
             for i, p in enumerate(pts):
                 overlap_stats["n_puntos"] += 1
                 resuelto, motivo, anidado = resolve_overlap_by_role(hits[i])
                 if anidado: overlap_stats["n_subunidad_gana"] += 1
-                p.ambiguo = False; p.ambiguo_motivo = None
+                p.ambiguo = False; p.ambiguo_motivo = None; p.capa_lito = None
                 if motivo:
                     # Conflicto: se excluye el punto del dominio y se contabiliza.
                     p.ambiguo = True; p.ambiguo_motivo = motivo
@@ -3188,6 +3200,7 @@ def classify_all_wells():
                 ah = resuelto.get("alteracion")
                 eh = resuelto.get("estructura")
                 p.lito, p.alteracion, p.estructura = lh, ah, eh
+                p.capa_lito = capa_de[i].get(lh) if lh else None
                 p.dominio = make_dominio(lh, ah, eh)
                 if lh is None: overlap_stats["n_sin_lito"] += 1
                 if lh and ah: overlap_stats["n_compuestos"] += 1
@@ -3732,19 +3745,56 @@ def _degenerate_training_check(y: np.ndarray) -> Optional[str]:
 # realmente entrena. Incluye el corte de emboquillado (vía p.entrenable, que
 # ya lo codifica), que antes se aplicaba sin figurar en ningún reporte.
 TRAINING_FUNNEL_STAGES = [
-    "total", "entrenable", "con_dominio", "sin_ambiguedad",
+    "total", "entrenable", "caseron_entrena", "con_dominio", "sin_ambiguedad",
     "banda_ucs", "no_excluido", "rango_ucs", "roca_intacta",
 ]
+
+# Caserones que ENTRENAN. None = todos los cargados. La asignación
+# entrena/prueba es un parámetro de ejecución, no una constante del proyecto:
+# se necesita para dejar un caserón como holdout limpio (1541 en el plan) y
+# para que la guardia de circularidad (C.1) pueda admitir la comparación
+# contra la malla de un caserón que el modelo nunca vio.
+training_caserones: Optional[set] = None
+
+
+def set_training_caserones(caserones=None):
+    """
+    Fija qué caserones entrenan. `None` (o vacío) restaura "todos".
+    Devuelve el conjunto vigente y lo declara: cambiar el reparto
+    entrena/prueba cambia todas las métricas aguas abajo.
+    """
+    global training_caserones
+    training_caserones = set(caserones) if caserones else None
+    disponibles = {c for c in (caseron_de_pozo(w) for w in wells.values()) if c}
+    if training_caserones:
+        desconocidos = training_caserones - disponibles
+        if desconocidos:
+            log_warn(f"Entrenamiento: caserón(es) {', '.join(sorted(desconocidos))} "
+                     f"no están entre los cargados ({', '.join(sorted(disponibles)) or '—'}).")
+        log_warn(f"Entrenamiento restringido a: {', '.join(sorted(training_caserones))}. "
+                 f"Quedan fuera: {', '.join(sorted(disponibles - training_caserones)) or '—'}.")
+    else:
+        log_warn(f"Entrenamiento con TODOS los caserones cargados "
+                 f"({', '.join(sorted(disponibles)) or '—'}).")
+    return training_caserones
 
 def _training_funnel(ucs_min, ucs_max):
     """
     Devuelve (X, y, groups, n_excl_di, funnel). `funnel` es una lista de
     {"etapa","label","quedan","perdidos"} en el orden de TRAINING_FUNNEL_STAGES.
+
+    (C.1) De paso registra la PROCEDENCIA de las etiquetas —qué mallas y qué
+    caserones las produjeron—, que es lo que la guardia de circularidad
+    necesita para negarse a comparar el modelo contra su propia fuente.
     """
+    _prov_capas.clear(); _prov_caserones.clear()
     pts = list(all_points())
     labels = {
         "total": "Total de puntos MWD",
         "entrenable": f"Entrenable (emboquillado <{inicio_cut_m:g} m + filtros de limpieza)",
+        "caseron_entrena": ("En un caserón que ENTRENA ("
+                            + (", ".join(sorted(training_caserones)) if training_caserones
+                               else "todos los cargados") + ")"),
         "con_dominio": "Con dominio asignado (dentro de alguna malla)",
         "sin_ambiguedad": "Sin ambigüedad de traslape (A.5)",
         "banda_ucs": "Dominio con banda de UCS asignada",
@@ -3756,9 +3806,15 @@ def _training_funnel(ucs_min, ucs_max):
     n = {k: 0 for k in TRAINING_FUNNEL_STAGES}
     n["total"] = len(pts)
     for wn, well in wells.items():
+        cas_w = caseron_de_pozo(well)
+        entrena_cas = (training_caserones is None) or (cas_w in training_caserones)
         for p in well.points:
             if not p.entrenable: continue
             n["entrenable"] += 1
+            # Holdout por caserón: sus puntos se cuentan como disponibles pero
+            # NO entrenan, y la etapa lo declara en el embudo.
+            if not entrena_cas: continue
+            n["caseron_entrena"] += 1
             if not p.dominio: continue
             n["con_dominio"] += 1
             # (P1-T1.4) Punto excluido por traslape irresoluble: ya
@@ -3779,6 +3835,12 @@ def _training_funnel(ucs_min, ucs_max):
             X.append([getattr(p, k) for k in ML_FEATURES])
             y.append(ucs)
             groups.append(wn)
+            # (C.1) Procedencia de la etiqueta: qué malla y qué caserón la
+            # produjeron. Se registra AQUÍ, en el mismo pase que arma X/y,
+            # para que no pueda desincronizarse de lo que el modelo entrenó.
+            if p.capa_lito: _prov_capas.add(p.capa_lito)
+            cas = caseron_de_pozo(well)
+            if cas: _prov_caserones.add(cas)
     funnel, prev = [], n["total"]
     for st in TRAINING_FUNNEL_STAGES:
         funnel.append({"etapa": st, "label": labels[st], "quedan": n[st],
@@ -3834,7 +3896,20 @@ def train_rf(ucs_min=None, ucs_max=None):
         return {"error": bloqueo, "blockers": training_blockers()}
     X, y, groups, n_excl, funnel = _training_funnel(ucs_min, ucs_max)
     if len(X) < 10:
-        return {"error": f"Insuficientes puntos ({len(X)} < 10).", "funnel": funnel}
+        # No basta con decir "insuficientes": el embudo sabe DÓNDE se
+        # perdieron, y la etapa que más descartó es la que hay que mirar.
+        etapas = {st["etapa"]: st for st in funnel}
+        peor = max((st for st in funnel if st["etapa"] != "total"),
+                   key=lambda st: st["perdidos"], default=None)
+        detalle = ""
+        if peor and peor["perdidos"]:
+            detalle = f" La etapa que más descartó: «{peor['label']}» (-{peor['perdidos']})."
+        cas = etapas.get("caseron_entrena")
+        if training_caserones and cas and cas["perdidos"]:
+            detalle += (f" El reparto entrena/prueba vigente deja fuera "
+                        f"{cas['perdidos']} punto(s): entrenan "
+                        f"{', '.join(sorted(training_caserones))}.")
+        return {"error": f"Insuficientes puntos ({len(X)} < 10).{detalle}", "funnel": funnel}
     degenerado = _degenerate_training_check(y)
     if degenerado:
         return {"error": f"Entrenamiento degenerado: {degenerado}", "funnel": funnel}
@@ -3898,6 +3973,105 @@ def train_rf(ucs_min=None, ucs_max=None):
     }
     rf_stats = stats
     return stats
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  SESIÓN C — CONCORDANCIA                                                 ║
+# ║                                                                          ║
+# ║  C.0 (encuadre, gobierna todo lo demás): esto es ANÁLISIS DE            ║
+# ║  CONCORDANCIA, no validación. La malla de Leapfrog NO es verdad         ║
+# ║  terreno: es una interpolación construida desde los sondajes, casi      ║
+# ║  exacta junto al sondaje porque ahí está restringida, e hipótesis       ║
+# ║  progresivamente más débil al alejarse. Un desacuerdo entre MWD y malla ║
+# ║  NO es un error del MWD hasta que se demuestre cuál de los dos falla.   ║
+# ║                                                                          ║
+# ║  Terminología obligatoria en interfaz, exportaciones y memoria:         ║
+# ║  "modelo geológico informado por MWD". Nunca "corregido", nunca         ║
+# ║  "exacto".                                                              ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+TERMINOLOGIA_C = "modelo geológico informado por MWD"
+
+# (C.1) Procedencia de las etiquetas del último entrenamiento: qué mallas y
+# qué caserones las produjeron. Lo puebla _training_funnel en el mismo pase
+# que arma X/y, para que no pueda desincronizarse de lo que el modelo vio.
+_prov_capas: set = set()
+_prov_caserones: set = set()
+
+
+def training_provenance() -> Dict[str, set]:
+    """De dónde salieron las etiquetas con las que se entrenó el modelo."""
+    return {"capas": set(_prov_capas), "caserones": set(_prov_caserones)}
+
+
+def training_provenance_reset():
+    _prov_capas.clear(); _prov_caserones.clear()
+
+
+def circularity_check(capas) -> Optional[str]:
+    """
+    (C.1 — BLOQUEANTE) None si la comparación es admisible; el motivo del
+    rechazo si no lo es.
+
+    Si el modelo se entrenó con etiquetas derivadas de una malla, comparar
+    sus predicciones contra ESA MISMA malla no demuestra concordancia:
+    demuestra memorización. El sistema debe rechazarlo y decir por qué.
+
+    Comparaciones admitidas:
+      1. Contra registros de sondaje (sin mallas) — fuente independiente.
+      2. Contra la malla de un caserón EXCLUIDO del entrenamiento.
+
+    Basta UNA malla contaminada para rechazar el reporte completo: un
+    resultado global mezclado con memorización no se puede leer.
+    """
+    if rf_model is None:
+        return ("No hay modelo entrenado: sin procedencia de las etiquetas no se "
+                "puede verificar la circularidad, así que la comparación no se "
+                "autoriza. Entrena el modelo primero.")
+    capas = [c for c in (capas or []) if c]
+    if not capas:
+        return None                      # contraste contra sondajes: independiente
+    culpables = sorted(set(capas) & set(_prov_capas))
+    if not culpables:
+        return None
+    return (f"Comparación RECHAZADA por circularidad: "
+            f"{'la malla' if len(culpables)==1 else 'las mallas'} "
+            f"{', '.join(culpables)} produjo las etiquetas con las que se entrenó "
+            f"este modelo. Comparar sus predicciones contra su propia fuente solo "
+            f"demostraría memorización, no concordancia. Contrasta contra registros "
+            f"de sondaje, o contra la malla de un caserón excluido del "
+            f"entrenamiento (entrenaron: {', '.join(sorted(_prov_caserones)) or '—'}).")
+
+
+def concordance_report(fuente: str = "sondajes", capas=None) -> Dict:
+    """
+    (C.1/C.2) Reporte de concordancia. `fuente` es "sondajes" (Nivel 1: donde
+    sondaje y MWD están colocalizados, único lugar con algo próximo a verdad
+    terreno) o "malla" (Nivel 2: se reporta concordancia y se analiza la
+    estructura espacial del desacuerdo).
+
+    La guardia de circularidad corre ANTES de calcular nada: un reporte
+    rechazado no trae métricas, para que no haya un número que alguien pueda
+    citar fuera de contexto.
+    """
+    if rf_model is None:
+        return {"status": "sin_modelo",
+                "motivo": ("No hay modelo entrenado. El reporte de concordancia "
+                           "compara predicciones contra una fuente de contraste; "
+                           "sin modelo no hay predicciones que contrastar."),
+                "terminologia": TERMINOLOGIA_C}
+    motivo = circularity_check(capas if fuente == "malla" else [])
+    if motivo:
+        return {"status": "rechazado", "motivo": motivo, "fuente": fuente,
+                "capas": sorted(capas or []), "terminologia": TERMINOLOGIA_C}
+    return {"status": "ok", "fuente": fuente, "capas": sorted(capas or []),
+            "nivel": 1 if fuente == "sondajes" else 2,
+            "encuadre": ("Análisis de concordancia, no validación: la malla no es "
+                         "verdad terreno. Un desacuerdo no es un error del MWD "
+                         "hasta demostrar cuál de los dos falla. Terminología: "
+                         + TERMINOLOGIA_C + "."),
+            "terminologia": TERMINOLOGIA_C}
+
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║  P3-3.9 — ARMAZÓN DEL REPORTE DE JUSTIFICACIÓN DE VARIABLES             ║
