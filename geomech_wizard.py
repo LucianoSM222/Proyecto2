@@ -57,6 +57,11 @@ UCS_CONFIG = {"physical_min":0.0,"physical_max":450.0,"warning_min":50.0,"warnin
 PALETTE = ["#3B8BD4","#D05538","#5DCAA5","#EF9F27","#D4537E","#7F77DD","#2ECC71","#E74C3C","#F39C12","#1ABC9C","#9B59B6","#F1C40F","#E67E22","#BDC3C7"]
 EPS = 1e-9
 PARSE_BUDGET_S = 12.0
+# Convención inmutable del orden de campos de <Val> en el MWD IREDES. Son
+# EXACTAMENTE 7; todo campo excedente se descarta del uso pero se reporta una
+# vez en la carga (parse_mw), nunca en silencio.
+MWD_VAL_ORDER = ("LT", "ROP", "PP", "FP", "DP", "RP", "FLP")
+MWD_VAL_FIELDS = len(MWD_VAL_ORDER)
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║  P1 — FUNDACIONES: partición por sitio y registro de vocabulario        ║
@@ -2188,8 +2193,22 @@ def parse_mw(path, fname):
     if not plan_id:
         m2 = re.search(r"MW(.+?)H\d+_", fname, re.I)
         if m2: plan_id = m2.group(1)
+    # Orden inmutable de `Val`: LT | ROP | PP | FP | DP | RP | FLP. Exactamente 7.
+    # Los equipos declaran a veces columnas extra (Simba COPROD emite OPT1,
+    # "DRMWDoption"); se descartan del uso, pero la convención exige REPORTARLAS
+    # UNA VEZ en la carga: un campo excedente silencioso es indistinguible de un
+    # cambio de esquema del equipo, que sí invalidaría el orden de los 7.
+    declarados = [(p.text or "").strip()
+                  for p in root.findall(f".//{DR}MWDparams/{DR}Parameter")]
+    n_extra_decl = max(len(declarados) - MWD_VAL_FIELDS, 0)
+    if n_extra_decl:
+        log_warn(f'MWD "{fname}": {n_extra_decl} campo(s) excedente(s) declarado(s) '
+                 f'y descartado(s): {", ".join(declarados[MWD_VAL_FIELDS:])}. '
+                 f'Se usan los {MWD_VAL_FIELDS} de la convención '
+                 f'({" | ".join(MWD_VAL_ORDER)}).')
     samples = root.findall(f".//{DR}Sample")
     puntos, largo_max, skipped, t0 = [], 0.0, 0, time.time()
+    n_extra_val = 0            # muestras con más valores que campos declarados
     for i, s in enumerate(samples):
         if i % 512 == 0 and time.time() - t0 > PARSE_BUDGET_S:
             log_warn(f'MWD "{fname}": timeout, omitidas {len(samples)-i} muestras.'); break
@@ -2198,6 +2217,7 @@ def parse_mw(path, fname):
             if vn is None or not vn.text: skipped += 1; continue
             parts = [float(x) for x in vn.text.strip().split()]
             if len(parts) < 7: skipped += 1; continue
+            if len(parts) > MWD_VAL_FIELDS and not n_extra_decl: n_extra_val += 1
             lt, rop, pp, ap, dp, rp, flp = parts[:7]
             if not all(np.isfinite(v) for v in (lt,rop,pp,ap,dp,rp,flp)):
                 skipped += 1; continue
@@ -2209,6 +2229,11 @@ def parse_mw(path, fname):
             if lt > largo_max: largo_max = lt
         except: skipped += 1
     if skipped: log_warn(f'MWD "{fname}": {skipped} muestras omitidas.')
+    # Excedente NO declarado en MWDparams: se reporta igual, una sola vez.
+    if n_extra_val:
+        log_warn(f'MWD "{fname}": {n_extra_val} muestra(s) con más de {MWD_VAL_FIELDS} '
+                 f'valores en <Val> sin declararlos en <MWDparams>; el excedente se '
+                 f'descarta. Verifica que el orden {" | ".join(MWD_VAL_ORDER)} siga vigente.')
     for p in puntos: p.t = p.largo/largo_max if largo_max > 0 else 0.0
     return {"plan_id": plan_id, "hole_id": hole_id, "largo_max": largo_max, "puntos": puntos}
 

@@ -358,6 +358,50 @@ def test_real_all_p41_holes_no_wrong_fan():
     return True
 
 
+# ─── Convención de campos de <Val>: 7 exactos, excedente REPORTADO ────────────
+# Los Simba COPROD de Pucobre declaran una 8ª columna OPT1 ("DRMWDoption").
+# Se descarta del uso, pero descartarla en silencio sería indistinguible de un
+# cambio de esquema del equipo, que sí invalidaría el orden de los 7.
+_MW_EXTRA_PATHS = sorted(glob.glob(os.path.join(HERE, "test_data", "MWPCC_0042_*.xml")))
+
+
+def test_campo_excedente_se_reporta():
+    require_real_data(MW_PCC_0042=(_MW_EXTRA_PATHS[0] if _MW_EXTRA_PATHS else None))
+    _reset_state()
+    path = _MW_EXTRA_PATHS[0]
+    fname = os.path.basename(path)
+    mw = gw.parse_mw(path, fname)
+
+    assert mw["puntos"], f"{fname}: no se parseó ningún punto"
+    avisos = [w for w in gw.parse_warnings if "excedente" in w]
+    print(f"[TEST excedente] {fname}: {len(mw['puntos'])} pts, "
+          f"{len(avisos)} aviso(s) de campo excedente")
+    assert len(avisos) == 1, (
+        f"El campo excedente debe reportarse EXACTAMENTE una vez por archivo; "
+        f"hubo {len(avisos)}: {avisos}")
+    assert "OPT1" in avisos[0], f"El aviso debe nombrar el campo descartado: {avisos[0]}"
+    for campo in gw.MWD_VAL_ORDER:
+        assert campo in avisos[0], f"El aviso debe declarar el orden vigente: falta {campo}"
+
+    # Los 7 campos de la convención se leen en el orden correcto: el primer
+    # <Val> del archivo, comparado contra el punto ya parseado.
+    import xml.etree.ElementTree as ET
+    root = ET.parse(path).getroot()
+    crudo = [float(x) for x in
+             root.find(f".//{gw.DR}Sample/{gw.DR}Val").text.strip().split()]
+    assert len(crudo) == gw.MWD_VAL_FIELDS + 1, (
+        f"El fixture debe traer 1 campo excedente; trae {len(crudo)}")
+    p = mw["puntos"][0]
+    lt, rop, pp, fp_feed, dp, rp, flp = crudo[:gw.MWD_VAL_FIELDS]
+    leido = [p.largo, p.vel, p.pp, p.pa, p.pd, p.pr, p.pf]
+    assert leido == [lt, rop, pp, fp_feed, dp, rp, flp], (
+        f"Orden de <Val> alterado: esperado {[lt,rop,pp,fp_feed,dp,rp,flp]}, "
+        f"leído {leido}")
+    print("[TEST excedente] OK — OPT1 descartado y reportado una vez; "
+          "orden LT|ROP|PP|FP|DP|RP|FLP intacto.")
+    return True
+
+
 if __name__ == "__main__":
     print("=" * 70)
     print("  test_matching.py — validación T1 (matching robusto MW↔DQ)")
@@ -379,6 +423,7 @@ if __name__ == "__main__":
 
     _run(test_multi_dq_hermanos, "TEST c")
     _run(test_end_to_end, "TEST e2e")
+    _run(test_campo_excedente_se_reporta, "campo-excedente")
     if _have_real_hermanos():
         _run(test_real_hermanos_exact, "hermanos-exact")
         _run(test_real_fallback_no_exact, "hermanos-fallback")
