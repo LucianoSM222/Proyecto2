@@ -5589,7 +5589,7 @@ def _muestras_bloques(fuente: str = "ucs_matriz") -> Dict:
     discontinuidades) y "ucs_ml" (predicción cruda). Los puntos sin UCS no se
     rellenan con nada: quedan fuera y se cuentan.
     """
-    P, ucs, di, lito, pozo = [], [], [], [], []
+    P, ucs, di, lito, pozo, caseron = [], [], [], [], [], []
     sin_ucs = 0
     for wn, w in wells.items():
         for p in w.points:
@@ -5605,9 +5605,10 @@ def _muestras_bloques(fuente: str = "ucs_matriz") -> Dict:
             di.append(float(p.di) if p.di is not None and np.isfinite(p.di) else np.nan)
             lito.append(p.lito or p.dominio)
             pozo.append(wn)
+            caseron.append(getattr(w, "caseron", None) or "—")
     return {"P": np.array(P, dtype=np.float64) if P else np.zeros((0, 3)),
             "ucs": np.array(ucs), "di": np.array(di),
-            "lito": lito, "pozo": pozo, "sin_ucs": sin_ucs}
+            "lito": lito, "pozo": pozo, "caseron": caseron, "sin_ucs": sin_ucs}
 
 
 def interpolate_block_model(bloque_m: float = BLOQUE_M,
@@ -5617,7 +5618,8 @@ def interpolate_block_model(bloque_m: float = BLOQUE_M,
                             anisotropia: Tuple[float, float, float] = IDW_ANISOTROPIA,
                             min_muestras: int = IDW_MIN_MUESTRAS,
                             min_pozos: int = IDW_MIN_POZOS,
-                            fuente: str = "ucs_matriz") -> Dict:
+                            fuente: str = "ucs_matriz",
+                            agrupar_por_caseron: bool = True) -> Dict:
     """
     (9.1) Interpola UCS y DI a un modelo de bloques con IDW anisotrópico y
     máscara de soporte.
@@ -5640,88 +5642,111 @@ def interpolate_block_model(bloque_m: float = BLOQUE_M,
                 "terminologia": TERMINOLOGIA_C}
 
     ax, ay, az = anisotropia
-    lo = P.min(axis=0) - bloque_m
-    hi = P.max(axis=0) + bloque_m
-    ejes = [np.arange(lo[k] + bloque_m / 2.0, hi[k] + bloque_m / 2.0, bloque_m)
-            for k in range(3)]
-    # Índice espacial: celda de lado radio_h_m sobre el plano, para no evaluar
-    # el millón de muestras contra cada bloque.
-    celda = max(radio_h_m, 1e-6)
-    ij = np.floor(P[:, :2] / celda).astype(np.int64)
-    cubos: Dict[Tuple[int, int], list] = {}
-    for idx, (i, j) in enumerate(map(tuple, ij)):
-        cubos.setdefault((i, j), []).append(idx)
-
     bloques, n_vacios = [], 0
     pozos_arr = np.array(m["pozo"])
-    for x in ejes[0]:
-        ci = int(np.floor(x / celda))
-        for y in ejes[1]:
-            cj = int(np.floor(y / celda))
-            vecinos = []
-            for di_ in (-1, 0, 1):
-                for dj_ in (-1, 0, 1):
-                    vecinos.extend(cubos.get((ci + di_, cj + dj_), ()))
-            if not vecinos:
-                n_vacios += len(ejes[2]); continue
-            vec = np.array(vecinos)
-            sub = P[vec]
-            dh = np.hypot(sub[:, 0] - x, sub[:, 1] - y)
-            en_h = dh <= radio_h_m
-            if not en_h.any():
-                n_vacios += len(ejes[2]); continue
-            vec, sub, dh = vec[en_h], sub[en_h], dh[en_h]
-            for z in ejes[2]:
-                dv = np.abs(sub[:, 2] - z)
-                sel = dv <= radio_v_m
-                n_sel = int(sel.sum())
-                if n_sel < min_muestras:
-                    n_vacios += 1; continue
-                idxs = vec[sel]
-                if len({pozos_arr[i] for i in idxs}) < min_pozos:
-                    n_vacios += 1; continue
-                # Distancia anisotrópica: la separación vertical se multiplica
-                # por az antes de entrar al peso.
-                d = np.sqrt((ax * (sub[sel, 0] - x)) ** 2
-                            + (ay * (sub[sel, 1] - y)) ** 2
-                            + (az * (sub[sel, 2] - z)) ** 2)
-                d = np.maximum(d, 1e-6)
-                wgt = 1.0 / d ** potencia
-                sw = wgt.sum()
-                ucs_b = float((m["ucs"][idxs] * wgt).sum() / sw)
-                di_vals = m["di"][idxs]
-                fin = np.isfinite(di_vals)
-                di_b = (float((di_vals[fin] * wgt[fin]).sum() / wgt[fin].sum())
-                        if fin.any() else None)
-                # Litología del bloque: la de mayor peso acumulado, no la más
-                # frecuente — un pozo con muchos registros lejanos no debe
-                # ganarle a uno cercano.
-                peso_lito: Dict[str, float] = {}
-                for k, i in enumerate(idxs):
-                    lt = m["lito"][i]
-                    if lt: peso_lito[lt] = peso_lito.get(lt, 0.0) + float(wgt[k])
-                lito_b = max(peso_lito, key=peso_lito.get) if peso_lito else None
-                f_cal, calidad = _calidad_factor(lito_b)
-                dmin = float(np.sqrt((sub[sel, 0] - x) ** 2 + (sub[sel, 1] - y) ** 2
-                                     + (sub[sel, 2] - z) ** 2).min())
-                # Confianza = calidad de la etiqueta × proximidad × soporte.
-                # Los tres factores viven en [0, 1] y se declaran por separado
-                # en el reporte para que el número no sea una caja negra.
-                f_prox = float(max(0.0, 1.0 - dmin / max(radio_h_m, 1e-9)))
-                f_sop = float(min(1.0, n_sel / max(4.0 * min_muestras, 1.0)))
-                conf = round(f_cal * f_prox * f_sop, 4)
-                bloques.append({
-                    "x": round(float(x), 3), "y": round(float(y), 3),
-                    "z": round(float(z), 3), "tamano_m": bloque_m,
-                    "ucs": round(min(max(ucs_b, UCS_CONFIG["physical_min"]),
-                                     UCS_CONFIG["physical_max"]), 2),
-                    "di": round(di_b, 4) if di_b is not None else None,
-                    "confianza": conf, "lito": lito_b, "calidad_etiqueta": calidad,
-                    "banda": banda_resistencia(ucs_b),
-                    "n_muestras": n_sel, "dist_min_m": round(dmin, 3),
-                    "f_calidad": round(f_cal, 4), "f_proximidad": round(f_prox, 4),
-                    "f_soporte": round(f_sop, 4),
-                })
+    caseron_arr = np.array(m["caseron"])
+    por_caseron: Dict[str, Dict] = {}
+
+    # Un encajonado ÚNICO sobre caserones separados por kilómetros contaría
+    # como "vacío" el aire entre ellos y volvería el porcentaje de cobertura
+    # una cifra sin significado. Cada caserón se encajona por separado; los
+    # bloques nunca cruzan de uno a otro porque las muestras tampoco.
+    grupos = ({c: np.where(caseron_arr == c)[0] for c in sorted(set(m["caseron"]))}
+              if agrupar_por_caseron else {"todos": np.arange(P.shape[0])})
+
+    for nombre_cas, gidx in grupos.items():
+      if gidx.size == 0:
+        continue
+      Pg = P[gidx]
+      n_bloques_antes, n_vacios_antes = len(bloques), n_vacios
+      lo = Pg.min(axis=0) - bloque_m
+      hi = Pg.max(axis=0) + bloque_m
+      ejes = [np.arange(lo[k] + bloque_m / 2.0, hi[k] + bloque_m / 2.0, bloque_m)
+              for k in range(3)]
+      # Índice espacial: celda de lado radio_h_m sobre el plano, para no evaluar
+      # el millón de muestras contra cada bloque.
+      celda = max(radio_h_m, 1e-6)
+      ij = np.floor(Pg[:, :2] / celda).astype(np.int64)
+      cubos: Dict[Tuple[int, int], list] = {}
+      for idx, (i, j) in enumerate(map(tuple, ij)):
+          cubos.setdefault((i, j), []).append(gidx[idx])
+
+      for x in ejes[0]:
+          ci = int(np.floor(x / celda))
+          for y in ejes[1]:
+              cj = int(np.floor(y / celda))
+              vecinos = []
+              for di_ in (-1, 0, 1):
+                  for dj_ in (-1, 0, 1):
+                      vecinos.extend(cubos.get((ci + di_, cj + dj_), ()))
+              if not vecinos:
+                  n_vacios += len(ejes[2]); continue
+              vec = np.array(vecinos)
+              sub = P[vec]
+              dh = np.hypot(sub[:, 0] - x, sub[:, 1] - y)
+              en_h = dh <= radio_h_m
+              if not en_h.any():
+                  n_vacios += len(ejes[2]); continue
+              vec, sub, dh = vec[en_h], sub[en_h], dh[en_h]
+              for z in ejes[2]:
+                  dv = np.abs(sub[:, 2] - z)
+                  sel = dv <= radio_v_m
+                  n_sel = int(sel.sum())
+                  if n_sel < min_muestras:
+                      n_vacios += 1; continue
+                  idxs = vec[sel]
+                  if len({pozos_arr[i] for i in idxs}) < min_pozos:
+                      n_vacios += 1; continue
+                  # Distancia anisotrópica: la separación vertical se multiplica
+                  # por az antes de entrar al peso.
+                  d = np.sqrt((ax * (sub[sel, 0] - x)) ** 2
+                              + (ay * (sub[sel, 1] - y)) ** 2
+                              + (az * (sub[sel, 2] - z)) ** 2)
+                  d = np.maximum(d, 1e-6)
+                  wgt = 1.0 / d ** potencia
+                  sw = wgt.sum()
+                  ucs_b = float((m["ucs"][idxs] * wgt).sum() / sw)
+                  di_vals = m["di"][idxs]
+                  fin = np.isfinite(di_vals)
+                  di_b = (float((di_vals[fin] * wgt[fin]).sum() / wgt[fin].sum())
+                          if fin.any() else None)
+                  # Litología del bloque: la de mayor peso acumulado, no la más
+                  # frecuente — un pozo con muchos registros lejanos no debe
+                  # ganarle a uno cercano.
+                  peso_lito: Dict[str, float] = {}
+                  for k, i in enumerate(idxs):
+                      lt = m["lito"][i]
+                      if lt: peso_lito[lt] = peso_lito.get(lt, 0.0) + float(wgt[k])
+                  lito_b = max(peso_lito, key=peso_lito.get) if peso_lito else None
+                  f_cal, calidad = _calidad_factor(lito_b)
+                  dmin = float(np.sqrt((sub[sel, 0] - x) ** 2 + (sub[sel, 1] - y) ** 2
+                                       + (sub[sel, 2] - z) ** 2).min())
+                  # Confianza = calidad de la etiqueta × proximidad × soporte.
+                  # Los tres factores viven en [0, 1] y se declaran por separado
+                  # en el reporte para que el número no sea una caja negra.
+                  f_prox = float(max(0.0, 1.0 - dmin / max(radio_h_m, 1e-9)))
+                  f_sop = float(min(1.0, n_sel / max(4.0 * min_muestras, 1.0)))
+                  conf = round(f_cal * f_prox * f_sop, 4)
+                  bloques.append({
+                      "x": round(float(x), 3), "y": round(float(y), 3),
+                      "z": round(float(z), 3), "tamano_m": bloque_m,
+                      "caseron": nombre_cas,
+                      "ucs": round(min(max(ucs_b, UCS_CONFIG["physical_min"]),
+                                       UCS_CONFIG["physical_max"]), 2),
+                      "di": round(di_b, 4) if di_b is not None else None,
+                      "confianza": conf, "lito": lito_b, "calidad_etiqueta": calidad,
+                      "banda": banda_resistencia(ucs_b),
+                      "n_muestras": n_sel, "dist_min_m": round(dmin, 3),
+                      "f_calidad": round(f_cal, 4), "f_proximidad": round(f_prox, 4),
+                      "f_soporte": round(f_sop, 4),
+                  })
+      n_con = len(bloques) - n_bloques_antes
+      n_vac = n_vacios - n_vacios_antes
+      por_caseron[nombre_cas] = {
+          "n_bloques": n_con, "n_vacios": n_vac,
+          "n_muestras": int(gidx.size),
+          "cobertura": round(n_con / max(n_con + n_vac, 1), 4),
+          "encajonado_m": [round(float(hi[k] - lo[k]), 1) for k in range(3)]}
     if not bloques:
         return {"status": "sin_soporte",
                 "motivo": (f"Ningún bloque de {bloque_m:g} m reúne {min_muestras} "
@@ -5738,7 +5763,18 @@ def interpolate_block_model(bloque_m: float = BLOQUE_M,
                           f"{min_muestras} muestra(s) dentro del elipsoide de "
                           f"búsqueda ({radio_h_m:g} m en planta, {radio_v_m:g} m en "
                           "cota). No se interpolan desde más lejos: un bloque sin "
-                          "soporte es información, no un hueco a rellenar."),
+                          "soporte es información, no un hueco a rellenar. El "
+                          "encajonado se calcula POR CASERÓN: un encajonado único "
+                          "sobre caserones separados por kilómetros contaría el "
+                          "aire entre ellos y volvería la cobertura una cifra sin "
+                          "significado."
+                          if agrupar_por_caseron else
+                          f"{n_vacios} bloque(s) quedaron VACÍOS por no reunir "
+                          f"{min_muestras} muestra(s) dentro del elipsoide de "
+                          f"búsqueda ({radio_h_m:g} m en planta, {radio_v_m:g} m en "
+                          "cota). ATENCIÓN: encajonado ÚNICO sobre todos los "
+                          "caserones — el aire entre caserones cuenta como vacío."),
+        "por_caseron": por_caseron, "agrupado_por_caseron": agrupar_por_caseron,
         "bloque_m": bloque_m, "potencia": potencia,
         "radio_h_m": radio_h_m, "radio_v_m": radio_v_m,
         "anisotropia": list(anisotropia), "min_muestras": min_muestras,
@@ -5767,8 +5803,8 @@ def export_block_model_csv(rep: Optional[Dict] = None) -> str:
     rep = rep if rep is not None else interpolate_block_model()
     if rep.get("status") != "ok":
         return f"# {rep.get('motivo', 'sin datos')}\n"
-    cols = ["x", "y", "z", "tamano_m", "ucs", "di", "confianza", "banda", "lito",
-            "calidad_etiqueta", "n_muestras", "dist_min_m",
+    cols = ["x", "y", "z", "tamano_m", "caseron", "ucs", "di", "confianza",
+            "banda", "lito", "calidad_etiqueta", "n_muestras", "dist_min_m",
             "f_calidad", "f_proximidad", "f_soporte"]
     df = pd.DataFrame(rep["bloques"])[cols]
     cab = "\n".join("# " + l for l in [
@@ -7423,6 +7459,460 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
                     bordercolor="#333",borderwidth=1),
         uirevision="viewport")
     return fig
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  SESIÓN 10 — KIT DE RESULTADOS DEL CAPÍTULO 5                           ║
+# ║                                                                          ║
+# ║  Lo que se pega en la memoria. Tres reglas:                             ║
+# ║                                                                          ║
+# ║  NOMENCLATURA CONSISTENTE. Cada archivo se llama por su identificador,  ║
+# ║  y el identificador no depende del orden de generación ni de qué datos  ║
+# ║  había cargados.                                                        ║
+# ║                                                                          ║
+# ║  NUMERACIÓN ESTABLE. Los identificadores están DECLARADOS abajo, no     ║
+# ║  derivados. Correr el kit dos veces da los mismos números, y una tabla  ║
+# ║  que no se pudo generar no le cede su número a la siguiente.            ║
+# ║                                                                          ║
+# ║  NADA FALTA EN SILENCIO. Un ítem que no se pudo generar aparece en el   ║
+# ║  índice con su estado y su motivo. Un índice donde el ítem simplemente  ║
+# ║  no está es peor que uno que dice "faltó, y por esto".                  ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+class KitSinDatos(Exception):
+    """El ítem no se puede generar con los datos vigentes. Lleva el motivo."""
+
+
+def _kit_csv_de_reporte(rep: Dict, filas_fn, contexto: List[str]) -> str:
+    """Serializa un reporte-diccionario a CSV con su encuadre arriba."""
+    filas = filas_fn(rep)
+    if not filas:
+        raise KitSinDatos(rep.get("motivo") or "El reporte no produjo filas.")
+    cab = "\n".join("# " + l for l in contexto + [
+        f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
+    return cab + "\n" + pd.DataFrame(filas).to_csv(index=False)
+
+
+def _kit_traslape() -> str:
+    rep = ucs_band_overlap_report()
+    filas = []
+    for criterio, pares in rep.items():
+        for p in pares:
+            filas.append({"criterio": criterio, **p})
+    if not filas:
+        raise KitSinDatos("Ningún par de atributos tiene banda de UCS comparable: "
+                          "sin dos bandas no hay traslape que medir.")
+    cab = "\n".join("# " + l for l in [
+        "Matriz de traslape de bandas de UCS, con AMBOS criterios.",
+        "confianza = banda declarada del registro (el rango con el que se "
+        "entrena). dispersion = rango observado en los ensayos. Son conceptos "
+        "distintos y por eso se reportan por separado, nunca fusionados.",
+        f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
+    return cab + "\n" + pd.DataFrame(filas).to_csv(index=False)
+
+
+def _kit_composicion() -> str:
+    rep = training_composition_report()
+    if not rep or rep.get("error"):
+        raise KitSinDatos(rep.get("error") if rep else "Sin conjunto de entrenamiento.")
+    return _kit_csv_de_reporte(
+        rep, lambda r: r.get("por_dominio") or r.get("filas") or [],
+        ["Composición del conjunto de entrenamiento por dominio."])
+
+
+def _kit_correlacion() -> str:
+    rep = correlation_matrix_report()
+    if not rep or rep.get("error"):
+        raise KitSinDatos((rep or {}).get("error") or "Sin datos para correlacionar.")
+    m = rep.get("matriz") or rep.get("matrix")
+    if not m:
+        raise KitSinDatos("El reporte de correlación no trae matriz.")
+    df = pd.DataFrame(m, index=rep.get("variables"), columns=rep.get("variables"))
+    cab = "\n".join("# " + l for l in [
+        "Matriz de correlación entre variables MWD.",
+        f"umbral de multicolinealidad declarado: {MULTICOLLINEARITY_THRESHOLD}",
+        f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
+    return cab + "\n" + df.to_csv()
+
+
+def _kit_comparacion_modelos() -> str:
+    con = model_comparison_report(with_se=True)
+    sin = model_comparison_report(with_se=False)
+    filas = []
+    for etiqueta, rep in (("con SE", con), ("sin SE", sin)):
+        if not rep or rep.get("error"):
+            continue
+        for r in (rep.get("modelos") or rep.get("filas") or []):
+            filas.append({"conjunto": etiqueta, **r})
+    if not filas:
+        raise KitSinDatos((con or {}).get("error")
+                          or "No hay modelo entrenado con el que comparar.")
+    cab = "\n".join("# " + l for l in [
+        f"Comparación de los cinco modelos: {', '.join(COMPARISON_MODELS)}.",
+        "MLP entra como CONTROL de complejidad, no como candidato de producción.",
+        "Se reporta con SE y sin SE porque SE es función de las demás variables.",
+        f"validación: GroupKFold por pozo.",
+        f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
+    return cab + "\n" + pd.DataFrame(filas).to_csv(index=False)
+
+
+def _kit_justificacion() -> str:
+    rep = variable_justification_report()
+    filas = []
+    imp = rep.get("importancia")
+    if imp:
+        for k, v in (imp.items() if isinstance(imp, dict) else imp):
+            filas.append({"seccion": "importancia de variables", "clave": k, "valor": v})
+    for nombre, key in (("comparación con SE", "comparacion_con_se"),
+                        ("comparación sin SE", "comparacion_sin_se")):
+        sub = rep.get(key) or {}
+        for r in (sub.get("modelos") or sub.get("filas") or []):
+            filas.append({"seccion": nombre, "clave": r.get("modelo") or r.get("nombre"),
+                          "valor": r.get("cv_r2") or r.get("r2")})
+    abl = rep.get("ablacion_cota") or {}
+    for k, v in abl.items():
+        if isinstance(v, (int, float)):
+            filas.append({"seccion": "ablación de cota", "clave": k, "valor": v})
+    if not filas:
+        raise KitSinDatos("Sin modelo entrenado no hay importancias, comparación "
+                          "ni ablación que reportar.")
+    cab = "\n".join("# " + l for l in [
+        "Reporte de justificación de variables (P3-3.9).",
+        "Las coordenadas (X, Y, Z, cota) NO son predictoras: el yacimiento es "
+        "estratiforme y la cota es proxy directo de litología. Solo aparecen "
+        "como ablación explícita.",
+        f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
+    return cab + "\n" + pd.DataFrame(filas).to_csv(index=False)
+
+
+def _kit_ablacion_cota() -> str:
+    rep = cota_ablation_report()
+    if not rep or rep.get("error"):
+        raise KitSinDatos((rep or {}).get("error") or "Sin datos para la ablación.")
+    filas = [{"clave": k, "valor": v} for k, v in rep.items()
+             if isinstance(v, (int, float, str)) and k != "error"]
+    for k in ("por_caseron", "loco", "dentro"):
+        sub = rep.get(k)
+        if isinstance(sub, dict):
+            for kk, vv in sub.items():
+                if isinstance(vv, (int, float)):
+                    filas.append({"clave": f"{k}.{kk}", "valor": vv})
+    if not filas:
+        raise KitSinDatos("La ablación no produjo métricas.")
+    cab = "\n".join("# " + l for l in [
+        "Ablación de cota: cuánto cambia el modelo al AGREGAR la cota como "
+        "predictora, dentro de un caserón y entre caserones (LOCO-CV).",
+        "No es una configuración admisible: es la medición de por qué la "
+        "prohibición existe. Si agregar cota sube el R² dentro del caserón y "
+        "lo hunde entre caserones, la cota está memorizando el yacimiento.",
+        f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
+    return cab + "\n" + pd.DataFrame(filas).to_csv(index=False)
+
+
+def _kit_resumen_bloques() -> str:
+    rep = block_model_summary()
+    if rep.get("status") != "ok":
+        raise KitSinDatos(rep.get("motivo") or "Sin modelo de bloques.")
+    filas = [{"banda": k, **v} for k, v in rep["por_banda"].items()]
+    cab = "\n".join("# " + l for l in [
+        f"{TERMINOLOGIA_C} — resumen del modelo de bloques por banda ISRM.",
+        f"bloques con valor: {rep['n_bloques']} · vacíos: {rep['n_vacios']} · "
+        f"cobertura del encajonado: {rep['cobertura']*100:.1f}%",
+        f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
+    return cab + "\n" + pd.DataFrame(filas).to_csv(index=False)
+
+
+def _kit_fig_3d():
+    if not wells and not layers:
+        raise KitSinDatos("Sin pozos ni mallas cargadas no hay vista 3D.")
+    return build_3d_figure()
+
+
+def _kit_fig_di():
+    cand = [w for w in wells.values() if any(p.di is not None for p in w.points)]
+    if not cand:
+        raise KitSinDatos("Ningún pozo tiene DI calculado: correr compute_di().")
+    # El pozo más largo con DI: es el perfil más legible como figura.
+    w = max(cand, key=lambda w: len(w.points))
+    return build_di_figure(w)
+
+
+def _kit_fig_di_sensibilidad():
+    cand = [w for w in wells.values() if len(w.points) >= max(DI_SENSITIVITY_WINDOWS)]
+    if not cand:
+        raise KitSinDatos("Ningún pozo alcanza el largo mínimo para recalcular el "
+                          f"DI con las ventanas {DI_SENSITIVITY_WINDOWS}.")
+    w = max(cand, key=lambda w: len(w.points))
+    return build_di_sensitivity_figure(di_sensitivity_analysis(w))
+
+
+def _kit_fig_di_rqd():
+    data = di_vs_rqd_by_caseron()
+    if not data:
+        raise KitSinDatos("Ningún caserón reúne RQD de laboratorio y puntos MWD "
+                          "suficientes para el contraste independiente.")
+    return build_di_rqd_figure(data)
+
+
+def _kit_csv_o_motivo(fn, motivo_vacio: str):
+    """Envuelve un exportador que ya devuelve CSV: si viene vacío, lo declara."""
+    def _gen():
+        txt = fn()
+        cuerpo = [l for l in (txt or "").splitlines() if l and not l.startswith("#")]
+        if len(cuerpo) <= 1:
+            comentario = next((l[1:].strip() for l in (txt or "").splitlines()
+                               if l.startswith("#")), "")
+            raise KitSinDatos(comentario or motivo_vacio)
+        return txt
+    return _gen
+
+
+def _kit_dxf_bloques(path: str) -> str:
+    rep = interpolate_block_model()
+    if rep.get("status") != "ok":
+        raise KitSinDatos(rep.get("motivo") or "Sin modelo de bloques.")
+    return export_block_model_dxf(rep, path)
+
+
+# ─── EL ÍNDICE DECLARADO ──────────────────────────────────────────────────────
+# Los identificadores viven acá y solo acá. Agregar un ítem es añadir una fila
+# con un identificador NUEVO; renumerar los existentes rompe las referencias
+# del texto de la memoria y por eso no se hace.
+
+KIT_CAP5: Tuple[Dict, ...] = (
+    {"id": "T5.1", "seccion": "5.1 Vocabulario y bandas de UCS",
+     "titulo": "Registro de vocabulario y bandas de UCS",
+     "tipo": "tabla", "generador": "export_vocabulary_csv"},
+    {"id": "T5.2", "seccion": "5.1 Vocabulario y bandas de UCS",
+     "titulo": "Matriz de traslape de bandas de UCS (ambos criterios)",
+     "tipo": "tabla", "generador": "_kit_traslape"},
+    {"id": "T5.3", "seccion": "5.2 Datos y escala",
+     "titulo": "Composición del conjunto de entrenamiento",
+     "tipo": "tabla", "generador": "_kit_composicion"},
+    {"id": "F5.1", "seccion": "5.2 Datos y escala",
+     "titulo": "Vista 3D de pozos y mallas",
+     "tipo": "figura", "generador": "_kit_fig_3d"},
+    {"id": "F5.2", "seccion": "5.3 Índice de discontinuidad",
+     "titulo": "Perfil de DI de un pozo representativo",
+     "tipo": "figura", "generador": "_kit_fig_di"},
+    {"id": "F5.3", "seccion": "5.3 Índice de discontinuidad",
+     "titulo": "Sensibilidad de la ventana del DI",
+     "tipo": "figura", "generador": "_kit_fig_di_sensibilidad"},
+    {"id": "T5.4", "seccion": "5.3 Índice de discontinuidad",
+     "titulo": "Validación independiente DI contra RQD de laboratorio",
+     "tipo": "tabla", "generador": "export_di_rqd_csv"},
+    {"id": "F5.4", "seccion": "5.3 Índice de discontinuidad",
+     "titulo": "DI medio contra RQD por caserón",
+     "tipo": "figura", "generador": "_kit_fig_di_rqd"},
+    {"id": "T5.5", "seccion": "5.4 Modelo de caracterización",
+     "titulo": "Matriz de correlación entre variables MWD",
+     "tipo": "tabla", "generador": "_kit_correlacion"},
+    {"id": "T5.6", "seccion": "5.4 Modelo de caracterización",
+     "titulo": "Comparación de los cinco modelos",
+     "tipo": "tabla", "generador": "_kit_comparacion_modelos"},
+    {"id": "T5.7", "seccion": "5.4 Modelo de caracterización",
+     "titulo": "Reporte de justificación de variables",
+     "tipo": "tabla", "generador": "_kit_justificacion"},
+    {"id": "T5.8", "seccion": "5.4 Modelo de caracterización",
+     "titulo": "Ablación de cota dentro y entre caserones",
+     "tipo": "tabla", "generador": "_kit_ablacion_cota"},
+    {"id": "T5.9", "seccion": "5.4 Modelo de caracterización",
+     "titulo": "Validación por pozo (GroupKFold)",
+     "tipo": "tabla", "generador": "export_validation_csv"},
+    {"id": "T5.10", "seccion": "5.5 Concordancia con el modelo geológico",
+     "titulo": "Diagnósticos de concordancia (C.3 a C.7)",
+     "tipo": "tabla", "generador": "export_concordance_csv"},
+    {"id": "T5.11", "seccion": "5.6 Coherencia energía específica contra UCS",
+     "titulo": "Coherencia SE contra UCS por dominio",
+     "tipo": "tabla", "generador": "export_se_ucs_coherence_csv"},
+    {"id": "T5.12", "seccion": "5.7 Respuesta a la presión de percusión",
+     "titulo": "Curvas de respuesta a PP por dominio",
+     "tipo": "tabla", "generador": "export_pp_curves_csv"},
+    {"id": "T5.13", "seccion": "5.8 Discriminación de discontinuidades",
+     "titulo": "Discriminador fractura contra contacto",
+     "tipo": "tabla", "generador": "export_discriminator_csv"},
+    {"id": "T5.14", "seccion": "5.8 Discriminación de discontinuidades",
+     "titulo": "RQD_MWD por pozo y por caserón",
+     "tipo": "tabla", "generador": "export_rqd_mwd_csv"},
+    {"id": "T5.15", "seccion": "5.9 Modelo de bloques",
+     "titulo": "Modelo de bloques: X, Y, Z, tamaño, UCS, DI, confianza",
+     "tipo": "tabla", "generador": "export_block_model_csv"},
+    {"id": "T5.16", "seccion": "5.9 Modelo de bloques",
+     "titulo": "Resumen del modelo de bloques por banda ISRM",
+     "tipo": "tabla", "generador": "_kit_resumen_bloques"},
+    {"id": "T5.17", "seccion": "5.9 Modelo de bloques",
+     "titulo": "Predicciones punto a punto",
+     "tipo": "tabla", "generador": "export_predictions_csv"},
+    {"id": "D5.1", "seccion": "5.9 Modelo de bloques",
+     "titulo": "Modelo de bloques en DXF con capas por banda",
+     "tipo": "dxf", "generador": "_kit_dxf_bloques"},
+)
+
+KIT_EXT = {"tabla": ".csv", "csv": ".csv", "dxf": ".dxf"}
+KIT_INDICE_CSV = "INDICE_capitulo5.csv"
+KIT_INDICE_MD = "INDICE_capitulo5.md"
+
+# Exportadores que ya devuelven CSV y cuyo "vacío" hay que interpretar.
+_KIT_CSV_DIRECTOS = {
+    "export_vocabulary_csv": "El registro de vocabulario está vacío.",
+    "export_di_rqd_csv": "Ningún caserón reúne RQD de laboratorio y MWD.",
+    "export_validation_csv": "Sin modelo entrenado no hay validación por pozo.",
+    "export_concordance_csv": "Sin contraste disponible no hay concordancia.",
+    "export_se_ucs_coherence_csv": "Sin dominios con UCS de laboratorio.",
+    "export_pp_curves_csv": "Sin puntos con dominio para construir curvas.",
+    "export_discriminator_csv": "Sin picos de DI que clasificar.",
+    "export_rqd_mwd_csv": "Sin pozos con DI calculado.",
+    "export_block_model_csv": "Sin modelo de bloques.",
+    "export_predictions_csv": "Sin predicciones: entrenar y predecir antes.",
+}
+
+
+def _kit_slug(texto: str) -> str:
+    s = _norm_txt(texto).replace(" ", "_")
+    return re.sub(r"[^a-z0-9_]+", "", s)[:60].strip("_")
+
+
+def _kit_nombre(item: Dict, ext: str) -> str:
+    return f"{item['id'].replace('.', '_')}_{_kit_slug(item['titulo'])}{ext}"
+
+
+def build_chapter5_kit(outdir: str, fmt_figura: str = "auto") -> Dict:
+    """
+    (10.1) Genera el kit completo del Capítulo 5 en `outdir` y devuelve el
+    índice: cada ítem con su identificador, su sección, su archivo y su
+    estado.
+
+    Todo ítem declarado en KIT_CAP5 aparece en el índice. Los que no se
+    pueden generar salen con estado "sin_datos" y su motivo, y NO dejan
+    archivo a medias en el disco.
+
+    `fmt_figura`: "auto" intenta PNG y cae a HTML si falta el motor de
+    imagen; "html" o "png" fuerzan uno. La caída se declara en el índice —
+    nunca es silenciosa.
+    """
+    os.makedirs(outdir, exist_ok=True)
+    items = []
+    for it in KIT_CAP5:
+        registro = {"id": it["id"], "seccion": it["seccion"], "titulo": it["titulo"],
+                    "tipo": it["tipo"], "archivo": None, "estado": "sin_datos",
+                    "motivo": None, "nota": None}
+        gen = globals().get(it["generador"])
+        if gen is None:
+            registro["motivo"] = (f"El generador '{it['generador']}' no existe en "
+                                  "este build.")
+            items.append(registro); continue
+        try:
+            if it["tipo"] == "dxf":
+                nombre = _kit_nombre(it, ".dxf")
+                gen(os.path.join(outdir, nombre))
+                registro.update(archivo=nombre, estado="ok")
+            elif it["tipo"] == "figura":
+                fig = gen()
+                nombre_png = _kit_nombre(it, ".png")
+                nombre_html = _kit_nombre(it, ".html")
+                escrito = None
+                if fmt_figura in ("auto", "png"):
+                    try:
+                        fig.write_image(os.path.join(outdir, nombre_png),
+                                        width=1400, height=900, scale=2)
+                        escrito = nombre_png
+                    except Exception as e:
+                        if fmt_figura == "png":
+                            raise
+                        registro["nota"] = (f"PNG no disponible ({type(e).__name__}); "
+                                            "se exportó HTML interactivo. Instalar "
+                                            "kaleido para obtener PNG.")
+                if escrito is None:
+                    fig.write_html(os.path.join(outdir, nombre_html),
+                                   include_plotlyjs="cdn")
+                    escrito = nombre_html
+                registro.update(archivo=escrito, estado="ok")
+            else:
+                if it["generador"] in _KIT_CSV_DIRECTOS:
+                    texto = _kit_csv_o_motivo(
+                        gen, _KIT_CSV_DIRECTOS[it["generador"]])()
+                else:
+                    texto = gen()
+                nombre = _kit_nombre(it, KIT_EXT.get(it["tipo"], ".csv"))
+                with open(os.path.join(outdir, nombre), "w", encoding="utf-8") as fh:
+                    fh.write(texto)
+                registro.update(archivo=nombre, estado="ok")
+        except KitSinDatos as e:
+            registro["motivo"] = str(e)
+        except Exception as e:
+            registro["estado"] = "error"
+            registro["motivo"] = f"{type(e).__name__}: {e}"
+        items.append(registro)
+
+    rep = {
+        "items": items,
+        "n_generados": sum(1 for i in items if i["estado"] == "ok"),
+        "n_fallidos": sum(1 for i in items if i["estado"] != "ok"),
+        "outdir": outdir,
+        "generado": time.strftime("%Y-%m-%d %H:%M"),
+        "procedencia": training_provenance(),
+        "terminologia": TERMINOLOGIA_C,
+        "indice_csv": KIT_INDICE_CSV, "indice_md": KIT_INDICE_MD,
+    }
+    with open(os.path.join(outdir, KIT_INDICE_CSV), "w", encoding="utf-8") as fh:
+        fh.write(export_kit_index_csv(rep))
+    with open(os.path.join(outdir, KIT_INDICE_MD), "w", encoding="utf-8") as fh:
+        fh.write(export_kit_index_md(rep))
+    return rep
+
+
+def export_kit_index_csv(rep: Dict) -> str:
+    """(10.2) Índice del kit como CSV: archivo → sección del capítulo."""
+    df = pd.DataFrame([{k: i[k] for k in
+                        ("id", "seccion", "titulo", "tipo", "archivo", "estado",
+                         "motivo", "nota")}
+                       for i in rep["items"]])
+    cab = "\n".join("# " + l for l in [
+        f"Kit del Capítulo 5 — {rep['terminologia']}.",
+        f"generados: {rep['n_generados']} · no generados: {rep['n_fallidos']} "
+        f"de {len(rep['items'])} ítem(s) declarados.",
+        "Todo ítem declarado aparece acá, generado o no. Un ítem sin archivo "
+        "trae su motivo: nada falta en silencio.",
+        f"generado: {rep['generado']}"])
+    return cab + "\n" + df.to_csv(index=False)
+
+
+def export_kit_index_md(rep: Dict) -> str:
+    """(10.3) Índice del kit como Markdown, para pegar en el texto."""
+    L = [f"# Kit de resultados — Capítulo 5", "",
+         f"*{rep['terminologia']}.*", "",
+         f"Generado {rep['generado']}. "
+         f"{rep['n_generados']} de {len(rep['items'])} ítem(s) producidos; "
+         f"{rep['n_fallidos']} no se pudieron generar y se listan igual, con su "
+         "motivo.", ""]
+    prov = rep.get("procedencia") or {}
+    if prov:
+        L += ["## Procedencia", ""]
+        for k, v in prov.items():
+            L.append(f"- **{k}**: {v}")
+        L.append("")
+    seccion_actual = None
+    for i in rep["items"]:
+        if i["seccion"] != seccion_actual:
+            seccion_actual = i["seccion"]
+            L += ["", f"## {seccion_actual}", "",
+                  "| Id | Título | Tipo | Archivo | Estado |",
+                  "|---|---|---|---|---|"]
+        archivo = f"`{i['archivo']}`" if i["archivo"] else "—"
+        estado = "✅" if i["estado"] == "ok" else f"⚠ {i['estado']}"
+        L.append(f"| {i['id']} | {i['titulo']} | {i['tipo']} | {archivo} | {estado} |")
+    faltantes = [i for i in rep["items"] if i["estado"] != "ok"]
+    if faltantes:
+        L += ["", "## Ítems no generados", ""]
+        for i in faltantes:
+            L.append(f"- **{i['id']}** {i['titulo']} — {i['motivo']}")
+    notas = [i for i in rep["items"] if i.get("nota")]
+    if notas:
+        L += ["", "## Notas de formato", ""]
+        for i in notas:
+            L.append(f"- **{i['id']}** — {i['nota']}")
+    return "\n".join(L) + "\n"
+
 
 # ─── APP DASH ─────────────────────────────────────────────────────────────────
 # (P1) Sembrar el registro de vocabulario ANTES de construir el layout: el

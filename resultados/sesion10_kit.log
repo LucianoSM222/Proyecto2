@@ -180,7 +180,7 @@
      DQ: 54 archivos → 33 planes, 498 tiros · 159 con coordenadas distintas entre revisiones ⚠
      MW: 134 pozos. 162.882 puntos
      match: {'matched': 122, 'fallback': 3, 'ambiguous': 9, 'no_dq': 0}
-     (0.3s mallas + 3.5s XML)
+     (0.3s mallas + 3.6s XML)
 
 ========================================================================
   PCC_0042
@@ -589,7 +589,7 @@
      DQ: 107 archivos → 57 planes, 604 tiros · 214 con coordenadas distintas entre revisiones ⚠
      MW: 345 pozos. 454.471 puntos
      match: {'matched': 316, 'fallback': 22, 'ambiguous': 7, 'no_dq': 0}
-     (0.1s mallas + 11.5s XML)
+     (0.1s mallas + 11.7s XML)
 
 ========================================================================
   PCC_1541
@@ -754,30 +754,5 @@
      DQ: 37 archivos → 29 planes, 255 tiros · 33 con coordenadas distintas entre revisiones ⚠
      MW: 140 pozos. 164.524 puntos
      match: {'matched': 127, 'fallback': 13, 'ambiguous': 0, 'no_dq': 0}
-     (0.1s mallas + 5.6s XML)
-⚠  DI "PCS_1043_AUX1_H3": 13 pts, mín=14.
-⚠  DI "PCS_1043_AUX2_H4": 9 pts, mín=14.
-⚠  DI "PCS_1043_PR01_TH_P01_H14": 3 pts, mín=14.
-pozos=619  mallas=23  (40.7s)
-entrenamiento: {'n_train': 399262, 'n_excl_disc': 31502, 'funnel': [{'etapa': 'total', 'label': 'Total de puntos MWD', 'quedan': 777126, 'perdidos': 0}, {'etapa': 'entrenable', 'label': 'Entrenable (emboquillado <2 m + filtros de limpieza)', 'quedan': 777126, 'perdidos': 0}, {'etapa': 'caseron_entrena', 'label': 'En un caserón que ENTRENA (todos los cargados)', 'quedan': 777126, 'perdidos': 0}, {'etapa': 'con_dominio', 'label': 'Con dominio asignado (dentro de alguna malla)', 'quedan': 437910, 'perdidos': 339216}, {'etapa': 'sin_ambiguedad', 'label': 'Sin ambigüedad de traslape (A.5)', 'quedan': 437910, 'perdidos': 0}, {'etapa': 'banda_ucs', 'label': 'Dominio con banda de UCS asignada', 'quedan': 430764, 'perdidos': 7146}, {'etapa': 'no_excluido', 'label': 'Atributo no excluido explícitamente (T1.5)', 'quedan': 430764, 'perdidos': 0}, {'etapa': 'rango_ucs', 'label': 'Etiqueta de UCS dentro de [0, 450] MPa', 'quedan': 430764, 'perdidos': 0}, {'etapa': 'roca_intacta', 'label': 'DI ≤ umbral (1.5) — roca intacta', 'quedan': 399262, 'perdidos': 31502}], 'n_excl_ambiguo': 0, 'n_compuestos': 0, 'n_anidamiento': 0, 'overlap_motivos': {}, 'r2_train': 0.247, 'rmse_train': 25.0, 'rmsea': 0.0396, 'cv_r2_mean': 0.189, 'cv_r2_std': 0.01, 'cv_n_grupos': 444, 'cv_warning': None, 'rmse_test': 34.7, 'overfit': 9.6, 'feat_imp': {'ROP': 0.0279, 'PP': 0.1176, 'AP': 0.0647, 'DP': 0.0623, 'RP': 0.0941, 'FP': 0.1131, 'SE': 0.0294}}  (102.0s)
-
-========================================================================
-  9 — MODELO DE BLOQUES (IDW anisotrópico)
-========================================================================
-  status: ok  (33.1s)
-  bloque 2.5 m · IDW p=2 · anisotropía [1.0, 1.0, 3.0] · radio 7.5/2.5 m
-  muestras MWD con UCS: 777.126
-  bloques con valor : 12.783
-  bloques VACÍOS    : 3.511.413  (99.6% del volumen encajonado)
-  3511413 bloque(s) quedaron VACÍOS por no reunir 3 muestra(s) dentro del elipsoide de búsqueda (7.5 m en planta, 2.5 m en cota). No se interpolan desde más lejos: un bloque sin soporte es información, no un hueco a rellenar.
-
-  por banda ISRM (Clasificación ISRM de resistencia de la roca intacta (Brown, 1981). Criterio trazable, no percentiles de la muestra.):
-    banda               bloques          m³  UCS med   DI med  conf med
-    R5_muy_alta          12.783     199.734    142.0    0.688     0.255
-
-  cobertura del encajonado: 0.4%
-  Confianza = f_calidad × f_proximidad × f_soporte, los tres en [0, 1]. f_calidad es el inverso del pi_factor del atributo: incorpora la CALIDAD de la etiqueta, de modo que un dominio anclado en un ensayo del sitio y otro anclado en literatura no pueden salir con la misma confianza. f_proximidad decae con la distancia al dato más cercano. f_soporte crece con el número de muestras dentro del elipsoide.
-
-  CSV: /home/user/Proyecto2/resultados/sesion9_modelo_bloques.csv  (1.313.727 bytes)
-  DXF: /home/user/Proyecto2/resultados/sesion9_modelo_bloques.dxf  (19.2 MB)
-  total: 214.3s
+     (0.1s mallas + 4.0s XML)
+⚠  Sondaje "DDH20-ZC-07": una sola estación de desviación (en 0.0 m). Se asume trazado recto con azimut 62.83° / inclinación -89.06° hasta la profundidad declarada (52.8 m).

@@ -82,11 +82,25 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | 3 | P3 Correcciones de uso | `docs/P3_correcciones.md` | ✅ `19cee91` |
 | 4 | E Escala | `docs/E_escala.md` | ✅ |
 | 5 | Entrenamiento y LOCO-CV | (prompt en la hoja de ruta) | 🟡 entrenado sobre 3 caserones; LOCO-CV R²<0 → no generaliza entre caserones |
-| 6 | C Concordancia | `docs/C_concordancia.md` | ⬜ |
-| 7 | Curvas PP y prescripción | (prompt en la hoja de ruta) | ⬜ |
-| 8 | Discriminador fractura/contacto | (prompt en la hoja de ruta) | ⬜ |
-| 9 | Modelo de bloques IDW | (prompt en la hoja de ruta) | ⬜ |
-| 10 | Kit del Capítulo 5 | (prompt en la hoja de ruta) | ⬜ |
+| 6 | C Concordancia | `docs/C_concordancia.md` | ✅ `b835888` |
+| 6b | Coherencia SE↔UCS (alcance redefinido) | — | ✅ `0c8a7b1` |
+| 7 | Curvas PP y prescripción | (prompt en la hoja de ruta) | ✅ `b6753c2` |
+| 8 | Discriminador fractura/contacto | (prompt en la hoja de ruta) | 🟡 `6664435` implementado; contra sondajes 104/217 = azar |
+| 9 | Modelo de bloques IDW | (prompt en la hoja de ruta) | ✅ `6664435` |
+| 10 | Kit del Capítulo 5 | (prompt en la hoja de ruta) | ✅ |
+
+Hallazgos que condicionan la interpretación, no defectos pendientes:
+
+- LOCO-CV R² < 0: el modelo no transfiere entre caserones. La ablación de
+  cota lo confirma (dentro +0,177 sin cota / +0,413 con cota; LOCO −2,117 /
+  −4,108): agregar cota duplica el R² dentro y duplica la caída fuera.
+- SE↔UCS: ρ(UCS, ROP) = +1,00 dentro de cada estrato de PP. El MWD tiene
+  señal física consistente; lo que no calza son las bandas de UCS asignadas.
+  Bht y Kpcli son indistinguibles en MWD pese a 62 MPa nominales de
+  diferencia.
+- Discriminador fractura/contacto: 47,9% de acierto contra etiquetas de
+  sondaje a 10 m, que es el azar entre dos clases. 57,6% de los picos quedan
+  indeterminados, con el motivo declarado uno por uno.
 
 Hoja de ruta, prompts por sesión y criterio de modelo: `docs/roadmap_ejecucion.md`.
 Documento maestro completo (respaldo): `docs/MWD_GeoMech_Documento_Maestro.md`.
