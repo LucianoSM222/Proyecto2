@@ -1444,6 +1444,14 @@ class MWDPoint:
     # Seteo real del equipo para el punto (T9): presión de percusión y avance
     # registrados en el CSV/Excel de seteo, si están disponibles.
     seteo_pp: Optional[float] = None; seteo_pa: Optional[float] = None
+    # (Paso 2) RQD del sondaje más cercano, PROPAGADO. Los tres campos viajan
+    # juntos a propósito: un RQD sin su sondaje de origen y sin la distancia a
+    # la que estaba es una etiqueta que se puede confundir con una medición
+    # hecha en este mismo punto, y no lo es. Sobre los datos reales la
+    # distancia mediana al intervalo de RQD más cercano son 26,1 m.
+    rqd_sondaje: Optional[float] = None
+    rqd_sondaje_origen: Optional[str] = None
+    rqd_sondaje_dist_m: Optional[float] = None
     # (P1-T1.4 / A.5) Resolución de traslape por rol. `atributos` es el mapa
     # {rol: atributo_id} resuelto para el punto — atributos CANÓNICOS, no
     # nombres de capa, para que el dominio no dependa de cómo vino empaquetada
@@ -1477,6 +1485,10 @@ class Well:
     # planes hermanos), cada uno con su error de coherencia de largo. Se usa
     # para poblar el dropdown de reasignación manual de pozos ambiguos.
     dq_candidates: List[Dict] = field(default_factory=list)
+    # (Paso 1) Perfiles de DI calculados con VARIANTES de configuración.
+    # Viven acá, en el pozo, y no en p.di: el DI de la convención es uno solo
+    # y ninguna variante lo pisa.
+    di_variantes: Dict[str, np.ndarray] = field(default_factory=dict)
     # Caserón al que pertenece el pozo. Es la agrupación correcta para
     # LOCO-CV: una litología cruza varios caserones, un pozo no. Si queda
     # None, caseron_de_pozo() lo deriva del prefijo del plan_id.
@@ -3389,6 +3401,164 @@ def di_profile(points, window, params=None, weights=None):
         total += norm_w[k] * z**2
     return np.sqrt(total)
 
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  PASO 1 — VARIANTES DEL DI, SIN TOCAR LA CONVENCIÓN                     ║
+# ║                                                                          ║
+# ║  CLAUDE.md fija el DI de Fernández et al. 2023 como convención           ║
+# ║  inmutable: ventana 14, pesos PP 0,35 · DP 0,25 · FP 0,20 · RP 0,20,     ║
+# ║  umbral 1,5. Calibrar esos pesos contra el RQD de los sondajes es lo     ║
+# ║  que hace falta, y sobrescribirlos sería violar la convención.           ║
+# ║                                                                          ║
+# ║  La salida: el DI de la convención queda INTOCADO y se registran         ║
+# ║  VARIANTES con nombre propio, cada una con sus pesos, su ventana y su    ║
+# ║  umbral. Conviven y se comparan. La de convención no se puede editar ni  ║
+# ║  borrar, y `p.di` sigue siendo siempre la suya: las variantes viven en   ║
+# ║  el pozo, en `well.di_variantes`.                                        ║
+# ║                                                                          ║
+# ║  Esto es además lo que vuelve la plataforma transferible: otra faena     ║
+# ║  calibra su propia variante sin tocar la referencia publicada.           ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+DI_VARIANTE_CONVENCION = "convencion_Fernandez_2023"
+di_variantes: Dict[str, Dict] = {}
+
+
+class DIVarianteProtegida(Exception):
+    """Se intentó editar o borrar la variante de convención. Es un error."""
+
+
+def seed_di_variants(force: bool = False):
+    """Siembra la variante de convención. Idempotente salvo `force`."""
+    if di_variantes and not force:
+        return
+    di_variantes.clear()
+    di_variantes[DI_VARIANTE_CONVENCION] = {
+        "nombre": DI_VARIANTE_CONVENCION,
+        "window": DI_DEFAULTS["window"],
+        "params": list(di_config["params"]),
+        "weights": dict(DI_DEFAULTS["weights"]),
+        "threshold": DI_DEFAULTS["threshold"],
+        "fuente": ("Fernández et al. 2023, doi:10.1016/j.ijmst.2023.02.004. "
+                   "Convención del proyecto: el autor del artículo es el "
+                   "profesor guía de la memoria."),
+        "notas": ("Referencia intocable. Cualquier calibración vive en una "
+                  "variante aparte para que la comparación siga siendo posible."),
+        "solo_lectura": True,
+    }
+
+
+def di_variant(nombre: str) -> Optional[Dict]:
+    return di_variantes.get(nombre)
+
+
+def _normalizar_pesos(weights: Dict[str, float]) -> Tuple[Dict[str, float], List[str]]:
+    """Pesos a suma 1. Los parámetros son las claves con peso > 0."""
+    limpios = {k: float(v) for k, v in (weights or {}).items() if float(v) > 0}
+    total = sum(limpios.values())
+    if not limpios or total <= 0:
+        raise ValueError("Los pesos del DI tienen que sumar más que cero: "
+                         f"se recibió {weights!r}.")
+    return {k: v / total for k, v in limpios.items()}, sorted(limpios)
+
+
+def create_di_variant(nombre: str, weights: Dict[str, float],
+                      window: int = None, threshold: float = None,
+                      fuente: str = "", notas: str = "") -> Dict:
+    """
+    Registra una variante del DI. Valida ANTES de tocar el registro: una
+    variante a medias produce perfiles que nadie puede reproducir.
+    """
+    if not nombre or not str(nombre).strip():
+        raise ValueError("La variante necesita un nombre.")
+    nombre = str(nombre).strip()
+    if nombre in di_variantes:
+        raise ValueError(f'Ya existe una variante de DI llamada "{nombre}".')
+    w, params = _normalizar_pesos(weights)
+    win = int(window if window is not None else DI_DEFAULTS["window"])
+    if win < 3:
+        raise ValueError(f"La ventana del DI tiene que ser 3 o más; se recibió {win}.")
+    thr = float(threshold if threshold is not None else DI_DEFAULTS["threshold"])
+    if thr <= 0:
+        raise ValueError(f"El umbral del DI tiene que ser positivo; se recibió {thr}.")
+    di_variantes[nombre] = {"nombre": nombre, "window": win, "params": params,
+                            "weights": w, "threshold": thr, "fuente": fuente,
+                            "notas": notas, "solo_lectura": False}
+    return di_variantes[nombre]
+
+
+def _variante_editable(nombre: str) -> Dict:
+    v = di_variantes.get(nombre)
+    if v is None:
+        raise KeyError(f'No existe una variante de DI llamada "{nombre}".')
+    if v.get("solo_lectura"):
+        raise DIVarianteProtegida(
+            f'"{nombre}" es la variante de CONVENCIÓN y no se puede modificar ni '
+            "borrar. Crear una variante nueva es la forma de calibrar sin perder "
+            "la referencia con la que se comparan todos los resultados.")
+    return v
+
+
+def update_di_variant(nombre: str, **campos) -> Dict:
+    v = _variante_editable(nombre)
+    if "weights" in campos:
+        v["weights"], v["params"] = _normalizar_pesos(campos.pop("weights"))
+    if "window" in campos:
+        win = int(campos.pop("window"))
+        if win < 3:
+            raise ValueError(f"La ventana del DI tiene que ser 3 o más; se recibió {win}.")
+        v["window"] = win
+    if "threshold" in campos:
+        thr = float(campos.pop("threshold"))
+        if thr <= 0:
+            raise ValueError(f"El umbral del DI tiene que ser positivo; se recibió {thr}.")
+        v["threshold"] = thr
+    for k in ("fuente", "notas"):
+        if k in campos:
+            v[k] = campos.pop(k)
+    if campos:
+        raise ValueError(f"Campos desconocidos para una variante de DI: {sorted(campos)}")
+    # El perfil guardado ya no corresponde a estos parámetros: se invalida en
+    # vez de quedar como un valor viejo que nadie sabe de dónde salió.
+    for w in wells.values():
+        w.di_variantes.pop(nombre, None)
+    return v
+
+
+def delete_di_variant(nombre: str) -> None:
+    _variante_editable(nombre)
+    di_variantes.pop(nombre, None)
+    for w in wells.values():
+        w.di_variantes.pop(nombre, None)
+
+
+def compute_di_variant(nombre: str) -> Dict:
+    """
+    Calcula el perfil de la variante en todos los pozos y lo guarda en
+    `well.di_variantes[nombre]`. NO toca `p.di`.
+    """
+    v = di_variantes.get(nombre)
+    if v is None:
+        raise KeyError(f'No existe una variante de DI llamada "{nombre}".')
+    n_ok, cortos = 0, []
+    for wn, well in wells.items():
+        if len(well.points) < v["window"]:
+            cortos.append(wn); continue
+        perfil = di_profile(well.points, v["window"], v["params"], v["weights"])
+        if perfil is None:
+            cortos.append(wn); continue
+        well.di_variantes[nombre] = perfil
+        n_ok += 1
+    return {"variante": nombre, "n_pozos": n_ok, "pozos_cortos": cortos,
+            "config": {k: v[k] for k in ("window", "params", "weights", "threshold")}}
+
+
+def di_variant_values(well, nombre: str) -> Optional[np.ndarray]:
+    """Perfil de la variante en un pozo, o None si no se calculó para ese pozo."""
+    if nombre not in di_variantes:
+        raise KeyError(f'No existe una variante de DI llamada "{nombre}".')
+    return well.di_variantes.get(nombre)
+
+
 def compute_di():
     cfg = di_config
     for wn, well in wells.items():
@@ -3533,18 +3703,37 @@ def well_mesh_crossings(well, layer):
             crossings.append((float(lc), cc))
     return crossings
 
-def di_peaks(well, min_gap_m=0.5):
+def di_peaks(well, min_gap_m=0.5, variante: Optional[str] = None):
     """
-    (T4b) Profundidades de picos con DI > di_threshold. Picos separados menos
-    de min_gap_m se fusionan en un solo evento (se toma el largo del máximo DI
+    (T4b) Profundidades de picos con DI > umbral. Picos separados menos de
+    min_gap_m se fusionan en un solo evento (se toma el largo del máximo DI
     del grupo). Se ignoran los puntos con entrenable=False (excluye el
     emboquillado con el corte ya existente). Devuelve
     [(largo_pico, coord_utm(3,), di_max), ...].
+
+    (Paso 1) `variante` pide los picos de una VARIANTE del DI en vez de los de
+    la convención. Si la variante existe pero no se calculó en este pozo, la
+    respuesta es vacía —no se cae a la convención en silencio, que sería
+    devolver los picos de otra configuración sin decirlo—.
     """
-    cand = [(p.largo, np.array([p.este, p.norte, p.cota], dtype=np.float64), p.di)
-            for p in well.points
-            if p.entrenable and p.di is not None and np.isfinite(p.di)
-            and p.di > di_threshold]
+    if variante is not None:
+        v = di_variantes.get(variante)
+        if v is None:
+            raise KeyError(f'No existe una variante de DI llamada "{variante}".')
+        perfil = well.di_variantes.get(variante)
+        if perfil is None:
+            return []
+        umbral = v["threshold"]
+        cand = [(p.largo, np.array([p.este, p.norte, p.cota], dtype=np.float64),
+                 float(perfil[i]))
+                for i, p in enumerate(well.points)
+                if p.entrenable and i < len(perfil) and np.isfinite(perfil[i])
+                and perfil[i] > umbral]
+    else:
+        cand = [(p.largo, np.array([p.este, p.norte, p.cota], dtype=np.float64), p.di)
+                for p in well.points
+                if p.entrenable and p.di is not None and np.isfinite(p.di)
+                and p.di > di_threshold]
     if not cand: return []
     cand.sort(key=lambda c: c[0])
     grupos, grupo = [], [cand[0]]
@@ -5713,6 +5902,243 @@ def rqd_mwd_report() -> Dict:
             "uso": ("Indicador AGREGADO por pozo y por caserón, orientado a "
                     "tronadura. No reemplaza al DI, que sigue siendo la variable "
                     "de trabajo punto a punto en el resto del pipeline.")}
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  PASO 2 — RQD DE SONDAJE PROPAGADO AL MWD, CON SU PROCEDENCIA           ║
+# ║                                                                          ║
+# ║  La idea es decirle a cada tramo de MWD "tu RQD es este, porque lo dice  ║
+# ║  el sondaje que tienes al lado". El problema medido es que el "al lado"  ║
+# ║  casi no existe: sobre los tres caserones cargados, la distancia MEDIANA ║
+# ║  de un punto MWD al intervalo de RQD más cercano son 26,1 m. Dentro de   ║
+# ║  2 m hay 0,4% de los puntos; dentro de 5 m, 4,1%; dentro de 10 m, 14,5%. ║
+# ║                                                                          ║
+# ║  Por eso los tres campos viajan SIEMPRE juntos: valor, sondaje de origen ║
+# ║  y distancia. Una etiqueta traída de 26 m no puede circular como si      ║
+# ║  fuera una medición hecha en este mismo punto.                           ║
+# ║                                                                          ║
+# ║  El RQD propagado NO es predictor del modelo, igual que el RMR. Es la    ║
+# ║  vara contra la cual se calibra el DI, y nada más.                       ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+RQD_RADIO_MAX_M = 10.0
+# Mínimo de puntos MWD que un intervalo de sondaje necesita cerca para que su
+# RQD_MWD sea algo más que ruido de dos registros sueltos.
+RQD_MIN_PUNTOS_INTERVALO = 30
+
+
+def _intervalos_rqd_sondaje() -> List[Dict]:
+    """Tramos de la tabla geomec con RQD, llevados a UTM por el desurvey."""
+    out = []
+    for hid, dh in drillholes.items():
+        if not dh.trace:
+            continue
+        for r in dh.geomec:
+            if r.get("rqd") is None or r.get("from") is None or r.get("to") is None:
+                continue
+            a = trace_interp(dh.trace, float(r["from"]))
+            b = trace_interp(dh.trace, float(r["to"]))
+            if not np.isfinite(a[0]) or not np.isfinite(b[0]):
+                continue
+            c = ((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0, (a[2] + b[2]) / 2.0)
+            out.append({"sondaje": hid, "desde": float(r["from"]),
+                        "hasta": float(r["to"]), "rqd": float(r["rqd"]),
+                        "largo_m": float(r["to"] - r["from"]),
+                        "centro": np.array(c, dtype=np.float64)})
+    return out
+
+
+def propagate_drillhole_rqd(radio_m: float = RQD_RADIO_MAX_M) -> Dict:
+    """
+    (2.1) Asigna a cada punto MWD el RQD del intervalo de sondaje más cercano
+    dentro de `radio_m`, junto con el sondaje de origen y la distancia.
+
+    Fuera del radio NO se etiqueta: el punto queda con los tres campos en None
+    y se cuenta entre los sin etiqueta. Rellenarlo con el intervalo más
+    cercano a cualquier distancia sería exactamente el default silencioso que
+    el proyecto prohíbe.
+    """
+    for w in wells.values():
+        for p in w.points:
+            p.rqd_sondaje = None
+            p.rqd_sondaje_origen = None
+            p.rqd_sondaje_dist_m = None
+    intervalos = _intervalos_rqd_sondaje()
+    if not intervalos:
+        return {"status": "sin_datos",
+                "motivo": ("Ningún sondaje cargado tiene RQD en su tabla geomec: "
+                           "sin esa columna no hay nada que propagar."),
+                "n_etiquetados": 0, "n_sin_etiqueta": 0,
+                "n_intervalos": 0, "radio_m": radio_m}
+    P = np.array([iv["centro"] for iv in intervalos])
+    n_etq, n_sin, dists = 0, 0, []
+    por_caseron: Dict[str, Dict] = {}
+    for wn, w in wells.items():
+        cas = getattr(w, "caseron", None) or "—"
+        d_cas = por_caseron.setdefault(cas, {"etiquetados": 0, "sin_etiqueta": 0})
+        if not w.points:
+            continue
+        Q = np.array([[p.este, p.norte, p.cota] for p in w.points])
+        # (n_puntos, n_intervalos): con centenares de intervalos y miles de
+        # puntos por pozo la matriz cabe holgada, y evita un árbol por pozo.
+        D = np.linalg.norm(Q[:, None, :] - P[None, :, :], axis=2)
+        idx = np.argmin(D, axis=1)
+        dmin = D[np.arange(len(Q)), idx]
+        for i, p in enumerate(w.points):
+            if dmin[i] > radio_m:
+                n_sin += 1; d_cas["sin_etiqueta"] += 1; continue
+            iv = intervalos[int(idx[i])]
+            p.rqd_sondaje = iv["rqd"]
+            p.rqd_sondaje_origen = iv["sondaje"]
+            p.rqd_sondaje_dist_m = round(float(dmin[i]), 3)
+            n_etq += 1; d_cas["etiquetados"] += 1
+            dists.append(float(dmin[i]))
+    d_arr = np.array(dists) if dists else np.array([])
+    return {
+        "status": "ok", "n_etiquetados": n_etq, "n_sin_etiqueta": n_sin,
+        "n_intervalos": len(intervalos),
+        "n_sondajes": len({iv["sondaje"] for iv in intervalos}),
+        "radio_m": radio_m,
+        "por_caseron": por_caseron,
+        "distancia_m": ({"mediana": round(float(np.median(d_arr)), 2),
+                         "p90": round(float(np.percentile(d_arr, 90)), 2),
+                         "max": round(float(d_arr.max()), 2)} if d_arr.size else None),
+        "advertencia": (
+            f"El RQD viaja con su sondaje de origen y su distancia. De los "
+            f"{n_etq + n_sin} punto(s) MWD, {n_sin} quedaron SIN etiqueta por estar "
+            f"a más de {radio_m:g} m de todo intervalo con RQD. Los etiquetados "
+            + (f"están a {np.median(d_arr):.1f} m de mediana: "
+               if d_arr.size else "")
+            + "la etiqueta describe la roca del sondaje, no necesariamente la que "
+              "perforó el tiro. Usarla como si fuera una medición en el mismo "
+              "punto es el error que la distancia existe para impedir."),
+        "no_es_predictor": ("El RQD propagado NO entra al modelo de "
+                            "caracterización, igual que el RMR. Es la vara "
+                            "contra la que se calibra el DI."),
+    }
+
+
+def rqd_calibration_pairs(radio_m: float = RQD_RADIO_MAX_M,
+                          variante: Optional[str] = None,
+                          umbral: Optional[float] = None,
+                          min_puntos: int = RQD_MIN_PUNTOS_INTERVALO) -> Dict:
+    """
+    (2.2) Pares de calibración: por cada intervalo de sondaje con RQD, el
+    RQD_MWD calculado por la regla de Deere sobre los puntos MWD cercanos.
+
+    Un número contra un número, sobre el MISMO SOPORTE. Comparar el DI
+    puntual —un valor cada 2 cm— contra el RQD de un intervalo de 1 a 3 m es
+    comparar cosas distintas y hunde cualquier correlación por construcción.
+
+    Los puntos vecinos se agrupan POR POZO antes de aplicar Deere: la regla
+    cuenta tramos continuos a lo largo de UNA perforación, no sobre una nube.
+
+    `variante` elige con qué configuración de DI se calcula el RQD_MWD; por
+    defecto, la de convención. El RQD del sondaje no depende de eso.
+    """
+    nombre_var = variante or DI_VARIANTE_CONVENCION
+    v = di_variantes.get(nombre_var)
+    if v is None:
+        raise KeyError(f'No existe una variante de DI llamada "{nombre_var}".')
+    thr = float(umbral if umbral is not None else v["threshold"])
+
+    intervalos = _intervalos_rqd_sondaje()
+    if not intervalos:
+        return {"status": "sin_datos", "pares": [],
+                "motivo": ("Ningún sondaje cargado tiene RQD en su tabla geomec."),
+                "variante": nombre_var}
+
+    # Puntos MWD con su valor de DI según la variante pedida.
+    pts, meta = [], []
+    for wn, w in wells.items():
+        perfil = w.di_variantes.get(nombre_var) if variante is not None else None
+        for i, p in enumerate(w.points):
+            if not p.entrenable:
+                continue
+            if variante is not None:
+                if perfil is None or i >= len(perfil) or not np.isfinite(perfil[i]):
+                    continue
+                di_val = float(perfil[i])
+            else:
+                if p.di is None or not np.isfinite(p.di):
+                    continue
+                di_val = float(p.di)
+            pts.append((p.este, p.norte, p.cota))
+            meta.append((wn, p.largo, di_val))
+    if not pts:
+        return {"status": "sin_datos", "pares": [],
+                "motivo": (f'Ningún punto MWD tiene DI calculado para la variante '
+                           f'"{nombre_var}".'),
+                "variante": nombre_var}
+    P = np.array(pts)
+    pares, sin_soporte = [], 0
+    for iv in intervalos:
+        d = np.linalg.norm(P - iv["centro"], axis=1)
+        cerca = np.where(d <= radio_m)[0]
+        if len(cerca) < min_puntos:
+            sin_soporte += 1; continue
+        por_pozo: Dict[str, list] = {}
+        for i in cerca:
+            wn, largo, di_val = meta[i]
+            por_pozo.setdefault(wn, []).append((largo, di_val))
+        valores = []
+        for wn, lista in por_pozo.items():
+            lista.sort()
+            v_rqd = _rqd_deere(lista, thr)
+            if v_rqd is not None:
+                valores.append(v_rqd)
+        if not valores:
+            sin_soporte += 1; continue
+        pares.append({"sondaje": iv["sondaje"], "desde": iv["desde"],
+                      "hasta": iv["hasta"],
+                      "rqd_sondaje": iv["rqd"],
+                      "rqd_mwd": round(float(np.mean(valores)), 2),
+                      "n_puntos_mwd": int(len(cerca)), "n_pozos": len(por_pozo)})
+    if not pares:
+        return {"status": "sin_soporte", "pares": [], "variante": nombre_var,
+                "motivo": (f"Ningún intervalo de sondaje reúne {min_puntos} punto(s) "
+                           f"MWD a menos de {radio_m:g} m. Sin soporte no hay par "
+                           "que comparar."),
+                "n_intervalos": len(intervalos),
+                "intervalos_sin_soporte": sin_soporte}
+    return {"status": "ok", "pares": pares, "variante": nombre_var,
+            "umbral": thr, "radio_m": radio_m, "min_puntos": min_puntos,
+            "n_intervalos": len(intervalos), "intervalos_sin_soporte": sin_soporte,
+            "agrupado_por": "sondaje",
+            "n_sondajes": len({p["sondaje"] for p in pares}),
+            "nota_soporte": ("Un número por intervalo, sobre el mismo soporte que "
+                             "el RQD del sondaje. Los puntos vecinos se agrupan por "
+                             "POZO antes de aplicar Deere, porque la regla cuenta "
+                             "tramos continuos a lo largo de una perforación."),
+            "validacion": ("La unidad de validación es el SONDAJE: dejar-uno-fuera "
+                           "por sondaje, no por intervalo. Dos intervalos del mismo "
+                           "sondaje no son observaciones independientes.")}
+
+
+def _rqd_deere(pares_largo_di: List[Tuple[float, float]], umbral: float) -> Optional[float]:
+    """
+    Regla de Deere sobre una lista [(largo, di), ...] ORDENADA de un solo
+    pozo: porcentaje del metraje en tramos continuos de RQD_TRAMO_MIN_M o más
+    sin discontinuidad, con la discontinuidad definida por DI > umbral.
+    """
+    if len(pares_largo_di) < 2:
+        return None
+    total = pares_largo_di[-1][0] - pares_largo_di[0][0]
+    if total <= 0:
+        return None
+    tramos, ini, fin = [], None, None
+    for largo, di_val in pares_largo_di:
+        if di_val > umbral:
+            if ini is not None:
+                tramos.append(fin - ini); ini = fin = None
+        else:
+            if ini is None:
+                ini = largo
+            fin = largo
+    if ini is not None:
+        tramos.append(fin - ini)
+    buenos = [t for t in tramos if t >= RQD_TRAMO_MIN_M]
+    return 100.0 * sum(buenos) / total
 
 
 def export_rqd_mwd_csv(rep: Optional[Dict] = None) -> str:
@@ -8355,6 +8781,7 @@ def export_kit_index_md(rep: Dict) -> str:
 # (P1) Sembrar el registro de vocabulario ANTES de construir el layout: el
 # contador de pendientes y el panel de vocabulario lo leen al renderizar.
 seed_attribute_registry()
+seed_di_variants()
 for _e in validate_attribute_tree():
     log_warn(f"Registro de vocabulario: {_e}")
 
