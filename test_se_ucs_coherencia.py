@@ -167,6 +167,54 @@ def controla_el_confundimiento_de_pp():
           rep.get("advertencia_pp"))
 
 
+def aparta_dominios_de_estructura():
+    section("SE↔UCS — un dominio de FALLA no es roca intacta: queda fuera")
+    _escenario_coherente()
+    # Dominio compuesto donde predomina una estructura (A.5). Hereda el
+    # ucs_lab de la litología, pero por definición NO es roca intacta: es
+    # justo lo contrario, y mezclarlo destruye el análisis.
+    gw.domains["Bht::CAS:FM1"] = {"ucs_lab": 128.1, "atributo_id": "Bht",
+                                  "estructura_id": "FM1", "nombre": "Bht::CAS:FM1"}
+    _mk_pozo("W4", "Bht::CAS:FM1", se_medio=600.0, seed=9)   # SE disparatado
+    rep = gw.se_ucs_coherence_report()
+    doms = [d["dominio"] for d in rep["dominios"]]
+    check("Bht::CAS:FM1" not in doms,
+          "el dominio con estructura NO entra al análisis de roca intacta", doms)
+    check("n_dominios_estructura_apartados" in rep,
+          "y el reporte declara cuántos apartó", list(rep))
+    check(rep["n_dominios_estructura_apartados"] >= 1,
+          "contándolos, no descartándolos en silencio",
+          rep.get("n_dominios_estructura_apartados"))
+    check(rep["rho_spearman"] > 0.9,
+          "apartándolos, la coherencia real vuelve a verse", rep.get("rho_spearman"))
+
+
+def excluye_rop_no_fisica():
+    section("SE↔UCS — ROP tendiendo a 0 hace explotar SE: se excluye por límite físico")
+    _escenario_coherente()
+    # Un puñado de puntos con la broca detenida: ROP ~0 y SE astronómico.
+    w = gw.wells["W2"]
+    for i in range(5):
+        p = gw.MWDPoint(largo=99 + i * 0.02, vel=1e-9, pp=150.0, pa=50.0, pd=40.0,
+                        pr=30.0, pf=8.0, se=(150.0 + 30.0 + 50.0) / (1e-9 + 1e-9), t=0.0)
+        p.dominio = "Bht"; p.lito = "Bht"; p.entrenable = True; p.di = 0.4
+        w.points.append(p)
+
+    rep = gw.se_ucs_coherence_report()
+    check("n_puntos_rop_no_fisica" in rep,
+          "el reporte declara cuántos puntos excluyó por ROP no física", list(rep))
+    check(rep["n_puntos_rop_no_fisica"] >= 5,
+          "y los cuenta, no los descarta en silencio", rep.get("n_puntos_rop_no_fisica"))
+    bht = next(d for d in rep["dominios"] if d["dominio"] == "Bht")
+    check(bht["se_mediana"] < 1e4,
+          "la SE del dominio no queda contaminada por la broca detenida",
+          bht["se_mediana"])
+    check(rep["rho_spearman"] > 0.9, "y la coherencia real se sigue viendo",
+          rep.get("rho_spearman"))
+    # El límite es FÍSICO y trazable, no un percentil (prohibido en el proyecto).
+    check(hasattr(gw, "ROP_MIN_FISICA"), "el umbral vive en una constante declarada")
+
+
 def sin_datos_lo_declara():
     section("SE↔UCS — sin datos suficientes lo declara, no inventa")
     reset()
@@ -191,6 +239,8 @@ ALL_TESTS = [
     coherencia_detecta_la_incoherencia,
     apartar_discontinuidades_mejora,
     controla_el_confundimiento_de_pp,
+    aparta_dominios_de_estructura,
+    excluye_rop_no_fisica,
     sin_datos_lo_declara,
 ]
 

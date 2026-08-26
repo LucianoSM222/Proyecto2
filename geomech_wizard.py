@@ -4479,26 +4479,56 @@ def _spearman(x, y) -> Optional[float]:
     return float(np.corrcoef(rx, ry)[0, 1])
 
 
-def _se_por_dominio(solo_roca_intacta: bool = True) -> Dict[str, Dict]:
+# Velocidad de penetración mínima FÍSICA. Por debajo, la broca no está
+# rompiendo roca: es cambio de barra, atasco o registro con el avance
+# detenido, y SE = (PP+RP+AP)/ROP se dispara a valores sin significado
+# (se observaron medianas de 2·10¹¹ en tramos con ROP→0). Es un límite
+# físico y trazable, NO un percentil: el proyecto prohíbe filtrar por
+# percentiles justamente para no recortar datos válidos sin criterio.
+ROP_MIN_FISICA = 0.05          # m/min
+
+
+def _se_por_dominio(solo_roca_intacta: bool = True) -> Tuple[Dict[str, Dict], Dict]:
     """
-    SE, ROP y PP agregados por dominio con UCS de laboratorio conocido.
-    `solo_roca_intacta` aparta los puntos con DI sobre el umbral, que es
-    justamente lo que el DI existe para permitir.
+    SE, ROP y PP agregados por LITOLOGÍA con UCS de laboratorio conocido.
+
+    Dos exclusiones, ambas declaradas en el reporte:
+
+    · Dominios donde predomina una ESTRUCTURA (A.5) — "Bht::PCS_1043:FM1" y
+      similares. Heredan el ucs_lab de su litología, pero un dominio de falla
+      es por definición lo contrario de roca intacta, y mezclarlo destruye el
+      análisis: con los datos reales inflaba tres litologías a diecinueve
+      dominios, todos repitiendo el mismo UCS con SE dispares, lo que anula
+      la correlación de rangos.
+    · Puntos con ROP por debajo de ROP_MIN_FISICA, donde SE no tiene
+      significado físico.
+
+    `solo_roca_intacta` aparta además los puntos con DI sobre el umbral, que
+    es justamente lo que el DI existe para permitir.
     """
     acc: Dict[str, Dict[str, list]] = {}
+    apartados_estructura, rop_no_fisica = set(), 0
     for w in wells.values():
         for p in w.points:
             if not p.entrenable or not p.dominio: continue
             if getattr(p, "ambiguo", False): continue
             dom = domains.get(p.dominio)
             if not dom or dom.get("ucs_lab") is None: continue
+            # Dominio con estructura predominante: no es roca intacta.
+            if dom.get("estructura_id") or "::" in p.dominio:
+                apartados_estructura.add(p.dominio); continue
             if solo_roca_intacta and p.di is not None and p.di > di_threshold:
                 continue
+            if p.vel is None or not np.isfinite(p.vel) or p.vel < ROP_MIN_FISICA:
+                rop_no_fisica += 1; continue
             if p.se is None or not np.isfinite(p.se): continue
-            d = acc.setdefault(p.dominio, {"se": [], "rop": [], "pp": [],
-                                           "ucs_lab": dom["ucs_lab"]})
+            # La litología, no el dominio compuesto: Bht~Fk y Bht comparten
+            # matriz y banda de UCS, y separarlos fragmentaría la muestra.
+            lito = p.lito or p.dominio
+            d = acc.setdefault(lito, {"se": [], "rop": [], "pp": [],
+                                      "ucs_lab": dom["ucs_lab"]})
             d["se"].append(float(p.se))
-            if p.vel is not None and np.isfinite(p.vel): d["rop"].append(float(p.vel))
+            d["rop"].append(float(p.vel))
             if p.pp is not None and np.isfinite(p.pp): d["pp"].append(float(p.pp))
     out = {}
     for k, v in acc.items():
@@ -4510,7 +4540,7 @@ def _se_por_dominio(solo_roca_intacta: bool = True) -> Dict[str, Dict]:
                   "se_cv": round(float(se.std() / abs(se.mean())), 4) if se.mean() else None,
                   "rop_mediana": round(float(np.median(v["rop"])), 4) if v["rop"] else None,
                   "pp_mediana": round(float(np.median(v["pp"])), 2) if v["pp"] else None}
-    return out
+    return out, {"estructura": sorted(apartados_estructura), "rop": rop_no_fisica}
 
 
 def _coherencia_desde(porcion: Dict[str, Dict]) -> Dict:
@@ -4548,7 +4578,7 @@ def se_ucs_coherence_report() -> Dict:
       · la relación estratificada por PP, y la de ROP sola, para separar la
         señal de la roca de la respuesta del operador.
     """
-    intacta = _se_por_dominio(solo_roca_intacta=True)
+    intacta, excl = _se_por_dominio(solo_roca_intacta=True)
     if len(intacta) < 2:
         return {"status": "sin_datos",
                 "motivo": (f"Solo {len(intacta)} dominio(s) con UCS de laboratorio y "
@@ -4557,7 +4587,7 @@ def se_ucs_coherence_report() -> Dict:
                            f"que ordenar."),
                 "terminologia": TERMINOLOGIA_C}
     base = _coherencia_desde(intacta)
-    todo = _se_por_dominio(solo_roca_intacta=False)
+    todo, _ = _se_por_dominio(solo_roca_intacta=False)
     comp = _coherencia_desde(todo) if len(todo) >= 2 else {}
 
     # ¿Apartar las discontinuidades mejoró la coherencia? Dos señales: la
@@ -4582,8 +4612,10 @@ def se_ucs_coherence_report() -> Dict:
                 if p.pp is None or not (lo <= p.pp < hi): continue
                 dom = domains.get(p.dominio)
                 if not dom or dom.get("ucs_lab") is None: continue
+                if dom.get("estructura_id") or "::" in p.dominio: continue
+                if p.vel is None or not np.isfinite(p.vel) or p.vel < ROP_MIN_FISICA: continue
                 if p.se is None or not np.isfinite(p.se): continue
-                d = acc.setdefault(p.dominio, {"se": [], "ucs_lab": dom["ucs_lab"]})
+                d = acc.setdefault(p.lito or p.dominio, {"se": [], "ucs_lab": dom["ucs_lab"]})
                 d["se"].append(float(p.se))
         doms = [{"dominio": k, "ucs_lab": v["ucs_lab"],
                  "se_mediana": round(float(np.median(v["se"])), 2), "n": len(v["se"])}
@@ -4624,6 +4656,10 @@ def se_ucs_coherence_report() -> Dict:
     return {
         "status": "ok",
         "dominios": base["dominios"],
+        "n_dominios_estructura_apartados": len(excl["estructura"]),
+        "dominios_estructura_apartados": excl["estructura"][:20],
+        "n_puntos_rop_no_fisica": excl["rop"],
+        "rop_min_fisica": ROP_MIN_FISICA,
         "rho_spearman": rho,
         "monotona": base["monotona"],
         "cv_medio_intra_dominio": base["cv_medio_intra_dominio"],
