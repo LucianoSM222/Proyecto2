@@ -6,4 +6,9 @@ test_data/reales/
 
 # Kit del Capítulo 5: salida regenerable con `python3 run_sesion10.py`.
 # La vista 3D en HTML pesa decenas de MB porque embebe la geometría de las mallas.
-resultados/kit_capitulo5/
+# Se ignora el CONTENIDO, no el directorio: una exclusión de directorio no
+# admite reincorporar archivos de adentro.
+resultados/kit_capitulo5/*
+# ...salvo el índice, que es lo que mapea cada archivo a su sección.
+!resultados/kit_capitulo5/INDICE_capitulo5.csv
+!resultados/kit_capitulo5/INDICE_capitulo5.md

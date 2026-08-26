@@ -7993,9 +7993,15 @@ def build_chapter5_kit(outdir: str, fmt_figura: str = "auto") -> Dict:
             # Una figura de decenas de MB no se puede mandar por correo ni
             # pegar en un documento. Se genera igual, pero se avisa.
             if mb > KIT_AVISO_MB:
-                aviso = (f"{mb:.0f} MB: pesado para adjuntar. Un HTML interactivo "
-                         "embebe toda la geometría de las mallas. Instalar kaleido "
-                         "produce el PNG, mucho más liviano, sin cambiar la figura.")
+                if it["tipo"] == "figura":
+                    aviso = (f"{mb:.0f} MB: pesado para adjuntar. Un HTML interactivo "
+                             "embebe toda la geometría de las mallas. Instalar "
+                             "kaleido produce el PNG, mucho más liviano, sin "
+                             "cambiar la figura.")
+                else:
+                    aviso = (f"{mb:.0f} MB: pesado para adjuntar. Es la tabla "
+                             "completa, un registro por punto MWD; para el texto "
+                             "de la memoria van los resúmenes, no esta.")
                 registro["nota"] = (registro["nota"] + " " + aviso
                                     if registro["nota"] else aviso)
         items.append(registro)

@@ -756,3 +756,73 @@
      match: {'matched': 127, 'fallback': 13, 'ambiguous': 0, 'no_dq': 0}
      (0.1s mallas + 3.7s XML)
 ⚠  Sondaje "DDH20-ZC-07": una sola estación de desviación (en 0.0 m). Se asume trazado recto con azimut 62.83° / inclinación -89.06° hasta la profundidad declarada (52.8 m).
+⚠  DI "PCS_1043_AUX1_H3": 13 pts, mín=14.
+⚠  DI "PCS_1043_AUX2_H4": 9 pts, mín=14.
+⚠  DI "PCS_1043_PR01_TH_P01_H14": 3 pts, mín=14.
+pozos=619  mallas=23  sondajes=11  R²CV=0.189  (162.2s)
+
+========================================================================
+  9 — MODELO DE BLOQUES POR CASERÓN
+========================================================================
+  status: ok
+  bloque 2.5 m · anisotropía [1.0, 1.0, 3.0] · radio 7.5/2.5 m
+    caserón       bloques    vacíos  cobertura   muestras  encajonado (E×N×Z m)
+    PCC_0042        6.765 2.322.247       0.3%    451.468  [556.9. 930.3. 68.3]
+    PCC_1541        2.417     1.391      63.5%    164.524  [42.1. 38.9. 34.2]
+    PCS_1043        3.656    18.268      16.7%    161.134  [68.2. 70.1. 66.8]
+
+    banda ISRM          bloques          m³  UCS med   DI med  conf med
+    R5_muy_alta          12.838     200.594    141.9    0.691     0.257
+
+========================================================================
+  10 — KIT DEL CAPÍTULO 5
+========================================================================
+  destino: /home/user/Proyecto2/resultados/kit_capitulo5
+  generados: 19 · no generados: 3 de 22  (1858.7s)
+
+  5.1 Vocabulario y bandas de UCS
+    ✓ T5.1   Registro de vocabulario y bandas de UCS        T5_1_registro_de_vocabulario_y_bandas_de_ucs.csv
+    ✓ T5.2   Matriz de traslape de bandas de UCS (ambos cri T5_2_matriz_de_traslape_de_bandas_de_ucs_ambos_criterios.csv
+
+  5.2 Datos y escala
+    ✓ T5.3   Composición del conjunto de entrenamiento      T5_3_composicion_del_conjunto_de_entrenamiento.csv
+    ✓ F5.1   Vista 3D de pozos y mallas                     F5_1_vista_3d_de_pozos_y_mallas.html
+      nota: PNG no disponible (ValueError); se exportó HTML interactivo. Instalar kaleido para obtener PNG. 73 MB: pesado para adjuntar. Un HTML interactivo embebe toda la geometría de las mallas. Instalar kaleido produce el PNG, mucho más liviano, sin cambiar la figura.
+
+  5.3 Índice de discontinuidad
+    ✓ F5.2   Perfil de DI de un pozo representativo         F5_2_perfil_de_di_de_un_pozo_representativo.html
+      nota: PNG no disponible (ValueError); se exportó HTML interactivo. Instalar kaleido para obtener PNG.
+    ✓ F5.3   Sensibilidad de la ventana del DI              F5_3_sensibilidad_de_la_ventana_del_di.html
+      nota: PNG no disponible (ValueError); se exportó HTML interactivo. Instalar kaleido para obtener PNG.
+    ✗ T5.4   Validación independiente DI contra RQD de labo Ningún caserón reúne RQD de laboratorio del Excel geomecánico y puntos MWD suficientes: si
+    ✗ F5.4   DI medio contra RQD por caserón                Ningún caserón reúne RQD de laboratorio y puntos MWD suficientes para el contraste indepen
+
+  5.4 Modelo de caracterización
+    ✓ T5.5   Matriz de correlación entre variables MWD      T5_5_matriz_de_correlacion_entre_variables_mwd.csv
+    ✓ T5.6   Comparación de los cinco modelos               T5_6_comparacion_de_los_cinco_modelos.csv
+    ✓ T5.7   Reporte de justificación de variables          T5_7_reporte_de_justificacion_de_variables.csv
+    ✓ T5.8   Ablación de cota dentro y entre caserones      T5_8_ablacion_de_cota_dentro_y_entre_caserones.csv
+    ✗ T5.9   Validación por pozo (GroupKFold)               No se corrió la validación multipozo de posición de mallas: sin resultados no hay detalle 
+
+  5.5 Concordancia con el modelo geológico
+    ✓ T5.10  Diagnósticos de concordancia (C.3 a C.7)       T5_10_diagnosticos_de_concordancia_c3_a_c7.csv
+
+  5.6 Coherencia energía específica contra UCS
+    ✓ T5.11  Coherencia SE contra UCS por dominio           T5_11_coherencia_se_contra_ucs_por_dominio.csv
+
+  5.7 Respuesta a la presión de percusión
+    ✓ T5.12  Curvas de respuesta a PP por dominio           T5_12_curvas_de_respuesta_a_pp_por_dominio.csv
+
+  5.8 Discriminación de discontinuidades
+    ✓ T5.13  Discriminador fractura contra contacto         T5_13_discriminador_fractura_contra_contacto.csv
+    ✓ T5.14  RQD_MWD por pozo y por caserón                 T5_14_rqd_mwd_por_pozo_y_por_caseron.csv
+
+  5.9 Modelo de bloques
+    ✓ T5.15  Modelo de bloques: X, Y, Z, tamaño, UCS, DI, c T5_15_modelo_de_bloques_x_y_z_tamano_ucs_di_confianza.csv
+    ✓ T5.16  Resumen del modelo de bloques por banda ISRM   T5_16_resumen_del_modelo_de_bloques_por_banda_isrm.csv
+    ✓ T5.17  Predicciones punto a punto                     T5_17_predicciones_punto_a_punto.csv
+      nota: 156 MB: pesado para adjuntar. Un HTML interactivo embebe toda la geometría de las mallas. Instalar kaleido produce el PNG, mucho más liviano, sin cambiar la figura.
+    ✓ D5.1   Modelo de bloques en DXF con capas por banda   D5_1_modelo_de_bloques_en_dxf_con_capas_por_banda.dxf
+
+  índice: INDICE_capitulo5.csv · INDICE_capitulo5.md
+  total: 2053.3s
