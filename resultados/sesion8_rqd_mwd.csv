@@ -1,7 +1,7 @@
 # RQD de Deere: porcentaje del metraje en tramos continuos de 10 cm o más sin discontinuidad, con la discontinuidad detectada por DI > 1.5.
 # Indicador AGREGADO por pozo y por caserón, orientado a tronadura. No reemplaza al DI, que sigue siendo la variable de trabajo punto a punto en el resto del pipeline.
 # pozos no evaluables: 3
-# generado: 2026-08-26 04:24
+# generado: 2026-08-26 12:45
 nivel,clave,caseron,rqd_mwd,largo_m,n_tramos_validos,n_tramos_descartados
 pozo,PCS_1043_AUX1_H1,PCS_1043,91.1,29.831,10.0,0.0
 pozo,PCS_1043_AUX1_H4,PCS_1043,90.71,31.506,16.0,1.0

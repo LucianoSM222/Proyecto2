@@ -5198,6 +5198,15 @@ ABANICO_PLANARIDAD_TIROS = 0.15
 # —lo que produce un abanico angosto— no tiene normal bien definida, pero sí
 # se puede medir si está dentro del plano del abanico o no.
 ABANICO_TOL_PLANO_M = 0.75
+# ...pero un abanico REAL no es un plano perfecto: la desviación de
+# perforación le da espesor propio, y sobre 35 m de tiro ese espesor son
+# metros, no centímetros. Exigir que los picos estén más cerca del plano que
+# los propios tiros es exigir un imposible, y deja escapar grupos que sí son
+# el abanico. Por eso la tolerancia efectiva es la mayor entre el piso
+# absoluto de arriba y el espesor medido del abanico, multiplicado por este
+# factor. Se auto-calibra: en otra faena, con otra desviación de perforación,
+# el criterio se adapta solo en vez de necesitar un número nuevo.
+ABANICO_FACTOR_DISPERSION = 1.0
 # Ángulo máximo entre la normal del grupo de picos y la normal del plano de
 # los tiros. Criterio SECUNDARIO: solo se aplica cuando el grupo es lo bastante
 # planar como para tener normal bien definida.
@@ -5221,7 +5230,8 @@ def marcar_picos_de_abanico(picos: List[Dict], eps_m: float = ABANICO_EPS_M,
                             min_picos: int = ABANICO_MIN_PICOS,
                             planaridad_tiros: float = ABANICO_PLANARIDAD_TIROS,
                             ang_max_grad: float = ABANICO_ANG_MAX_GRAD,
-                            tol_plano_m: float = ABANICO_TOL_PLANO_M) -> Dict:
+                            tol_plano_m: float = ABANICO_TOL_PLANO_M,
+                            factor_dispersion: float = ABANICO_FACTOR_DISPERSION) -> Dict:
     """
     (8.4b) Marca en sitio los picos cuyo agrupamiento se explica por la
     geometría de perforación. Escribe `plano_abanico` y `motivo_abanico` en
@@ -5242,7 +5252,8 @@ def marcar_picos_de_abanico(picos: List[Dict], eps_m: float = ABANICO_EPS_M,
                 "config": {"eps_m": eps_m, "min_picos": min_picos,
                            "planaridad_tiros": planaridad_tiros,
                            "ang_max_grad": ang_max_grad,
-                           "tol_plano_m": tol_plano_m}}
+                           "tol_plano_m": tol_plano_m,
+                           "factor_dispersion": factor_dispersion}}
     X = np.array([[p["este"], p["norte"], p["cota"]] for p in picos],
                  dtype=np.float64)
     etiquetas = DBSCAN(eps=eps_m, min_samples=2).fit_predict(X)
@@ -5268,20 +5279,27 @@ def marcar_picos_de_abanico(picos: List[Dict], eps_m: float = ABANICO_EPS_M,
             trazas.extend((q.este, q.norte, q.cota) for q in w.points[::paso])
         if len(trazas) < 3:
             continue
-        centro_ab, normal_ab, r32_ab, _ = _plano_de(np.array(trazas))
+        T = np.array(trazas)
+        centro_ab, normal_ab, r32_ab, _ = _plano_de(T)
         ang = float(np.degrees(np.arccos(
             min(1.0, abs(float(np.dot(normal, normal_ab)))))))
         # ¿Están los picos DENTRO del plano de los tiros? Criterio principal.
         dist = float(np.abs((X[idx] - centro_ab) @ normal_ab).max())
+        # Espesor propio del abanico: cuánto se apartan del plano los mismos
+        # tiros que lo definen. Es la vara con la que hay que medir a los picos.
+        disp_tiros = float(np.percentile(np.abs((T - centro_ab) @ normal_ab), 95))
+        tol_efectiva = max(tol_plano_m, factor_dispersion * disp_tiros)
         # El grupo solo tiene normal utilizable si es planar y no degenerado en
         # una recta; si no la tiene, el criterio angular no se aplica.
         normal_util = (r32 < 0.25) and (r21 >= 0.15)
-        es_abanico = (r32_ab < planaridad_tiros) and (dist <= tol_plano_m) \
+        es_abanico = (r32_ab < planaridad_tiros) and (dist <= tol_efectiva) \
             and (ang <= ang_max_grad if normal_util else True)
         if es_abanico:
             motivo = (f"Grupo de {len(idx)} pico(s) en {len(pozos)} tiro(s) "
                       f"coplanares (planaridad {r32_ab:.3f}); los picos caen a "
-                      f"{dist:.2f} m o menos del plano del abanico"
+                      f"{dist:.2f} m o menos del plano del abanico, dentro de "
+                      f"la tolerancia de {tol_efectiva:.2f} m que fija el "
+                      f"espesor propio del abanico ({disp_tiros:.2f} m)"
                       + (f" y su propio plano forma {ang:.1f}° con él"
                          if normal_util else " (grupo sin normal utilizable)")
                       + ". Es la geometría de perforación, no una superficie "
@@ -5297,11 +5315,14 @@ def marcar_picos_de_abanico(picos: List[Dict], eps_m: float = ABANICO_EPS_M,
                         "angulo_con_abanico_grad": round(ang, 2),
                         "normal_utilizable": bool(normal_util),
                         "dist_al_plano_m": round(dist, 3),
+                        "espesor_abanico_m": round(disp_tiros, 3),
+                        "tolerancia_efectiva_m": round(tol_efectiva, 3),
                         "es_abanico": bool(es_abanico)})
     return {"n_marcados": n_marcados, "n_grupos": len(resumen), "grupos": resumen,
             "config": {"eps_m": eps_m, "min_picos": min_picos,
                        "planaridad_tiros": planaridad_tiros,
-                       "ang_max_grad": ang_max_grad, "tol_plano_m": tol_plano_m},
+                       "ang_max_grad": ang_max_grad, "tol_plano_m": tol_plano_m,
+                       "factor_dispersion": factor_dispersion},
             "criterio": ("Un grupo se atribuye al abanico solo si los tiros "
                          "involucrados son coplanares Y el plano de los picos "
                          "es ese mismo plano. Dentro de un solo abanico la "
@@ -5314,7 +5335,8 @@ def discriminate_all(min_gap_m: float = 0.5,
                      min_picos: int = ABANICO_MIN_PICOS,
                      planaridad_tiros: float = ABANICO_PLANARIDAD_TIROS,
                      ang_max_grad: float = ABANICO_ANG_MAX_GRAD,
-                     tol_plano_m: float = ABANICO_TOL_PLANO_M) -> Dict:
+                     tol_plano_m: float = ABANICO_TOL_PLANO_M,
+                     factor_dispersion: float = ABANICO_FACTOR_DISPERSION) -> Dict:
     """(8.4) Discriminación sobre todos los pozos cargados, con sus conteos."""
     picos, por_pozo = [], {}
     for wn, w in wells.items():
@@ -5334,7 +5356,7 @@ def discriminate_all(min_gap_m: float = 0.5,
     abanico = marcar_picos_de_abanico(
         picos, eps_m=eps_m, min_picos=min_picos,
         planaridad_tiros=planaridad_tiros, ang_max_grad=ang_max_grad,
-        tol_plano_m=tol_plano_m)
+        tol_plano_m=tol_plano_m, factor_dispersion=factor_dispersion)
     conteo = {k: 0 for k in DISC_CLASES}
     conteo_sin_ab = {k: 0 for k in DISC_CLASES}
     for p in picos:
@@ -5528,16 +5550,28 @@ def discriminator_report(radio_m: float = DISC_RADIO_ETIQUETA_M,
             if completo["tasa_acierto"] is not None and sin_ab["tasa_acierto"] is not None \
             else None
         sin_ab["delta_tasa_acierto"] = round(d, 4) if d is not None else None
+        t_new = sin_ab["tasa_acierto"]
+        base = sin_ab["tasa_azar"]
+        if d is None:
+            cierre = ""
+        elif t_new is not None and t_new <= base + 0.05:
+            # Pasar de azar a azar no es mejorar. Que el filtro quite ruido real
+            # no lo convierte en rescate del discriminador, y decir "mejora" acá
+            # sería vender una subida que no cruza ninguna línea.
+            cierre = (" Sigue EN EL AZAR: el filtro quita picos que son geometría "
+                      "de perforación, pero no rescata al discriminador — el "
+                      "problema no era solo el abanico.")
+        elif d > 0.02:
+            cierre = (" El filtro mejora el contraste y lo saca del azar: parte "
+                      "del error venía de picos que son geometría de perforación.")
+        else:
+            cierre = (" El filtro no cambia el contraste: los picos de abanico no "
+                      "eran lo que confundía al discriminador.")
         sin_ab["lectura"] = (
             f"Descontando {descartados} par(es) cuyo pico se atribuye al plano del "
             f"abanico, la tasa de acierto pasa de "
             f"{(completo['tasa_acierto'] or 0)*100:.1f}% a "
-            f"{(sin_ab['tasa_acierto'] or 0)*100:.1f}%."
-            + (" El filtro NO mejora el contraste: los picos de abanico no eran "
-               "lo que confundía al discriminador."
-               if d is not None and d <= 0.02 else
-               " El filtro mejora el contraste: parte del error venía de picos "
-               "que son geometría de perforación." if d is not None else ""))
+            f"{(t_new or 0)*100:.1f}%." + cierre)
     else:
         sin_ab = {"status": "sin_datos", "n_pares": 0,
                   "n_pares_descartados_por_abanico": descartados,

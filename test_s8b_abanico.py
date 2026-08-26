@@ -206,7 +206,7 @@ def los_umbrales_son_ajustables_y_declarados():
     section("5 — Los umbrales del criterio son parámetros, no números enterrados")
     for nombre in ("ABANICO_EPS_M", "ABANICO_MIN_PICOS",
                    "ABANICO_PLANARIDAD_TIROS", "ABANICO_ANG_MAX_GRAD",
-                   "ABANICO_TOL_PLANO_M"):
+                   "ABANICO_TOL_PLANO_M", "ABANICO_FACTOR_DISPERSION"):
         check(hasattr(gw, nombre), f"{nombre} existe como constante del módulo")
     check(gw.ABANICO_EPS_M == 2.5,
           "el agrupamiento usa el burden de la operación (2,5 m)", gw.ABANICO_EPS_M)
@@ -217,10 +217,22 @@ def los_umbrales_son_ajustables_y_declarados():
     rep2_ref = gw.discriminate_all().get("n_plano_abanico", 0)
     check(rep2_ref > 0, "con los valores por defecto hay marcas de referencia",
           rep2_ref)
-    rep = gw.discriminate_all(tol_plano_m=0.0)
+    rep = gw.discriminate_all(tol_plano_m=0.0, factor_dispersion=0.0)
     check(rep.get("n_plano_abanico") == 0,
           "apretar la tolerancia de distancia al plano cambia el resultado",
           rep.get("n_plano_abanico"))
+    # La tolerancia se auto-calibra contra el espesor propio del abanico: con
+    # el piso absoluto en cero, el criterio sigue funcionando porque la
+    # desviación de perforación le da su propia vara.
+    rep_auto = gw.discriminate_all(tol_plano_m=0.0)
+    check(rep_auto.get("n_plano_abanico", 0) > 0,
+          "pero con el factor de dispersión intacto el criterio se sostiene solo",
+          rep_auto.get("n_plano_abanico"))
+    g_auto = (rep_auto.get("abanico") or {}).get("grupos") or []
+    check(g_auto and all(k in g_auto[0] for k in ("espesor_abanico_m",
+                                                  "tolerancia_efectiva_m")),
+          "declarando el espesor medido del abanico y la tolerancia que fija",
+          g_auto[:1])
     # El criterio angular es SECUNDARIO: solo aplica a los grupos con normal
     # utilizable. Apretarlo reduce las marcas, pero no puede llevarlas a cero
     # mientras haya grupos casi rectilíneos, donde la normal es arbitraria y la
@@ -241,7 +253,9 @@ def los_umbrales_son_ajustables_y_declarados():
     # El reporte por grupo declara con qué medidas se decidió.
     g = (rep2.get("abanico") or {}).get("grupos") or []
     check(g and all(k in g[0] for k in ("planaridad_tiros", "dist_al_plano_m",
-                                        "angulo_con_abanico_grad", "es_abanico")),
+                                        "angulo_con_abanico_grad",
+                                        "espesor_abanico_m",
+                                        "tolerancia_efectiva_m", "es_abanico")),
           "y cada grupo declara las medidas con que se decidió", g[:1])
 
 

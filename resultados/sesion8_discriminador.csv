@@ -3,8 +3,8 @@
 # Contacto: el dámper NO cae, la percusión se desestabiliza, la rotación varía fuerte, la velocidad pierde su patrón.
 # Sin firma clara el evento queda INDETERMINADO; no se le asigna clase.
 # conteo: {'fractura': 468, 'contacto': 1480, 'indeterminado': 2651}
-# contraste contra sondajes: 1 de 1 evento(s) con clase definida coinciden con la etiqueta de sondaje; 1 quedaron indeterminados y no cuentan ni a favor ni en contra. 4597 pico(s) del MWD no tienen ninguna discontinuidad de sondaje a menos de 3 m: el contraste mide solo la vecindad de los sondajes, no el caserón entero.
-# generado: 2026-08-26 04:24
+# contraste contra sondajes: 1 de 1 evento(s) con clase definida coinciden con la etiqueta de sondaje; 1 quedaron indeterminados y no cuentan ni a favor ni en contra. NO CONCLUYENTE: solo 1 evento(s) con clase definida y etiqueta cercana. Sin muestra no hay veredicto. 4597 pico(s) del MWD no tienen ninguna discontinuidad de sondaje a menos de 3 m: el contraste mide solo la vecindad de los sondajes, no el caserón entero.
+# generado: 2026-08-26 12:45
 pozo,caseron,largo_m,este,norte,cota,di,clase,delta_pd_rel,delta_pp_rel,delta_vel_rel,cv_pp_rel,cv_pr_rel,cv_vel_rel,evidencia,motivo
 PCS_1043_AUX1_H1,PCS_1043,1.755,377541.19005983527,6958023.529765406,333.25825197872473,9.857,indeterminado,,,,,,,,Evento no evaluable: no hay puntos suficientes en el evento o en su tramo de referencia (típico cerca del collar).
 PCS_1043_AUX1_H1,PCS_1043,6.423,377540.0067626245,6958025.364633601,337.3843170708542,4.177,indeterminado,,,,,,,,Evento no evaluable: no hay puntos suficientes en el evento o en su tramo de referencia (típico cerca del collar).
