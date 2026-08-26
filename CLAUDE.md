@@ -117,6 +117,12 @@ Hallazgos que condicionan la interpretación, no defectos pendientes:
   los intervalos de un sondaje compartían casi los mismos puntos MWD. Al
   corregirlo, rho(RQD_MWD, RQD_sondaje) con los pesos de convención pasó de
   -0,10 a +0,18 a 5 m.
+- Calibración DI↔RQD: los pesos NO se estabilizan. A 5 y 10 m domina el
+  dámper (0,65 y 0,82 contra el 0,25 de la convención); a 25 m domina el
+  barrido (0,49) con el dámper en 0,10. El rho de validación es -0,21 (5 m),
+  +0,12 (10 m) y +0,17 (25 m), con pliegues que van de -0,21 a +0,83. Con
+  cuatro o cinco sondajes la calibración no puede asentarse. La restricción
+  que manda es la cantidad de sondajes con RQD, no la elección de pesos.
 
 Hoja de ruta, prompts por sesión y criterio de modelo: `docs/roadmap_ejecucion.md`.
 Documento maestro completo (respaldo): `docs/MWD_GeoMech_Documento_Maestro.md`.

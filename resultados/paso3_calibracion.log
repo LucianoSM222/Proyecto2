@@ -765,3 +765,67 @@ pozos=619  sondajes=11  (41.6s)
   PARES CON VECINDAD POR SEGMENTO (no por bola)
 ========================================================================
   radio    5 m ·   30 pares · 4 sondaje(s) · rho= 0.1791 · sd(RQD_MWD)= 8.55 sd(RQD_sond)=14.48
+  radio   10 m ·   51 pares · 4 sondaje(s) · rho= 0.0912 · sd(RQD_MWD)= 8.94 sd(RQD_sond)=23.74
+  radio   25 m ·   82 pares · 5 sondaje(s) · rho= 0.1238 · sd(RQD_MWD)= 7.84 sd(RQD_sond)=21.05
+
+========================================================================
+  CALIBRACIÓN
+========================================================================
+
+  ── radio 5 m — status: ok  (38.3s)
+     pares=30 · sondajes=4 ['DDH13-LP-50', 'DDH16-IR-31', 'DDH22-ZC-29', 'DDH25-ZC-42']
+     pesos convención : {'pp': 0.35, 'pr': 0.2, 'pd': 0.25, 'pf': 0.2}
+     pesos calibrados : {'pp': np.float64(0.0477), 'pr': np.float64(0.2959), 'pd': np.float64(0.6532), 'pf': np.float64(0.0032)}
+     rho convención   : 0.1791
+     rho ajuste       : 0.2489
+     rho VALIDACIÓN   : -0.2127
+     NO GENERALIZA: rho de ajuste +0.249 contra rho de VALIDACIÓN -0.213. Los pesos describen los sondajes con los que se ajustaron y no transfieren al que se dejó fuera. Con esta cantidad de sondajes es el resultado esperable, y es un resultado: dice que hacen falta más sondajes con RQD, no otros pesos.
+     pliegues (dejando-un-sondaje-fuera):
+       DDH13-LP-50      rho=-0.165  n=13  pesos={'pp': np.float64(0.0037), 'pr': np.float64(0.1105), 'pd': np.float64(0.5138), 'pf': np.float64(0.372)}
+       DDH16-IR-31      rho=  n/d  n=3  pesos={'pp': np.float64(0.2537), 'pr': np.float64(0.3851), 'pd': np.float64(0.1893), 'pf': np.float64(0.1719)}
+       DDH22-ZC-29      rho=-0.261  n=10  pesos={'pp': np.float64(0.6666), 'pr': np.float64(0.0217), 'pd': np.float64(0.1758), 'pf': np.float64(0.1359)}
+       DDH25-ZC-42      rho=  n/d  n=4  pesos={'pp': np.float64(0.0477), 'pr': np.float64(0.2959), 'pd': np.float64(0.6532), 'pf': np.float64(0.0032)}
+
+  ── radio 10 m — status: ok  (63.5s)
+     pares=51 · sondajes=4 ['DDH13-LP-50', 'DDH16-IR-31', 'DDH22-ZC-29', 'DDH25-ZC-42']
+     pesos convención : {'pp': 0.35, 'pr': 0.2, 'pd': 0.25, 'pf': 0.2}
+     pesos calibrados : {'pp': np.float64(0.0023), 'pr': np.float64(0.169), 'pd': np.float64(0.8196), 'pf': np.float64(0.0091)}
+     rho convención   : 0.0889
+     rho ajuste       : 0.2468
+     rho VALIDACIÓN   : 0.1158
+     GENERALIZA DÉBILMENTE: ajuste +0.247, validación +0.116. Hay señal que sobrevive al sondaje dejado fuera, pero no alcanza para usar el DI calibrado como estimador de RQD.
+     pliegues (dejando-un-sondaje-fuera):
+       DDH13-LP-50      rho=-0.112  n=14  pesos={'pp': np.float64(0.0023), 'pr': np.float64(0.169), 'pd': np.float64(0.8196), 'pf': np.float64(0.0091)}
+       DDH16-IR-31      rho=+0.209  n=14  pesos={'pp': np.float64(0.1737), 'pr': np.float64(0.0023), 'pd': np.float64(0.8123), 'pf': np.float64(0.0117)}
+       DDH22-ZC-29      rho=+0.200  n=15  pesos={'pp': np.float64(0.0329), 'pr': np.float64(0.0133), 'pd': np.float64(0.3763), 'pf': np.float64(0.5775)}
+       DDH25-ZC-42      rho=+0.167  n=8  pesos={'pp': np.float64(0.0477), 'pr': np.float64(0.2959), 'pd': np.float64(0.6532), 'pf': np.float64(0.0032)}
+
+  ── radio 25 m — status: ok  (205.1s)
+     pares=82 · sondajes=5 ['DDH13-LP-50', 'DDH16-IR-29', 'DDH16-IR-31', 'DDH22-ZC-29', 'DDH25-ZC-42']
+     pesos convención : {'pp': 0.35, 'pr': 0.2, 'pd': 0.25, 'pf': 0.2}
+     pesos calibrados : {'pp': np.float64(0.1008), 'pr': np.float64(0.3123), 'pd': np.float64(0.0961), 'pf': np.float64(0.4909)}
+     rho convención   : 0.1237
+     rho ajuste       : 0.2132
+     rho VALIDACIÓN   : 0.1741
+     GENERALIZA DÉBILMENTE: ajuste +0.213, validación +0.174. Hay señal que sobrevive al sondaje dejado fuera, pero no alcanza para usar el DI calibrado como estimador de RQD.
+     pliegues (dejando-un-sondaje-fuera):
+       DDH13-LP-50      rho=-0.129  n=22  pesos={'pp': np.float64(0.0893), 'pr': np.float64(0.2351), 'pd': np.float64(0.0884), 'pf': np.float64(0.5872)}
+       DDH16-IR-29      rho=+0.329  n=16  pesos={'pp': np.float64(0.1008), 'pr': np.float64(0.3123), 'pd': np.float64(0.0961), 'pf': np.float64(0.4909)}
+       DDH16-IR-31      rho=+0.833  n=14  pesos={'pp': np.float64(0.1008), 'pr': np.float64(0.3123), 'pd': np.float64(0.0961), 'pf': np.float64(0.4909)}
+       DDH22-ZC-29      rho=+0.051  n=17  pesos={'pp': np.float64(0.0347), 'pr': np.float64(0.458), 'pd': np.float64(0.0308), 'pf': np.float64(0.4765)}
+       DDH25-ZC-42      rho=-0.214  n=13  pesos={'pp': np.float64(0.0561), 'pr': np.float64(0.0053), 'pd': np.float64(0.7694), 'pf': np.float64(0.1692)}
+
+========================================================================
+  VARIANTES REGISTRADAS
+========================================================================
+  convencion_Fernandez_2023  [SOLO LECTURA]
+    ventana 14 · umbral 1.5 · pesos {'pp': 0.35, 'pr': 0.2, 'pd': 0.25, 'pf': 0.2}
+  calibrada_RQD_5m
+    ventana 14 · umbral 1.5 · pesos {'pp': 0.0477, 'pr': 0.2959, 'pd': 0.6532, 'pf': 0.0032}
+  calibrada_RQD_10m
+    ventana 14 · umbral 1.5 · pesos {'pp': 0.0023, 'pr': 0.169, 'pd': 0.8196, 'pf': 0.0091}
+  calibrada_RQD_25m
+    ventana 14 · umbral 1.5 · pesos {'pp': 0.1008, 'pr': 0.3123, 'pd': 0.0961, 'pf': 0.4909}
+
+  perfil de faena exportado: /home/user/Proyecto2/resultados/perfil_faena_MPC.json
+  total: 458.5s
