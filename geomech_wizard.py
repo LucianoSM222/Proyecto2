@@ -12,7 +12,7 @@
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
-import os, sys, json, time, base64, tempfile, re, warnings, threading, traceback, math, hashlib
+import os, sys, json, time, base64, tempfile, re, warnings, threading, traceback, math, hashlib, collections
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Tuple
@@ -3787,7 +3787,7 @@ def _training_funnel(ucs_min, ucs_max):
     caserones las produjeron—, que es lo que la guardia de circularidad
     necesita para negarse a comparar el modelo contra su propia fuente.
     """
-    _prov_capas.clear(); _prov_caserones.clear()
+    _prov_capas.clear(); _prov_caserones.clear(); _prov_ucs.clear()
     pts = list(all_points())
     labels = {
         "total": "Total de puntos MWD",
@@ -3839,6 +3839,7 @@ def _training_funnel(ucs_min, ucs_max):
             # produjeron. Se registra AQUÍ, en el mismo pase que arma X/y,
             # para que no pueda desincronizarse de lo que el modelo entrenó.
             if p.capa_lito: _prov_capas.add(p.capa_lito)
+            _prov_ucs.add(float(ucs))
             cas = caseron_de_pozo(well)
             if cas: _prov_caserones.add(cas)
     funnel, prev = [], n["total"]
@@ -3997,6 +3998,14 @@ TERMINOLOGIA_C = "modelo geológico informado por MWD"
 # que arma X/y, para que no pueda desincronizarse de lo que el modelo vio.
 _prov_capas: set = set()
 _prov_caserones: set = set()
+# Etiquetas de UCS que el modelo llegó a ver. Sirve para saber qué unidades
+# puede predecir: una que nunca entrenó es inalcanzable, y su discordancia
+# mide el hueco de muestreo, no el método (riesgo 4 de la sesión 5).
+_prov_ucs: set = set()
+
+
+def _prov_ucs_entrenadas() -> set:
+    return set(_prov_ucs)
 
 
 def training_provenance() -> Dict[str, set]:
@@ -4005,7 +4014,7 @@ def training_provenance() -> Dict[str, set]:
 
 
 def training_provenance_reset():
-    _prov_capas.clear(); _prov_caserones.clear()
+    _prov_capas.clear(); _prov_caserones.clear(); _prov_ucs.clear()
 
 
 def circularity_check(capas) -> Optional[str]:
@@ -4180,6 +4189,19 @@ def concordance_vs_distance(fuente: str = "sondajes", capas=None, n_bins: int = 
                 "terminologia": TERMINOLOGIA_C}
     d = np.array([x[3] for x in pares], dtype=np.float64)
     ok = np.array([x[1] == x[2] for x in pares], dtype=np.float64)
+    # (riesgo 4 de la sesión 5, aplicado aquí) Una unidad presente en el
+    # contraste pero AUSENTE del entrenamiento es inalcanzable para el
+    # modelo: su discordancia mide el hueco de muestreo, no el método. Sin
+    # declararlo, una concordancia baja se leería como fallo del modelo.
+    entrenadas = {a for a in (ucs_a_litologia(v) for v in _prov_ucs_entrenadas()) if a}
+    contraste = collections.Counter(x[2] for x in pares)
+    no_entr = sorted(u for u in contraste if u not in entrenadas)
+    n_no_entr = sum(contraste[u] for u in no_entr)
+    cobertura = {"unidades_contraste": sorted(contraste),
+                 "entrenadas": sorted(entrenadas),
+                 "no_entrenadas": no_entr,
+                 "n_no_entrenada": n_no_entr,
+                 "frac_no_entrenada": round(n_no_entr / len(pares), 4)}
     bordes = np.linspace(d.min(), d.max(), n_bins + 1)
     bins = []
     for i in range(n_bins):
@@ -4189,7 +4211,17 @@ def concordance_vs_distance(fuente: str = "sondajes", capas=None, n_bins: int = 
                      "n": int(m.sum()), "concordancia": round(float(ok[m].mean()), 4)})
     # Pendiente sobre los puntos, no sobre los bins: no depende del binning.
     pend = float(np.polyfit(d, ok, 1)[0]) if d.std() > 0 else 0.0
-    if pend < -1e-4:
+    if cobertura["frac_no_entrenada"] > 0.5:
+        interp = (
+            f"NO se puede leer como fallo del modelo: el "
+            f"{100*cobertura['frac_no_entrenada']:.0f}% de la fuente de contraste "
+            f"es de unidad(es) que el entrenamiento NUNCA vio "
+            f"({', '.join(no_entr)}), así que el modelo no puede predecirlas y su "
+            f"discordancia mide el HUECO DE MUESTREO, no el método. Carga mallas "
+            f"de esas unidades, o restringe el contraste a las unidades "
+            f"entrenadas ({', '.join(sorted(entrenadas)) or '—'}), antes de "
+            f"interpretar la pendiente.")
+    elif pend < -1e-4:
         interp = ("La concordancia DECAE al alejarse del sondaje: la malla se degrada "
                   "lejos del dato duro y el MWD aporta información donde la "
                   "interpolación ya no la tiene. Es el mejor resultado posible — "
@@ -4203,7 +4235,7 @@ def concordance_vs_distance(fuente: str = "sondajes", capas=None, n_bins: int = 
                   "lejos como cerca del dato, y el MWD no agrega información "
                   "geológica en este conjunto.")
     return {"status": "ok", "fuente": fuente, "nivel": 1 if fuente == "sondajes" else 2,
-            "n": len(pares), "bins": bins,
+            "n": len(pares), "bins": bins, "cobertura": cobertura,
             "pendiente": round(pend, 6),
             "pendiente_unidad": "Δconcordancia por metro de distancia al sondaje",
             "concordancia_global": round(float(ok.mean()), 4),
@@ -4415,6 +4447,231 @@ def concordance_full_report(fuente: str = "sondajes", capas=None) -> Dict:
         "c6": confusion_matrix_report(fuente, capas),
         "terminologia": TERMINOLOGIA_C,
     }
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  COHERENCIA FÍSICA SE ↔ UCS SOBRE ROCA INTACTA                          ║
+# ║                                                                          ║
+# ║  Test de validez del supuesto fundamental, previo al ML: si la energía  ║
+# ║  específica de los pozos que caen en litologías con UCS bien conocido   ║
+# ║  por ensayo no ordena esas litologías por resistencia, el MWD no mide   ║
+# ║  lo que creemos y ningún modelo lo arregla.                             ║
+# ║                                                                          ║
+# ║  Separa dos preguntas que el R² del modelo confunde:                    ║
+# ║    · ¿el MWD tiene señal física?           -> este reporte              ║
+# ║    · ¿las etiquetas alcanzan para entrenar? -> el R² y el LOCO-CV       ║
+# ║                                                                          ║
+# ║  EL CONFUNDIMIENTO A SORTEAR: SE_reacción = (PP + RP + AP) / ROP, y PP  ║
+# ║  es la ÚNICA variable que el operador manipula — y la sube en roca      ║
+# ║  dura. Parte de la relación SE↔UCS podría venir de la RESPUESTA DEL     ║
+# ║  OPERADOR, no de la roca. Por eso el reporte estratifica por PP y mira  ║
+# ║  ROP por separado: ROP no se fija directamente, así que si también      ║
+# ║  ordena las litologías, la señal es de la roca.                         ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+def _spearman(x, y) -> Optional[float]:
+    """Correlación de rangos. None si no hay varianza en alguno de los dos."""
+    x, y = np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64)
+    if x.size < 2 or y.size < 2: return None
+    rx = np.argsort(np.argsort(x)).astype(np.float64)
+    ry = np.argsort(np.argsort(y)).astype(np.float64)
+    if rx.std() == 0 or ry.std() == 0: return None
+    return float(np.corrcoef(rx, ry)[0, 1])
+
+
+def _se_por_dominio(solo_roca_intacta: bool = True) -> Dict[str, Dict]:
+    """
+    SE, ROP y PP agregados por dominio con UCS de laboratorio conocido.
+    `solo_roca_intacta` aparta los puntos con DI sobre el umbral, que es
+    justamente lo que el DI existe para permitir.
+    """
+    acc: Dict[str, Dict[str, list]] = {}
+    for w in wells.values():
+        for p in w.points:
+            if not p.entrenable or not p.dominio: continue
+            if getattr(p, "ambiguo", False): continue
+            dom = domains.get(p.dominio)
+            if not dom or dom.get("ucs_lab") is None: continue
+            if solo_roca_intacta and p.di is not None and p.di > di_threshold:
+                continue
+            if p.se is None or not np.isfinite(p.se): continue
+            d = acc.setdefault(p.dominio, {"se": [], "rop": [], "pp": [],
+                                           "ucs_lab": dom["ucs_lab"]})
+            d["se"].append(float(p.se))
+            if p.vel is not None and np.isfinite(p.vel): d["rop"].append(float(p.vel))
+            if p.pp is not None and np.isfinite(p.pp): d["pp"].append(float(p.pp))
+    out = {}
+    for k, v in acc.items():
+        se = np.array(v["se"])
+        if se.size < 5: continue
+        out[k] = {"dominio": k, "ucs_lab": float(v["ucs_lab"]), "n": int(se.size),
+                  "se_mediana": round(float(np.median(se)), 2),
+                  "se_media": round(float(se.mean()), 2),
+                  "se_cv": round(float(se.std() / abs(se.mean())), 4) if se.mean() else None,
+                  "rop_mediana": round(float(np.median(v["rop"])), 4) if v["rop"] else None,
+                  "pp_mediana": round(float(np.median(v["pp"])), 2) if v["pp"] else None}
+    return out
+
+
+def _coherencia_desde(porcion: Dict[str, Dict]) -> Dict:
+    """Métricas de coherencia a partir del agregado por dominio."""
+    doms = sorted(porcion.values(), key=lambda d: d["ucs_lab"])
+    ucs = [d["ucs_lab"] for d in doms]
+    se = [d["se_mediana"] for d in doms]
+    rop = [d["rop_mediana"] for d in doms if d["rop_mediana"] is not None]
+    rho = _spearman(ucs, se)
+    monotona = all(se[i] <= se[i + 1] for i in range(len(se) - 1)) if len(se) > 1 else None
+    cvs = [d["se_cv"] for d in doms if d["se_cv"] is not None]
+    return {"dominios": doms, "rho_spearman": round(rho, 4) if rho is not None else None,
+            "monotona": monotona,
+            "cv_medio_intra_dominio": round(float(np.mean(cvs)), 4) if cvs else None,
+            "rho_rop": (round(_spearman(ucs[:len(rop)], rop), 4)
+                        if len(rop) == len(ucs) and _spearman(ucs, rop) is not None else None),
+            "se_mediana_por_dominio": {d["dominio"]: d["se_mediana"] for d in doms}}
+
+
+PP_ESTRATOS = ((90, 130), (130, 170), (170, 230))     # PP: 90 a 230 bar
+
+
+def se_ucs_coherence_report() -> Dict:
+    """
+    Coherencia entre la energía específica de reacción y el UCS de
+    laboratorio, por dominio y sobre ROCA INTACTA.
+
+    La regla física que debe cumplirse: a mayor UCS de la matriz, mayor
+    energía específica para romperla. Si no se cumple, el problema está
+    antes del modelo.
+
+    Devuelve además:
+      · la MISMA comparación SIN apartar las discontinuidades, para ver si
+        el DI mejora la coherencia (validación empírica del DI);
+      · la relación estratificada por PP, y la de ROP sola, para separar la
+        señal de la roca de la respuesta del operador.
+    """
+    intacta = _se_por_dominio(solo_roca_intacta=True)
+    if len(intacta) < 2:
+        return {"status": "sin_datos",
+                "motivo": (f"Solo {len(intacta)} dominio(s) con UCS de laboratorio y "
+                           f"≥5 puntos de roca intacta. Hacen falta al menos 2 para "
+                           f"poder hablar de coherencia: con uno solo no hay nada "
+                           f"que ordenar."),
+                "terminologia": TERMINOLOGIA_C}
+    base = _coherencia_desde(intacta)
+    todo = _se_por_dominio(solo_roca_intacta=False)
+    comp = _coherencia_desde(todo) if len(todo) >= 2 else {}
+
+    # ¿Apartar las discontinuidades mejoró la coherencia? Dos señales: la
+    # correlación de rangos sube, o la dispersión intra-dominio baja.
+    di_mejora = None
+    if comp:
+        r0 = comp.get("rho_spearman"); r1 = base.get("rho_spearman")
+        c0 = comp.get("cv_medio_intra_dominio"); c1 = base.get("cv_medio_intra_dominio")
+        mejor_rho = (r1 is not None and r0 is not None and r1 > r0 + 1e-9)
+        mejor_cv = (c1 is not None and c0 is not None and c1 < c0 - 1e-9)
+        di_mejora = bool(mejor_rho or mejor_cv)
+
+    # Estratificación por PP: si la relación se sostiene DENTRO de rangos
+    # estrechos de PP, no es artefacto de que el operador suba PP en roca dura.
+    estratos = []
+    for lo, hi in PP_ESTRATOS:
+        acc: Dict[str, Dict] = {}
+        for w in wells.values():
+            for p in w.points:
+                if not p.entrenable or not p.dominio: continue
+                if p.di is not None and p.di > di_threshold: continue
+                if p.pp is None or not (lo <= p.pp < hi): continue
+                dom = domains.get(p.dominio)
+                if not dom or dom.get("ucs_lab") is None: continue
+                if p.se is None or not np.isfinite(p.se): continue
+                d = acc.setdefault(p.dominio, {"se": [], "ucs_lab": dom["ucs_lab"]})
+                d["se"].append(float(p.se))
+        doms = [{"dominio": k, "ucs_lab": v["ucs_lab"],
+                 "se_mediana": round(float(np.median(v["se"])), 2), "n": len(v["se"])}
+                for k, v in acc.items() if len(v["se"]) >= 5]
+        if len(doms) >= 2:
+            doms.sort(key=lambda d: d["ucs_lab"])
+            rho = _spearman([d["ucs_lab"] for d in doms], [d["se_mediana"] for d in doms])
+            estratos.append({"pp_min": lo, "pp_max": hi, "n_dominios": len(doms),
+                             "rho_spearman": round(rho, 4) if rho is not None else None,
+                             "dominios": doms})
+
+    rho = base["rho_spearman"]
+    if rho is None:
+        veredicto = ("No se puede evaluar la coherencia: no hay variación suficiente "
+                     "entre dominios.")
+    elif rho > 0.5 and base["monotona"]:
+        veredicto = (f"COHERENTE: la energía específica ordena las litologías por su "
+                     f"UCS de laboratorio (ρ={rho:+.2f}, monotonía respetada). Es la "
+                     f"regla física que debe cumplirse en roca intacta, y se cumple: "
+                     f"el MWD está midiendo resistencia de matriz.")
+    elif rho > 0.5:
+        veredicto = (f"COHERENTE EN TENDENCIA pero sin monotonía estricta (ρ={rho:+.2f}): "
+                     f"la SE sube con el UCS en conjunto, pero al menos un par de "
+                     f"dominios queda fuera de orden. Revisar cuál y por qué.")
+    elif rho < -0.5:
+        veredicto = (f"INCOHERENTE — relación INVERTIDA (ρ={rho:+.2f}): la roca de mayor "
+                     f"UCS de laboratorio sale con MENOS energía específica. Eso "
+                     f"contradice la física de la perforación en roca intacta. Antes de "
+                     f"modelar nada hay que explicar esto: revisar la asignación de "
+                     f"bandas de UCS, el cruce punto↔malla, o si los tramos siguen "
+                     f"contaminados por discontinuidades.")
+    else:
+        veredicto = (f"SIN COHERENCIA CLARA (ρ={rho:+.2f}): la energía específica no "
+                     f"ordena las litologías por su UCS. O las bandas de laboratorio no "
+                     f"representan a estos dominios, o el MWD no está resolviendo la "
+                     f"diferencia entre ellos.")
+
+    return {
+        "status": "ok",
+        "dominios": base["dominios"],
+        "rho_spearman": rho,
+        "monotona": base["monotona"],
+        "cv_medio_intra_dominio": base["cv_medio_intra_dominio"],
+        "se_mediana_por_dominio": base["se_mediana_por_dominio"],
+        "veredicto": veredicto,
+        "sin_apartar_discontinuidades": comp,
+        "di_mejora_coherencia": di_mejora,
+        "di_nota": (
+            "Apartar los tramos con DI sobre el umbral MEJORA la coherencia SE↔UCS: "
+            "el DI está haciendo su trabajo en estos datos, no solo por autoridad de "
+            "Fernández et al. 2023." if di_mejora else
+            "Apartar los tramos con DI sobre el umbral NO mejora la coherencia aquí. "
+            "No invalida el DI, pero conviene revisar el umbral y los pesos antes de "
+            "apoyarse en él." if di_mejora is False else
+            "No hay con qué comparar el efecto de apartar discontinuidades."),
+        "rop": {"rho_spearman": base["rho_rop"],
+                "nota": ("ROP NO la fija directamente el operador: si también ordena "
+                         "las litologías por UCS, la señal es de la roca y no de la "
+                         "respuesta del operador.")},
+        "estratos_pp": estratos,
+        "advertencia_pp": (
+            "SE_reacción = (PP + RP + AP) / ROP, y PP es la ÚNICA variable que el "
+            "operador manipula — y la sube en roca dura. Parte de la relación SE↔UCS "
+            "puede venir de esa respuesta y no de la roca. Por eso se reporta la "
+            "relación DENTRO de estratos estrechos de PP: si se sostiene ahí, no es "
+            "artefacto del operador. El análisis agregado de PP se aborda de frente "
+            "en la sesión de curvas de respuesta."),
+        "terminologia": TERMINOLOGIA_C,
+    }
+
+
+def export_se_ucs_coherence_csv(rep: Optional[Dict] = None) -> str:
+    """Coherencia SE↔UCS como CSV, con el veredicto y las advertencias arriba."""
+    rep = rep if rep is not None else se_ucs_coherence_report()
+    if rep.get("status") != "ok":
+        return f"# {rep.get('motivo', 'sin datos')}\n"
+    filas = [{"dominio": d["dominio"], "ucs_lab_MPa": d["ucs_lab"],
+              "se_mediana": d["se_mediana"], "se_cv": d["se_cv"],
+              "rop_mediana": d["rop_mediana"], "pp_mediana": d["pp_mediana"],
+              "n_puntos_roca_intacta": d["n"]}
+             for d in rep["dominios"]]
+    cab = "\n".join("# " + l for l in [
+        "Coherencia energía específica ↔ UCS de laboratorio, sobre ROCA INTACTA.",
+        rep["veredicto"],
+        f"rho_spearman={rep['rho_spearman']} · monotona={rep['monotona']}",
+        rep["di_nota"], rep["advertencia_pp"],
+        f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
+    return cab + "\n" + pd.DataFrame(filas).to_csv(index=False)
 
 
 def export_concordance_csv(full: Optional[Dict] = None) -> str:

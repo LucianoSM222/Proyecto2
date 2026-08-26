@@ -249,6 +249,35 @@ def c3_concordancia_decae_con_la_distancia():
           "el desacuerdo NUNCA se llama «error» (C.2 nivel 2)", rep.get("interpretacion"))
 
 
+def c3_declara_el_hueco_de_cobertura():
+    section("C.3 — Una unidad ausente del entrenamiento NO se lee como fallo del modelo")
+    _escenario_dos_caserones()
+    gw.train_rf(0.0, 450.0)
+    gw.predict_all_wells()
+    # El sondaje loguea una unidad que el entrenamiento NUNCA vio: el modelo
+    # no puede predecirla, así que la discordancia mide el hueco de muestreo,
+    # no el método. Es el riesgo 4 de la sesión 5, aplicado a C.3. Con los
+    # datos reales esto no es hipotético: Kfa es el 66% del metraje de
+    # sondaje y ninguna malla de los caserones cargados la aporta.
+    _mk_sondaje("S1", E0 + 10, N0 + 10, Z0 + 40, largo=40,
+                unidad="Lutitas_metamorfoseadas")
+
+    rep = gw.concordance_vs_distance(fuente="sondajes", n_bins=3)
+    if rep["status"] != "ok":
+        check(False, "el reporte corre", rep.get("motivo")); return
+    check("cobertura" in rep,
+          "el reporte declara la cobertura de unidades del contraste", list(rep))
+    cob = rep.get("cobertura", {})
+    check("Lutitas_metamorfoseadas" in (cob.get("no_entrenadas") or []),
+          "nombra la unidad que el entrenamiento nunca vio", cob)
+    check(cob.get("frac_no_entrenada", 0) > 0.5,
+          "y cuantifica qué fracción del contraste es inalcanzable", cob)
+    check("hueco de muestreo" in rep["interpretacion"].lower()
+          or "no entrenada" in rep["interpretacion"].lower(),
+          "la interpretación NO culpa al modelo cuando el hueco lo explica",
+          rep["interpretacion"])
+
+
 def c4_estructura_espacial_del_desacuerdo():
     section("C.4 — Desacuerdo por distancia al borde de malla")
     _escenario_dos_caserones()
@@ -341,6 +370,7 @@ ALL_TESTS = [
     c0_terminologia,
     c3_distancia_al_sondaje,
     c3_concordancia_decae_con_la_distancia,
+    c3_declara_el_hueco_de_cobertura,
     c4_estructura_espacial_del_desacuerdo,
     c5_desfase_de_contactos,
     c6_matriz_de_confusion,
