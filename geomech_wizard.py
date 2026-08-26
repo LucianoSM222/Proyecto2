@@ -3696,6 +3696,12 @@ def seed_param_registry(force: bool = False):
                "de un punto MWD al intervalo de RQD más cercano son 26,1 m: el "
                "radio decide cuánto dato recibe etiqueta y con qué credibilidad.",
                1.0, 200.0, "RQD_RADIO_MAX_M"),
+        _param("rqd.margen_axial_m", "RQD", "Margen axial del intervalo",
+               1.0, "float", "m", "Cuánto se extiende el tramo del sondaje a lo "
+               "largo de su eje para juntar puntos MWD. Sin esta restricción "
+               "todos los intervalos de un sondaje ven casi los mismos puntos y "
+               "el RQD_MWD no puede seguir la variación tramo a tramo.",
+               0.0, 50.0),
         _param("rqd.min_puntos_intervalo", "RQD",
                "Puntos MWD mínimos por intervalo", 30, "int", "registros",
                "Bajo esto el RQD_MWD de un intervalo es ruido de unos pocos "
@@ -6292,8 +6298,38 @@ def _intervalos_rqd_sondaje() -> List[Dict]:
             out.append({"sondaje": hid, "desde": float(r["from"]),
                         "hasta": float(r["to"]), "rqd": float(r["rqd"]),
                         "largo_m": float(r["to"] - r["from"]),
-                        "centro": np.array(c, dtype=np.float64)})
+                        "centro": np.array(c, dtype=np.float64),
+                        "a": np.array(a, dtype=np.float64),
+                        "b": np.array(b, dtype=np.float64)})
     return out
+
+
+def _vecinos_de_intervalo(P: np.ndarray, iv: Dict, radio_m: float,
+                          margen_axial_m: float) -> np.ndarray:
+    """
+    Índices de los puntos de `P` que acompañan a ESTE intervalo: cerca del
+    SEGMENTO del intervalo, no de una bola alrededor de su centro.
+
+    Es la diferencia entre comparar y no comparar nada. Con radio 10 m y
+    tramos de 3 m, una bola alrededor del centro abarca a los vecinos del
+    intervalo de arriba y del de abajo: todos los intervalos de un sondaje
+    terminan viendo casi los mismos puntos MWD, su RQD_MWD sale casi idéntico
+    y la correlación con el RQD tramo a tramo no puede existir aunque la
+    física esté ahí. Restringir al segmento —distancia perpendicular dentro
+    del radio Y proyección axial dentro del tramo, con su margen— le devuelve
+    a cada intervalo su propia vecindad.
+    """
+    d = iv["b"] - iv["a"]
+    L2 = float(d @ d)
+    if L2 < 1e-9:
+        dist = np.linalg.norm(P - iv["a"], axis=1)
+        return np.where(dist <= radio_m)[0]
+    t = ((P - iv["a"]) @ d) / L2
+    margen = margen_axial_m / max(np.sqrt(L2), 1e-9)
+    dentro = (t >= -margen) & (t <= 1.0 + margen)
+    proy = iv["a"] + np.clip(t, 0.0, 1.0)[:, None] * d
+    dist = np.linalg.norm(P - proy, axis=1)
+    return np.where(dentro & (dist <= radio_m))[0]
 
 
 def propagate_drillhole_rqd(radio_m: Optional[float] = None) -> Dict:
@@ -6423,10 +6459,10 @@ def rqd_calibration_pairs(radio_m: Optional[float] = None,
                            f'"{nombre_var}".'),
                 "variante": nombre_var}
     P = np.array(pts)
+    margen = get_param("rqd.margen_axial_m")
     pares, sin_soporte = [], 0
     for iv in intervalos:
-        d = np.linalg.norm(P - iv["centro"], axis=1)
-        cerca = np.where(d <= radio_m)[0]
+        cerca = _vecinos_de_intervalo(P, iv, radio_m, margen)
         if len(cerca) < min_puntos:
             sin_soporte += 1; continue
         por_pozo: Dict[str, list] = {}
@@ -6458,6 +6494,7 @@ def rqd_calibration_pairs(radio_m: Optional[float] = None,
             "n_intervalos": len(intervalos), "intervalos_sin_soporte": sin_soporte,
             "agrupado_por": "sondaje",
             "n_sondajes": len({p["sondaje"] for p in pares}),
+            "margen_axial_m": margen,
             "nota_soporte": ("Un número por intervalo, sobre el mismo soporte que "
                              "el RQD del sondaje. Los puntos vecinos se agrupan por "
                              "POZO antes de aplicar Deere, porque la regla cuenta "
@@ -6491,6 +6528,274 @@ def _rqd_deere(pares_largo_di: List[Tuple[float, float]], umbral: float) -> Opti
         tramos.append(fin - ini)
     buenos = [t for t in tramos if t >= RQD_TRAMO_MIN_M]
     return 100.0 * sum(buenos) / total
+
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  PASO 3 — CALIBRAR LOS PESOS DEL DI CONTRA EL RQD DE LOS SONDAJES       ║
+# ║                                                                          ║
+# ║  EL ENCUADRE, corregido por el autor: Fernández busca los pesos de su    ║
+# ║  DI con `movvar` de MATLAB —varianza móvil, la misma construcción que    ║
+# ║  usa di_profile()—. Calibrar los pesos NO es una desviación del método:  ║
+# ║  ES el método. Los pesos 0,35 / 0,25 / 0,20 / 0,20 son el resultado de   ║
+# ║  la calibración de Fernández sobre SUS datos; buscar los de Punta del    ║
+# ║  Cobre es aplicar el mismo procedimiento a estos.                        ║
+# ║                                                                          ║
+# ║  Por eso el resultado es una VARIANTE con nombre propio y la de          ║
+# ║  convención queda intacta: son dos resultados legítimos del mismo        ║
+# ║  procedimiento sobre datos distintos, y tienen que poder compararse.     ║
+# ║                                                                          ║
+# ║  LA VALIDACIÓN ES POR SONDAJE. Dos intervalos del mismo sondaje no son   ║
+# ║  observaciones independientes: comparten roca, campaña y criterio de     ║
+# ║  logueo. Ajustar sobre todos y reportar el ajuste sería reportar         ║
+# ║  memorización. El rho de ajuste y el de validación viajan SIEMPRE        ║
+# ║  juntos, y el veredicto mira el de validación.                           ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+# Búsqueda sobre el símplex de pesos por muestreo de Dirichlet. La métrica es
+# una correlación de RANGOS, que no es diferenciable: un optimizador de
+# gradiente no sirve, y con cuatro pesos el muestreo cubre el espacio de sobra.
+CAL_N_MUESTRAS = 400
+CAL_SEMILLA = 42
+CAL_MIN_SONDAJES = 2
+CAL_PARAMS = ("pp", "pr", "pd", "pf")
+
+
+def _rho_de_pesos(pesos: Dict[str, float], window: int, umbral: float,
+                  pozos_rel: List[str], intervalos: List[Dict],
+                  radio_m: float, min_puntos: int,
+                  sondajes_filtro: Optional[set] = None) -> Tuple[Optional[float], int]:
+    """
+    rho de Spearman entre el RQD_MWD que producen estos pesos y el RQD de los
+    sondajes, sobre los intervalos pedidos. Devuelve (rho, n_pares).
+
+    Solo recalcula el perfil de DI en los pozos que aportan pares: recorrer los
+    619 pozos por cada combinación de pesos haría la búsqueda inviable, y los
+    demás no cambian ningún par.
+    """
+    perfiles = {}
+    for wn in pozos_rel:
+        w = wells.get(wn)
+        if w is None or len(w.points) < window:
+            continue
+        perfil = di_profile(w.points, window, sorted(pesos), pesos)
+        if perfil is not None:
+            perfiles[wn] = perfil
+    if not perfiles:
+        return None, 0
+    a, b = [], []
+    for iv in intervalos:
+        if sondajes_filtro is not None and iv["sondaje"] not in sondajes_filtro:
+            continue
+        valores = []
+        for wn, idxs in iv["vecinos"].items():
+            perfil = perfiles.get(wn)
+            if perfil is None:
+                continue
+            w = wells[wn]
+            lista = [(w.points[i].largo, float(perfil[i]))
+                     for i in idxs if i < len(perfil) and np.isfinite(perfil[i])]
+            if len(lista) < 2:
+                continue
+            lista.sort()
+            v = _rqd_deere(lista, umbral)
+            if v is not None:
+                valores.append(v)
+        if not valores:
+            continue
+        a.append(float(np.mean(valores)))
+        b.append(iv["rqd"])
+    if len(a) < 5:
+        return None, len(a)
+    return spearman_rho(a, b), len(a)
+
+
+def _preparar_intervalos_calibracion(radio_m: float, min_puntos: int):
+    """
+    Intervalos de RQD con sus vecinos MWD ya indexados por pozo. Se calcula UNA
+    vez y se reutiliza en cada evaluación de pesos: es lo que vuelve viable la
+    búsqueda.
+    """
+    intervalos = _intervalos_rqd_sondaje()
+    if not intervalos:
+        return [], []
+    pts, meta = [], []
+    for wn, w in wells.items():
+        for i, p in enumerate(w.points):
+            if p.entrenable:
+                pts.append((p.este, p.norte, p.cota)); meta.append((wn, i))
+    if not pts:
+        return [], []
+    P = np.array(pts)
+    margen = get_param("rqd.margen_axial_m")
+    listos, pozos_rel = [], set()
+    for iv in intervalos:
+        cerca = _vecinos_de_intervalo(P, iv, radio_m, margen)
+        if len(cerca) < min_puntos:
+            continue
+        vecinos: Dict[str, list] = {}
+        for k in cerca:
+            wn, i = meta[k]
+            vecinos.setdefault(wn, []).append(i)
+        listos.append({**iv, "vecinos": vecinos})
+        pozos_rel.update(vecinos)
+    return listos, sorted(pozos_rel)
+
+
+def calibrate_di_weights(radio_m: Optional[float] = None,
+                         min_puntos: Optional[int] = None,
+                         params: Tuple[str, ...] = CAL_PARAMS,
+                         window: Optional[int] = None,
+                         umbral: Optional[float] = None,
+                         n_muestras: int = CAL_N_MUESTRAS,
+                         seed: int = CAL_SEMILLA,
+                         nombre_variante: str = "calibrada_RQD",
+                         registrar: bool = True) -> Dict:
+    """
+    (3.1) Busca los pesos del DI que hacen que el RQD_MWD y el RQD de los
+    sondajes hablen el mismo idioma, y valida dejando-un-sondaje-fuera.
+
+    El resultado se registra como VARIANTE. La de convención no se toca.
+    """
+    radio_m = get_param("rqd.radio_max_m") if radio_m is None else radio_m
+    min_puntos = (get_param("rqd.min_puntos_intervalo")
+                  if min_puntos is None else min_puntos)
+    conv = di_variantes.get(DI_VARIANTE_CONVENCION) or {}
+    window = int(conv.get("window", 14)) if window is None else int(window)
+    umbral = float(conv.get("threshold", 1.5)) if umbral is None else float(umbral)
+
+    intervalos, pozos_rel = _preparar_intervalos_calibracion(radio_m, min_puntos)
+    if len(intervalos) < 5:
+        return {"status": "sin_datos",
+                "motivo": (f"Solo {len(intervalos)} intervalo(s) de sondaje reúnen "
+                           f"{min_puntos} punto(s) MWD a menos de {radio_m:g} m. "
+                           "Con menos de cinco pares no hay correlación que ajustar."),
+                "n_intervalos": len(intervalos), "radio_m": radio_m}
+    sondajes = sorted({iv["sondaje"] for iv in intervalos})
+    if len(sondajes) < CAL_MIN_SONDAJES:
+        return {"status": "sin_validacion",
+                "motivo": (f"Los pares provienen de {len(sondajes)} sondaje(s). La "
+                           "validación es dejando-un-SONDAJE-fuera y necesita al "
+                           f"menos {CAL_MIN_SONDAJES}. Con uno solo se puede ajustar "
+                           "pero no comprobar nada, y una variante sin validar no "
+                           "se registra."),
+                "n_sondajes": len(sondajes), "sondajes": sondajes,
+                "n_intervalos": len(intervalos), "radio_m": radio_m}
+
+    rng = np.random.default_rng(seed)
+    # Muestreo de Dirichlet sobre el símplex: cubre el espacio de pesos sin
+    # privilegiar ninguna esquina. Se incluye la combinación de CONVENCIÓN como
+    # candidata, para que el óptimo nunca pueda ser peor que ella por azar.
+    cand = [dict(zip(params, rng.dirichlet(np.ones(len(params)))))
+            for _ in range(int(n_muestras))]
+    pesos_conv = {k: conv.get("weights", {}).get(k, 0.0) for k in params}
+    if sum(pesos_conv.values()) > 0:
+        tot = sum(pesos_conv.values())
+        cand.insert(0, {k: v / tot for k, v in pesos_conv.items()})
+
+    def _mejor(filtro):
+        mejor_w, mejor_rho, mejor_n = None, None, 0
+        for w in cand:
+            rho, n = _rho_de_pesos(w, window, umbral, pozos_rel, intervalos,
+                                   radio_m, min_puntos, filtro)
+            if rho is None or not np.isfinite(rho):
+                continue
+            if mejor_rho is None or rho > mejor_rho:
+                mejor_w, mejor_rho, mejor_n = w, rho, n
+        return mejor_w, mejor_rho, mejor_n
+
+    pesos, rho_ajuste, n_pares = _mejor(None)
+    if pesos is None:
+        return {"status": "sin_datos",
+                "motivo": ("Ninguna combinación de pesos produjo pares suficientes "
+                           "para calcular una correlación."),
+                "n_intervalos": len(intervalos), "radio_m": radio_m}
+
+    rho_conv, _ = _rho_de_pesos(
+        {k: v for k, v in conv.get("weights", {}).items() if k in params} or
+        {k: 1.0 / len(params) for k in params},
+        window, umbral, pozos_rel, intervalos, radio_m, min_puntos, None)
+
+    # Validación dejando-un-sondaje-fuera: se ajusta sin ese sondaje y se mide
+    # SOBRE él. Es la única forma de saber si los pesos describen la roca o
+    # memorizaron esta campaña de sondajes.
+    pliegues = []
+    for s in sondajes:
+        resto = set(sondajes) - {s}
+        w_fit, rho_fit, _ = _mejor(resto)
+        if w_fit is None:
+            pliegues.append({"sondaje": s, "rho": None,
+                             "motivo": "sin pares al dejar este sondaje fuera"})
+            continue
+        rho_out, n_out = _rho_de_pesos(w_fit, window, umbral, pozos_rel,
+                                       intervalos, radio_m, min_puntos, {s})
+        pliegues.append({"sondaje": s, "rho": rho_out, "n_pares": n_out,
+                         "rho_ajuste_pliegue": rho_fit,
+                         "pesos_pliegue": {k: round(v, 4) for k, v in w_fit.items()}})
+    validos = [p["rho"] for p in pliegues if p.get("rho") is not None
+               and np.isfinite(p["rho"])]
+    rho_val = float(np.mean(validos)) if validos else None
+
+    if rho_val is None:
+        veredicto = ("NO VALIDABLE: ningún pliegue dejando-un-sondaje-fuera produjo "
+                     "pares suficientes para medir. El ajuste existe pero no hay "
+                     "con qué comprobarlo.")
+    elif rho_val <= 0.1:
+        veredicto = (f"NO GENERALIZA: rho de ajuste {rho_ajuste:+.3f} contra rho de "
+                     f"VALIDACIÓN {rho_val:+.3f}. Los pesos describen los sondajes "
+                     "con los que se ajustaron y no transfieren al que se dejó "
+                     "fuera. Con esta cantidad de sondajes es el resultado "
+                     "esperable, y es un resultado: dice que hacen falta más "
+                     "sondajes con RQD, no otros pesos.")
+    elif rho_val < 0.4:
+        veredicto = (f"GENERALIZA DÉBILMENTE: ajuste {rho_ajuste:+.3f}, validación "
+                     f"{rho_val:+.3f}. Hay señal que sobrevive al sondaje dejado "
+                     "fuera, pero no alcanza para usar el DI calibrado como "
+                     "estimador de RQD.")
+    else:
+        veredicto = (f"GENERALIZA: ajuste {rho_ajuste:+.3f}, validación "
+                     f"{rho_val:+.3f}. Los pesos transfieren al sondaje que no "
+                     "participó del ajuste.")
+
+    fuente = (f"Calibrado contra el RQD de {len(sondajes)} sondaje(s) de {ACTIVE_SITE} "
+              f"({n_pares} par(es), radio {radio_m:g} m). Mismo procedimiento que "
+              "Fernández et al. 2023, que busca los pesos de su DI con varianza "
+              "móvil (movvar): esta variante es ese procedimiento aplicado a los "
+              "datos de este sitio, no una desviación del método. "
+              f"rho ajuste {rho_ajuste:+.3f} · rho validación "
+              + (f"{rho_val:+.3f}" if rho_val is not None else "no medible")
+              + f" (dejando-un-sondaje-fuera, {len(pliegues)} pliegues). "
+              f"Semilla {seed}, {len(cand)} combinaciones evaluadas.")
+
+    if registrar:
+        if nombre_variante in di_variantes:
+            delete_di_variant(nombre_variante)
+        create_di_variant(nombre_variante, weights=pesos, window=window,
+                          threshold=umbral, fuente=fuente,
+                          notas=veredicto)
+    return {
+        "status": "ok", "pesos": {k: round(v, 4) for k, v in pesos.items()},
+        "pesos_convencion": conv.get("weights"),
+        "rho_ajuste": round(rho_ajuste, 4) if rho_ajuste is not None else None,
+        "rho_convencion": round(rho_conv, 4) if rho_conv is not None else None,
+        "rho_validacion": round(rho_val, 4) if rho_val is not None else None,
+        "veredicto": veredicto,
+        "n_pares": n_pares, "n_intervalos": len(intervalos),
+        "n_sondajes": len(sondajes), "sondajes": sondajes,
+        "radio_m": radio_m, "min_puntos": min_puntos,
+        "window": window, "umbral": umbral,
+        "semilla": seed, "n_combinaciones": len(cand),
+        "variante": nombre_variante if registrar else None,
+        "validacion": {"unidad": "sondaje", "n_pliegues": len(pliegues),
+                       "pliegues": pliegues,
+                       "nota": ("Dos intervalos del mismo sondaje no son "
+                                "observaciones independientes: comparten roca, "
+                                "campaña y criterio de logueo. Por eso el pliegue "
+                                "es el sondaje y no el intervalo.")},
+        "encuadre": ("Fernández busca los pesos de su DI con movvar; calibrar es "
+                     "su método, no una desviación. La variante de convención "
+                     "queda intacta para poder comparar."),
+    }
 
 
 def export_rqd_mwd_csv(rep: Optional[Dict] = None) -> str:
