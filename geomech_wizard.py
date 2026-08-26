@@ -4776,17 +4776,29 @@ def pp_response_curves(solo_roca_intacta: bool = True) -> Dict:
     """
     por_dom: Dict[str, list] = {}
     todos = []
+    # Misma exclusión que el análisis de coherencia SE↔UCS: un dominio donde
+    # predomina una ESTRUCTURA ("Bht::PCS_1043:FM1") no es roca intacta, y su
+    # curva de respuesta describe el comportamiento del equipo dentro de una
+    # falla, no dentro de una litología. Se aparta y se declara.
+    apartados_estructura = set()
     for w in wells.values():
         for p in w.points:
             if not p.entrenable or not p.dominio: continue
             if getattr(p, "ambiguo", False): continue
+            dom_reg = domains.get(p.dominio) or {}
+            if solo_roca_intacta and (dom_reg.get("estructura_id") or "::" in p.dominio):
+                apartados_estructura.add(p.dominio); continue
             if solo_roca_intacta and p.di is not None and p.di > di_threshold:
                 continue
             por_dom.setdefault(p.lito or p.dominio, []).append(p)
             todos.append(p)
     if not por_dom:
         return {"status": "sin_datos",
-                "motivo": "No hay puntos con dominio asignado para construir curvas.",
+                "motivo": ("No hay puntos con dominio asignado para construir curvas."
+                           + (f" Se apartaron {len(apartados_estructura)} dominio(s) "
+                              "con estructura predominante, que no son roca intacta."
+                              if apartados_estructura else "")),
+                "apartados_estructura": sorted(apartados_estructura),
                 "estratificado_por_dominio": True}
     dominios = {}
     for dom, pts in por_dom.items():
@@ -4814,17 +4826,38 @@ def pp_response_curves(solo_roca_intacta: bool = True) -> Dict:
     curva_agg = _curva_pp(todos)
     pend_agg = _pendiente([c["pp"] for c in curva_agg],
                           [c["rop_mediana"] for c in curva_agg]) if curva_agg else None
+    # Si el agregado se invierte respecto de los dominios se dice; y si NO se
+    # invierte, también. Que la trampa no se materialice con esta mezcla de
+    # dominios no vuelve legítimo el agregado: sigue sin poder usarse para
+    # decidir PP, porque el signo depende de qué litologías pesen en la
+    # muestra, no de la física del equipo.
+    pend_dom = [d["pendiente_rop"] for d in dominios.values()
+                if d["pendiente_rop"] is not None]
+    invertido = (pend_agg is not None and pend_dom
+                 and all(p > 0 for p in pend_dom) and pend_agg < 0)
+    if pend_agg is None or not pend_dom:
+        medido = "No hay pendientes suficientes para comparar el agregado con los dominios."
+    elif invertido:
+        medido = (f"MEDIDO: dentro de cada dominio la pendiente es positiva y el "
+                  f"agregado sale {pend_agg:+.6f} — la relación aparece INVERTIDA, "
+                  "que es exactamente la trampa.")
+    else:
+        medido = (f"MEDIDO: con esta mezcla de dominios el agregado sale "
+                  f"{pend_agg:+.6f} y NO se invierte. Es una coincidencia de qué "
+                  "litologías pesan en la muestra, no una validación del agregado.")
     agregado = {
         "curva": curva_agg, "pendiente_rop": round(pend_agg, 6) if pend_agg is not None else None,
+        "invertido": bool(invertido),
         "advertencia": (
-            "NO USAR para decidir PP. Este agregado mezcla dominios, y como el "
-            "operador sube PP en roca dura, la relación aparece INVERTIDA: parece "
-            "que subir PP empeora el avance cuando dentro de cada dominio lo "
-            "mejora. Es la trampa que esta sesión existe para evitar; se calcula "
-            "solo para poder mostrarla al lado de las curvas por dominio."),
+            "NO USAR para decidir PP. Este agregado mezcla dominios y el operador "
+            "sube PP en roca dura, así que su pendiente mide la mezcla de "
+            "litologías de la muestra, no la respuesta del equipo. Es la trampa "
+            "que esta sesión existe para evitar; se calcula solo para poder "
+            "mostrarla al lado de las curvas por dominio. " + medido),
     }
     return {"status": "ok", "estratificado_por_dominio": True,
             "dominios": dominios, "agregado_todos_los_dominios": agregado,
+            "apartados_estructura": sorted(apartados_estructura),
             "solo_roca_intacta": solo_roca_intacta,
             "rango_pp_bar": [PP_MIN_OPERACIONAL, PP_MAX_OPERACIONAL],
             "advertencia_confundimiento": (
@@ -4953,6 +4986,866 @@ def export_pp_curves_csv(rep: Optional[Dict] = None) -> str:
         "covariable de contexto. Son modelos distintos.",
         f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
     return cab + "\n" + pd.DataFrame(filas).to_csv(index=False)
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  SESIÓN 8 — DISCRIMINADOR FRACTURA / CONTACTO  ·  RQD_MWD               ║
+# ║                                                                          ║
+# ║  NO es un DI nuevo. El DI ya dice DÓNDE hay una discontinuidad; esto    ║
+# ║  clasifica QUÉ es cada pico que el DI encontró. El DI sigue siendo la   ║
+# ║  variable de trabajo del resto del pipeline y aquí no se toca.          ║
+# ║                                                                          ║
+# ║  Firmas físicas, definidas por el autor:                                ║
+# ║    · ZONA FRACTURADA: el dámper CAE, la percusión cae, la velocidad     ║
+# ║      aumenta. La broca entra en vacío — no hay macizo que amortiguar    ║
+# ║      ni contra el cual percutir, y el avance se dispara.                ║
+# ║    · CONTACTO: el dámper NO CAE, la percusión se DESESTABILIZA (sube o  ║
+# ║      baja, con varianza no esperada), la rotación varía fuerte, la      ║
+# ║      velocidad pierde su patrón. Hay roca a ambos lados: lo que cambia  ║
+# ║      es cuál.                                                            ║
+# ║                                                                          ║
+# ║  Lo que no cumple ninguna de las dos firmas queda INDETERMINADO. No hay ║
+# ║  default silencioso.                                                     ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+# Media ventana del evento: el tramo alrededor del pico donde se mide la
+# firma. 0,30 m ≈ 15 registros al paso de 2 cm del MWD real.
+DISC_VENTANA_M = 0.30
+# Tramo de referencia inmediatamente ANTES del evento, contra el cual se mide
+# si algo "cae" o "se desestabiliza". No es un promedio del pozo entero: la
+# roca cambia a lo largo del pozo y una referencia global diluiría la firma.
+DISC_BASE_M = 1.00
+# Caída relativa que cuenta como "cae". Por debajo de esto la variable se
+# considera estable — es el mismo umbral que decide que el dámper NO cae.
+DISC_CAIDA_REL = 0.10
+# Subida relativa de velocidad que cuenta como "aumenta".
+DISC_SUBIDA_VEL_REL = 0.10
+# "Varianza no esperada": el coeficiente de variación dentro del evento supera
+# este factor por el de la referencia.
+DISC_VAR_FACTOR = 1.5
+# Radio de apareo pico↔etiqueta de sondaje. Los sondajes de exploración y los
+# tiros de producción son perforaciones distintas: la etiqueta nunca cae en el
+# mismo punto, y más allá de este radio la correspondencia deja de ser creíble.
+DISC_RADIO_ETIQUETA_M = 3.0
+
+DISC_CLASES = ("fractura", "contacto", "indeterminado")
+
+
+def _tramo_stats(pts, campo: str) -> Optional[Tuple[float, float]]:
+    """Media y coeficiente de variación de `campo` sobre una lista de puntos."""
+    v = np.array([getattr(p, campo) for p in pts], dtype=np.float64)
+    v = v[np.isfinite(v)]
+    if v.size < 3:
+        return None
+    m = float(v.mean())
+    if abs(m) < 1e-9:
+        return None
+    return m, float(v.std() / abs(m))
+
+
+def peak_signature(well, largo: float, ventana_m: float = DISC_VENTANA_M,
+                   base_m: float = DISC_BASE_M) -> Optional[Dict]:
+    """
+    (8.1) Firma física del evento centrado en `largo`: cuánto cambia cada
+    variable dentro del evento respecto del tramo de roca inmediatamente
+    anterior, y cuánto se desestabiliza.
+
+    Devuelve None si el evento o su referencia no tienen puntos suficientes
+    —cerca del collar, típicamente—. None es "no evaluable", no "sin firma":
+    el llamador lo distingue y lo declara.
+    """
+    pts = sorted(well.points, key=lambda p: p.largo)
+    ev = [p for p in pts if abs(p.largo - largo) <= ventana_m]
+    base = [p for p in pts
+            if largo - ventana_m - base_m <= p.largo < largo - ventana_m]
+    if len(ev) < 3 or len(base) < 3:
+        return None
+    firma = {"n_evento": len(ev), "n_base": len(base),
+             "ventana_m": ventana_m, "base_m": base_m}
+    for var, campo in (("pd", "pd"), ("pp", "pp"), ("pr", "pr"), ("vel", "vel")):
+        se_ev = _tramo_stats(ev, campo)
+        se_ba = _tramo_stats(base, campo)
+        if se_ev is None or se_ba is None:
+            return None
+        m_ev, cv_ev = se_ev
+        m_ba, cv_ba = se_ba
+        firma[f"delta_{var}_rel"] = round((m_ev - m_ba) / abs(m_ba), 4)
+        firma[f"cv_{var}_rel"] = round(cv_ev / cv_ba, 4) if cv_ba > 1e-9 else None
+    return firma
+
+
+def classify_peak_signature(firma: Optional[Dict]) -> Dict:
+    """
+    (8.2) Aplica las dos firmas físicas. Cada condición cumplida deja su
+    evidencia en palabras: la clase nunca sale sin el porqué.
+
+    Cuando las dos firmas empatan, o cuando ninguna reúne evidencia
+    suficiente, el resultado es "indeterminado" con el motivo. Un pico sin
+    firma clara es información — no un caso a rellenar con la clase más
+    frecuente.
+    """
+    if firma is None:
+        return {"clase": "indeterminado", "evidencia": [],
+                "motivo": ("Evento no evaluable: no hay puntos suficientes en el "
+                           "evento o en su tramo de referencia (típico cerca del "
+                           "collar)."),
+                "score_fractura": None, "score_contacto": None}
+
+    d_pd = firma["delta_pd_rel"]; d_pp = firma["delta_pp_rel"]
+    d_vel = firma["delta_vel_rel"]
+    cv_pp = firma.get("cv_pp_rel"); cv_pr = firma.get("cv_pr_rel")
+    cv_vel = firma.get("cv_vel_rel")
+
+    ev_f, ev_c = [], []
+    if d_pd <= -DISC_CAIDA_REL:
+        ev_f.append(f"el dámper cae {abs(d_pd)*100:.0f}%")
+    if d_pp <= -DISC_CAIDA_REL:
+        ev_f.append(f"la percusión cae {abs(d_pp)*100:.0f}%")
+    if d_vel >= DISC_SUBIDA_VEL_REL:
+        ev_f.append(f"la velocidad aumenta {d_vel*100:.0f}%")
+
+    if abs(d_pd) < DISC_CAIDA_REL:
+        ev_c.append(f"el dámper no cae (Δ {d_pd*100:+.0f}%)")
+    if cv_pp is not None and cv_pp > DISC_VAR_FACTOR:
+        ev_c.append(f"la percusión se desestabiliza (CV ×{cv_pp:.1f})")
+    if cv_pr is not None and cv_pr > DISC_VAR_FACTOR:
+        ev_c.append(f"la rotación varía fuerte (CV ×{cv_pr:.1f})")
+    if cv_vel is not None and cv_vel > DISC_VAR_FACTOR:
+        ev_c.append(f"la velocidad pierde su patrón (CV ×{cv_vel:.1f})")
+
+    sf, sc = len(ev_f), len(ev_c)
+    # La caída del dámper es la condición que separa las dos firmas: sin ella
+    # no hay fractura, y con ella el "no cae" del contacto es imposible.
+    fractura_viable = d_pd <= -DISC_CAIDA_REL and sf >= 2
+    contacto_viable = abs(d_pd) < DISC_CAIDA_REL and sc >= 3
+
+    if fractura_viable and not contacto_viable:
+        clase, motivo = "fractura", None
+    elif contacto_viable and not fractura_viable:
+        clase, motivo = "contacto", None
+    elif fractura_viable and contacto_viable:
+        clase = "indeterminado"
+        motivo = ("Las dos firmas reúnen evidencia a la vez, que físicamente no "
+                  "puede pasar: revisar el evento antes de usarlo.")
+    else:
+        faltan = []
+        if d_pd > -DISC_CAIDA_REL:
+            faltan.append("el dámper no cae lo suficiente para ser fractura")
+        if abs(d_pd) >= DISC_CAIDA_REL:
+            faltan.append("el dámper se mueve demasiado para ser contacto")
+        if sf < 2 and d_pd <= -DISC_CAIDA_REL:
+            faltan.append("la firma de fractura solo reúne una condición")
+        if sc < 3 and abs(d_pd) < DISC_CAIDA_REL:
+            faltan.append(f"la firma de contacto solo reúne {sc} de 4 condiciones")
+        clase = "indeterminado"
+        motivo = "Sin firma clara: " + "; ".join(faltan) + "."
+    return {"clase": clase, "evidencia": ev_f if clase == "fractura" else
+            ev_c if clase == "contacto" else (ev_f + ev_c),
+            "motivo": motivo, "score_fractura": sf, "score_contacto": sc}
+
+
+def discriminate_peaks(well, min_gap_m: float = 0.5) -> List[Dict]:
+    """
+    (8.3) Clasifica cada pico DI del pozo. Reutiliza di_peaks() tal cual: los
+    picos son los que el DI ya definió con la ventana y el umbral de la
+    convención — esta función no los redefine.
+    """
+    salida = []
+    for largo, coord, di_max in di_peaks(well, min_gap_m=min_gap_m):
+        firma = peak_signature(well, largo)
+        cls = classify_peak_signature(firma)
+        salida.append({
+            "pozo": well.well_name, "caseron": getattr(well, "caseron", None),
+            "largo": round(float(largo), 3), "di": round(float(di_max), 3),
+            "este": float(coord[0]), "norte": float(coord[1]), "cota": float(coord[2]),
+            "clase": cls["clase"], "evidencia": cls["evidencia"],
+            "motivo": cls["motivo"], "firma": firma,
+            "score_fractura": cls["score_fractura"],
+            "score_contacto": cls["score_contacto"],
+        })
+    return salida
+
+
+def discriminate_all(min_gap_m: float = 0.5) -> Dict:
+    """(8.4) Discriminación sobre todos los pozos cargados, con sus conteos."""
+    picos, por_pozo = [], {}
+    for wn, w in wells.items():
+        pk = discriminate_peaks(w, min_gap_m=min_gap_m)
+        if not pk:
+            continue
+        picos.extend(pk)
+        c = {k: 0 for k in DISC_CLASES}
+        for p in pk:
+            c[p["clase"]] += 1
+        por_pozo[wn] = c
+    if not picos:
+        return {"status": "sin_datos",
+                "motivo": ("Ningún pozo tiene picos de DI sobre el umbral "
+                           f"{di_threshold:g}: no hay eventos que clasificar."),
+                "conteo": {k: 0 for k in DISC_CLASES}}
+    conteo = {k: 0 for k in DISC_CLASES}
+    for p in picos:
+        conteo[p["clase"]] += 1
+    return {"status": "ok", "picos": picos, "por_pozo": por_pozo,
+            "conteo": conteo, "n_picos": len(picos),
+            "config": {"ventana_m": DISC_VENTANA_M, "base_m": DISC_BASE_M,
+                       "caida_rel": DISC_CAIDA_REL, "var_factor": DISC_VAR_FACTOR,
+                       "di_umbral": di_threshold}}
+
+
+# ─── 8.5 · ETIQUETAS DE CONTRASTE DESDE LOS SONDAJES ──────────────────────────
+# Fractura ← estructuras LOGUEADAS por el geólogo en la tabla de estructuras.
+# Contacto ← contactos DERIVADOS de los límites de la tabla de litología, que
+# genera P2 (derive_contacts) y marca con tipo="contacto_derivado". La
+# distinción de procedencia se mantiene: una es observación directa y la otra
+# es una derivación, y no pesan igual.
+
+def _drillhole_discontinuities() -> List[Dict]:
+    """Discontinuidades de sondaje con su punto UTM, ya etiquetadas por clase."""
+    out = []
+    for hid, dh in drillholes.items():
+        if not dh.trace:
+            continue
+        for s in dh.structures:
+            d = s.get("from")
+            if d is None:
+                continue
+            tipo = s.get("tipo")
+            clase = "contacto" if tipo == "contacto_derivado" else "fractura"
+            e, n, z = trace_interp(dh.trace, float(d))
+            if not np.isfinite(e):
+                continue
+            out.append({"sondaje": hid, "prof": float(d), "clase": clase,
+                        "procedencia": ("contacto derivado de la tabla de litología"
+                                        if clase == "contacto" else
+                                        "estructura logueada por el geólogo"),
+                        "codigo": s.get("codigo"),
+                        "pt": np.array([e, n, z], dtype=np.float64)})
+    return out
+
+
+def label_peaks_from_drillholes(radio_m: float = DISC_RADIO_ETIQUETA_M,
+                                min_gap_m: float = 0.5) -> Dict:
+    """
+    (8.5) Aparea cada pico clasificado con la discontinuidad de sondaje más
+    cercana dentro de `radio_m`. Los picos sin etiqueta cercana NO se
+    descartan en silencio: se cuentan y se reportan como cobertura.
+    """
+    etiquetas = _drillhole_discontinuities()
+    disc = discriminate_all(min_gap_m=min_gap_m)
+    if disc["status"] != "ok":
+        return {"status": "sin_picos", "motivo": disc.get("motivo"),
+                "n_etiquetas": len(etiquetas)}
+    if not etiquetas:
+        return {"status": "sin_etiquetas",
+                "motivo": ("No hay discontinuidades de sondaje cargadas: sin "
+                           "estructuras logueadas ni contactos derivados no hay "
+                           "contra qué contrastar."),
+                "n_picos": disc["n_picos"], "n_etiquetas": 0}
+    P = np.array([e["pt"] for e in etiquetas])
+    pares, sin_etq = [], 0
+    for pk in disc["picos"]:
+        q = np.array([pk["este"], pk["norte"], pk["cota"]], dtype=np.float64)
+        d = np.linalg.norm(P - q, axis=1)
+        i = int(np.argmin(d))
+        if d[i] > radio_m:
+            sin_etq += 1
+            continue
+        pares.append({**{k: pk[k] for k in ("pozo", "largo", "di", "clase",
+                                            "evidencia", "motivo")},
+                      "etiqueta": etiquetas[i]["clase"],
+                      "sondaje": etiquetas[i]["sondaje"],
+                      "procedencia_etiqueta": etiquetas[i]["procedencia"],
+                      "distancia_m": round(float(d[i]), 3)})
+    if not pares:
+        return {"status": "sin_etiquetas",
+                "motivo": (f"Ninguno de los {disc['n_picos']} pico(s) tiene una "
+                           f"discontinuidad de sondaje a menos de {radio_m:g} m. "
+                           "Los sondajes de exploración y los tiros de producción "
+                           "no están en el mismo lugar: sin cercanía la "
+                           "correspondencia no es creíble."),
+                "n_picos": disc["n_picos"], "n_etiquetas": len(etiquetas),
+                "picos_sin_etiqueta": sin_etq}
+    return {"status": "ok", "pares": pares, "radio_m": radio_m,
+            "n_picos": disc["n_picos"], "n_etiquetas": len(etiquetas),
+            "picos_sin_etiqueta": sin_etq, "conteo_clases": disc["conteo"]}
+
+
+def discriminator_report(radio_m: float = DISC_RADIO_ETIQUETA_M,
+                         min_gap_m: float = 0.5) -> Dict:
+    """
+    (8.6) Matriz de confusión del discriminador contra las etiquetas de
+    sondaje, con la cobertura declarada: cuántos picos quedaron sin etiqueta y
+    con qué radio se apareó. Sin pares no hay matriz — se declara y punto.
+    """
+    lab = label_peaks_from_drillholes(radio_m=radio_m, min_gap_m=min_gap_m)
+    if lab["status"] != "ok":
+        return {"status": lab["status"], "motivo": lab.get("motivo"),
+                "matriz": None, "radio_m": radio_m,
+                "cobertura": {"n_picos": lab.get("n_picos"),
+                              "n_etiquetas": lab.get("n_etiquetas"),
+                              "picos_sin_etiqueta": lab.get("picos_sin_etiqueta")}}
+    pares = lab["pares"]
+    etq = ("fractura", "contacto")
+    matriz = {e: {c: 0 for c in DISC_CLASES} for e in etq}
+    for p in pares:
+        if p["etiqueta"] in matriz:
+            matriz[p["etiqueta"]][p["clase"]] += 1
+    aciertos = sum(matriz[e][e] for e in etq)
+    evaluables = sum(matriz[e][c] for e in etq for c in ("fractura", "contacto"))
+    indet = sum(matriz[e]["indeterminado"] for e in etq)
+    por_clase = {}
+    for e in etq:
+        n_e = sum(matriz[e].values())
+        por_clase[e] = {"n": n_e,
+                        "acierto": round(matriz[e][e] / n_e, 4) if n_e else None,
+                        "indeterminados": matriz[e]["indeterminado"]}
+    # Veredicto contra el azar. Con dos clases, acertar la mitad no es acertar:
+    # es el resultado de tirar una moneda, y decirlo es parte del reporte.
+    tasa = aciertos / evaluables if evaluables else None
+    base = 0.5   # dos clases: elegir al azar acierta la mitad
+    if evaluables < 30:
+        veredicto = (f"NO CONCLUYENTE: solo {evaluables} evento(s) con clase "
+                     "definida y etiqueta cercana. Sin muestra no hay veredicto.")
+    elif tasa is not None and tasa <= base + 0.05:
+        veredicto = (f"NO DISCRIMINA: {tasa*100:.1f}% de acierto sobre "
+                     f"{evaluables} evento(s), contra el {base*100:.0f}% que da "
+                     "elegir al azar entre dos clases. Las firmas físicas, tal "
+                     "como están definidas, no separan fractura de contacto en "
+                     "estos datos.")
+    elif tasa is not None and tasa < 0.70:
+        veredicto = (f"DISCRIMINA DÉBILMENTE: {tasa*100:.1f}% sobre {evaluables} "
+                     f"evento(s), por encima del {base*100:.0f}% del azar pero "
+                     "lejos de un criterio operacional.")
+    else:
+        veredicto = (f"DISCRIMINA: {tasa*100:.1f}% de acierto sobre {evaluables} "
+                     "evento(s) con clase definida.")
+    interp = (
+        f"{aciertos} de {evaluables} evento(s) con clase definida coinciden con la "
+        f"etiqueta de sondaje; {indet} quedaron indeterminados y no cuentan ni a "
+        f"favor ni en contra. {veredicto} "
+        + (f"{lab['picos_sin_etiqueta']} pico(s) del MWD no tienen ninguna "
+           f"discontinuidad de sondaje a menos de {radio_m:g} m: el contraste "
+           "mide solo la vecindad de los sondajes, no el caserón entero."
+           if lab["picos_sin_etiqueta"] else
+           "Todos los picos del MWD encontraron etiqueta cercana.")
+        + (f" ATENCIÓN: con radio {radio_m:g} m la etiqueta puede provenir de un "
+           "volumen de roca distinto del que perforó el tiro; ampliar el radio "
+           "sube el número de pares a costa de la credibilidad de cada uno."
+           if radio_m > 5.0 else ""))
+    return {"status": "ok", "matriz": matriz, "por_clase": por_clase,
+            "aciertos": aciertos, "n_evaluables": evaluables,
+            "tasa_acierto": round(tasa, 4) if tasa is not None else None,
+            "tasa_azar": base, "veredicto": veredicto,
+            "n_indeterminados": indet, "n_pares": len(pares),
+            "radio_m": radio_m, "interpretacion": interp,
+            "cobertura": {"n_picos": lab["n_picos"], "n_etiquetas": lab["n_etiquetas"],
+                          "picos_sin_etiqueta": lab["picos_sin_etiqueta"]},
+            "procedencias": sorted({p["procedencia_etiqueta"] for p in pares})}
+
+
+def export_discriminator_csv(rep: Optional[Dict] = None,
+                             radio_m: float = DISC_RADIO_ETIQUETA_M) -> str:
+    """(8.7) Picos clasificados con su firma, como CSV."""
+    disc = discriminate_all()
+    if disc["status"] != "ok":
+        return f"# {disc.get('motivo', 'sin datos')}\n"
+    filas = []
+    for p in disc["picos"]:
+        f = p["firma"] or {}
+        filas.append({"pozo": p["pozo"], "caseron": p["caseron"], "largo_m": p["largo"],
+                      "este": p["este"], "norte": p["norte"], "cota": p["cota"],
+                      "di": p["di"], "clase": p["clase"],
+                      "delta_pd_rel": f.get("delta_pd_rel"),
+                      "delta_pp_rel": f.get("delta_pp_rel"),
+                      "delta_vel_rel": f.get("delta_vel_rel"),
+                      "cv_pp_rel": f.get("cv_pp_rel"), "cv_pr_rel": f.get("cv_pr_rel"),
+                      "cv_vel_rel": f.get("cv_vel_rel"),
+                      "evidencia": " · ".join(p["evidencia"]),
+                      "motivo": p["motivo"] or ""})
+    rep = rep if rep is not None else discriminator_report(radio_m=radio_m)
+    cab = ["Discriminador fractura/contacto sobre los picos del DI "
+           f"(ventana {di_config['window']}, umbral {di_threshold:g}).",
+           "Fractura: el dámper cae, la percusión cae, la velocidad aumenta.",
+           "Contacto: el dámper NO cae, la percusión se desestabiliza, la rotación "
+           "varía fuerte, la velocidad pierde su patrón.",
+           "Sin firma clara el evento queda INDETERMINADO; no se le asigna clase.",
+           f"conteo: {disc['conteo']}"]
+    if rep.get("status") == "ok":
+        cab.append(f"contraste contra sondajes: {rep['interpretacion']}")
+    else:
+        cab.append(f"contraste contra sondajes: {rep.get('motivo')}")
+    cab.append(f"generado: {time.strftime('%Y-%m-%d %H:%M')}")
+    return "\n".join("# " + l for l in cab) + "\n" + pd.DataFrame(filas).to_csv(index=False)
+
+
+# ─── 8.8 · RQD_MWD POR DEFINICIÓN DE DEERE ────────────────────────────────────
+# Porcentaje del metraje en tramos continuos de 10 cm o más SIN discontinuidad.
+# Es la misma definición del RQD de testigo, aplicada al perfil de DI en vez de
+# a la caja de sondaje: donde el DI supera el umbral hay discontinuidad, y el
+# tramo continuo entre dos de ellas solo suma si alcanza los 10 cm.
+#
+# Es un indicador AGREGADO por pozo y por caserón, orientado a tronadura. NO
+# reemplaza al DI: el DI sigue siendo la variable de trabajo punto a punto en
+# todo el resto del pipeline.
+
+RQD_TRAMO_MIN_M = 0.10
+
+
+def rqd_mwd_well(well) -> Optional[Dict]:
+    """
+    (8.8) RQD_MWD de un pozo. Devuelve None si el pozo no tiene DI calculado o
+    no tiene largo útil — None es "no evaluable", y el agregado lo declara en
+    vez de contarlo como cero.
+    """
+    pts = sorted([p for p in well.points
+                  if p.entrenable and p.di is not None and np.isfinite(p.di)],
+                 key=lambda p: p.largo)
+    if len(pts) < 2:
+        return None
+    largo_total = pts[-1].largo - pts[0].largo
+    if largo_total <= 0:
+        return None
+    # Un tramo continuo va del primer al último punto SIN discontinuidad de la
+    # racha. Un punto aislado entre dos discontinuidades mide cero y por
+    # definición de Deere no suma.
+    tramos, ini, fin = [], None, None
+    for p in pts:
+        if p.di > di_threshold:
+            if ini is not None:
+                tramos.append(fin - ini)
+                ini = fin = None
+        else:
+            if ini is None:
+                ini = p.largo
+            fin = p.largo
+    if ini is not None:
+        tramos.append(fin - ini)
+    buenos = [t for t in tramos if t >= RQD_TRAMO_MIN_M]
+    rqd = 100.0 * sum(buenos) / largo_total
+    return {"pozo": well.well_name, "caseron": getattr(well, "caseron", None),
+            "rqd_mwd": round(min(rqd, 100.0), 2),
+            "largo_m": round(largo_total, 3),
+            "n_tramos": len(tramos), "n_tramos_validos": len(buenos),
+            "n_tramos_descartados": len(tramos) - len(buenos),
+            "metraje_valido_m": round(sum(buenos), 3),
+            "tramo_min_m": RQD_TRAMO_MIN_M}
+
+
+def rqd_mwd_report() -> Dict:
+    """
+    (8.9) RQD_MWD por pozo y agregado por caserón. El agregado del caserón se
+    pondera por metraje, no por pozo: un tiro corto no pesa igual que uno de
+    35 m.
+    """
+    pozos, no_evaluables = [], []
+    for wn, w in wells.items():
+        r = rqd_mwd_well(w)
+        if r is None:
+            no_evaluables.append(wn)
+        else:
+            pozos.append(r)
+    if not pozos:
+        return {"status": "sin_datos",
+                "motivo": ("Ningún pozo tiene DI calculado sobre un largo útil: "
+                           "correr compute_di() antes."),
+                "pozos": [], "caserones": {}, "no_evaluables": no_evaluables}
+    caserones: Dict[str, Dict] = {}
+    for r in pozos:
+        c = r["caseron"] or "—"
+        d = caserones.setdefault(c, {"n_pozos": 0, "largo_m": 0.0, "valido_m": 0.0})
+        d["n_pozos"] += 1
+        d["largo_m"] += r["largo_m"]
+        d["valido_m"] += r["metraje_valido_m"]
+    for c, d in caserones.items():
+        d["rqd_mwd"] = round(100.0 * d["valido_m"] / d["largo_m"], 2) if d["largo_m"] else None
+        d["largo_m"] = round(d["largo_m"], 1)
+        d["valido_m"] = round(d["valido_m"], 1)
+    return {"status": "ok", "pozos": pozos, "caserones": caserones,
+            "no_evaluables": no_evaluables,
+            "tramo_min_m": RQD_TRAMO_MIN_M,
+            "definicion": ("RQD de Deere: porcentaje del metraje en tramos "
+                           f"continuos de {RQD_TRAMO_MIN_M*100:.0f} cm o más sin "
+                           "discontinuidad, con la discontinuidad detectada por "
+                           f"DI > {di_threshold:g}."),
+            "uso": ("Indicador AGREGADO por pozo y por caserón, orientado a "
+                    "tronadura. No reemplaza al DI, que sigue siendo la variable "
+                    "de trabajo punto a punto en el resto del pipeline.")}
+
+
+def export_rqd_mwd_csv(rep: Optional[Dict] = None) -> str:
+    """(8.10) RQD_MWD por pozo y por caserón como CSV."""
+    rep = rep if rep is not None else rqd_mwd_report()
+    if rep.get("status") != "ok":
+        return f"# {rep.get('motivo', 'sin datos')}\n"
+    filas = [{"nivel": "pozo", "clave": r["pozo"], "caseron": r["caseron"],
+              "rqd_mwd": r["rqd_mwd"], "largo_m": r["largo_m"],
+              "n_tramos_validos": r["n_tramos_validos"],
+              "n_tramos_descartados": r["n_tramos_descartados"]}
+             for r in rep["pozos"]]
+    for c, d in rep["caserones"].items():
+        filas.append({"nivel": "caseron", "clave": c, "caseron": c,
+                      "rqd_mwd": d["rqd_mwd"], "largo_m": d["largo_m"],
+                      "n_tramos_validos": None, "n_tramos_descartados": None})
+    cab = "\n".join("# " + l for l in [
+        rep["definicion"], rep["uso"],
+        f"pozos no evaluables: {len(rep['no_evaluables'])}",
+        f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
+    return cab + "\n" + pd.DataFrame(filas).to_csv(index=False)
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  SESIÓN 9 — MODELO DE BLOQUES POR IDW ANISOTRÓPICO                      ║
+# ║                                                                          ║
+# ║  Es el entregable central del alcance que fijó el autor: una malla de   ║
+# ║  puntos con UCS aproximadamente cierto y un valor de discontinuidad     ║
+# ║  por sector. Lo demás del pipeline existe para llegar acá.              ║
+# ║                                                                          ║
+# ║  MÁSCARA DE SOPORTE. Un bloque sin dato cercano queda VACÍO. Nunca      ║
+# ║  interpolado desde lejos: un modelo que rellena todo miente justo en    ║
+# ║  los bordes, que es donde se planifica la tronadura.                    ║
+# ║                                                                          ║
+# ║  ANISOTROPÍA. El yacimiento es estratiforme: la litología continúa      ║
+# ║  lateralmente y cambia con la cota. La búsqueda es más larga en         ║
+# ║  horizontal que en vertical. Es la misma física por la que la cota está ║
+# ║  prohibida como predictora — acá entra como GEOMETRÍA de interpolación, ║
+# ║  no como variable del modelo.                                           ║
+# ║                                                                          ║
+# ║  CONFIANZA. Incorpora la calidad de la etiqueta reutilizando            ║
+# ║  pi_factor() del registro de atributos: un dominio anclado en un ensayo ║
+# ║  del sitio y otro anclado en literatura NO pueden salir con la misma    ║
+# ║  confianza, y el registro ya codifica esa jerarquía.                    ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+# Bloque de 2,5 m: coherente con el burden y el espaciamiento de la operación.
+# No es una resolución elegida por comodidad numérica — un bloque más fino que
+# la malla de perforación promete un detalle que el dato no tiene.
+BLOQUE_M = 2.5
+IDW_POTENCIA = 2.0
+# Radios de búsqueda. El horizontal cubre tres bloques; el vertical, uno. La
+# asimetría ES el modelo geológico: estratiforme.
+IDW_RADIO_H_M = 7.5
+IDW_RADIO_V_M = 2.5
+# Factores de la métrica anisotrópica (X=Este, Y=Norte, Z=Cota). Un metro de
+# separación vertical cuenta como tres metros de separación horizontal.
+IDW_ANISOTROPIA = (1.0, 1.0, 3.0)
+IDW_MIN_MUESTRAS = 3
+# Para no interpolar desde un solo pozo cuando hay muchos puntos alineados: el
+# soporte se cuenta por POZOS distintos, no por registros MWD.
+IDW_MIN_POZOS = 1
+
+BLOQUE_LAYER_PREFIX = "MB_UCS_"
+
+# Bandas de resistencia de la clasificación ISRM (Brown 1981, tabla de
+# resistencia de la roca intacta). Criterio TRAZABLE — nunca percentiles de la
+# propia muestra, que es exactamente lo que el proyecto prohíbe. R0 y R1 se
+# agrupan porque por debajo de 5 MPa el MWD de un equipo de producción no
+# distingue: el pozo se derrumba antes.
+BANDAS_RESISTENCIA = (
+    (0.0, 5.0, "R0_R1_muy_baja"),
+    (5.0, 25.0, "R2_baja"),
+    (25.0, 50.0, "R3_media"),
+    (50.0, 100.0, "R4_alta"),
+    (100.0, 250.0, "R5_muy_alta"),
+    (250.0, 450.0, "R6_extrema"),
+)
+BANDAS_RESISTENCIA_FUENTE = ("Clasificación ISRM de resistencia de la roca "
+                             "intacta (Brown, 1981). Criterio trazable, no "
+                             "percentiles de la muestra.")
+
+
+def banda_resistencia(ucs: Optional[float]) -> Optional[str]:
+    """Banda ISRM de un UCS. None fuera de los límites físicos: no se inventa."""
+    if ucs is None or not np.isfinite(ucs): return None
+    lo_f, hi_f = UCS_CONFIG["physical_min"], UCS_CONFIG["physical_max"]
+    if ucs < lo_f or ucs > hi_f: return None
+    for lo, hi, nombre in BANDAS_RESISTENCIA:
+        if lo <= ucs < hi or (hi >= hi_f and ucs == hi):
+            return nombre
+    return None
+
+
+def _calidad_factor(lito: Optional[str]) -> Tuple[float, Optional[int]]:
+    """
+    Factor de confianza por calidad del ancla, en (0, 1]. Es el inverso del
+    pi_factor del atributo: donde el intervalo de predicción se ensancha, la
+    confianza del bloque baja en la misma proporción. Sin atributo registrado
+    el factor es el peor posible, no el mejor: un dominio desconocido no puede
+    heredar la confianza de uno con ensayo.
+    """
+    a = attr_registry.get(lito or "")
+    if a is None:
+        return 1.0 / max(QUALITY_PI_FACTOR[4], 1.0), None
+    f = a.pi_factor()
+    if f is None:
+        return 1.0 / max(QUALITY_PI_FACTOR[4], 1.0), a.calidad
+    return 1.0 / max(f, 1.0), a.calidad
+
+
+def _muestras_bloques(fuente: str = "ucs_matriz") -> Dict:
+    """
+    Muestras para interpolar: coordenadas UTM, UCS predicho, DI y litología.
+    `fuente` elige entre "ucs_matriz" (UCS de la matriz rocosa, sin
+    discontinuidades) y "ucs_ml" (predicción cruda). Los puntos sin UCS no se
+    rellenan con nada: quedan fuera y se cuentan.
+    """
+    P, ucs, di, lito, pozo = [], [], [], [], []
+    sin_ucs = 0
+    for wn, w in wells.items():
+        for p in w.points:
+            if not p.entrenable: continue
+            v = getattr(p, fuente, None)
+            if v is None: v = p.ucs_ml
+            if v is None or not np.isfinite(v):
+                sin_ucs += 1; continue
+            if v < UCS_CONFIG["physical_min"] or v > UCS_CONFIG["physical_max"]:
+                sin_ucs += 1; continue
+            P.append((p.este, p.norte, p.cota))
+            ucs.append(float(v))
+            di.append(float(p.di) if p.di is not None and np.isfinite(p.di) else np.nan)
+            lito.append(p.lito or p.dominio)
+            pozo.append(wn)
+    return {"P": np.array(P, dtype=np.float64) if P else np.zeros((0, 3)),
+            "ucs": np.array(ucs), "di": np.array(di),
+            "lito": lito, "pozo": pozo, "sin_ucs": sin_ucs}
+
+
+def interpolate_block_model(bloque_m: float = BLOQUE_M,
+                            potencia: float = IDW_POTENCIA,
+                            radio_h_m: float = IDW_RADIO_H_M,
+                            radio_v_m: float = IDW_RADIO_V_M,
+                            anisotropia: Tuple[float, float, float] = IDW_ANISOTROPIA,
+                            min_muestras: int = IDW_MIN_MUESTRAS,
+                            min_pozos: int = IDW_MIN_POZOS,
+                            fuente: str = "ucs_matriz") -> Dict:
+    """
+    (9.1) Interpola UCS y DI a un modelo de bloques con IDW anisotrópico y
+    máscara de soporte.
+
+    Un bloque recibe valor SOLO si dentro del elipsoide de búsqueda
+    (radio_h_m en el plano, radio_v_m en cota) hay al menos `min_muestras`
+    registros de al menos `min_pozos` pozo(s). Si no los hay, queda VACÍO y se
+    cuenta — nunca se estira la búsqueda para llenarlo.
+    """
+    m = _muestras_bloques(fuente)
+    P = m["P"]
+    if P.shape[0] == 0:
+        return {"status": "sin_datos",
+                "motivo": ("Ningún punto MWD tiene UCS predicho dentro de los "
+                           f"límites físicos ({UCS_CONFIG['physical_min']:g}-"
+                           f"{UCS_CONFIG['physical_max']:g} MPa): "
+                           "correr el entrenamiento y la predicción antes de "
+                           "interpolar."),
+                "bloques": [], "n_vacios": 0,
+                "terminologia": TERMINOLOGIA_C}
+
+    ax, ay, az = anisotropia
+    lo = P.min(axis=0) - bloque_m
+    hi = P.max(axis=0) + bloque_m
+    ejes = [np.arange(lo[k] + bloque_m / 2.0, hi[k] + bloque_m / 2.0, bloque_m)
+            for k in range(3)]
+    # Índice espacial: celda de lado radio_h_m sobre el plano, para no evaluar
+    # el millón de muestras contra cada bloque.
+    celda = max(radio_h_m, 1e-6)
+    ij = np.floor(P[:, :2] / celda).astype(np.int64)
+    cubos: Dict[Tuple[int, int], list] = {}
+    for idx, (i, j) in enumerate(map(tuple, ij)):
+        cubos.setdefault((i, j), []).append(idx)
+
+    bloques, n_vacios = [], 0
+    pozos_arr = np.array(m["pozo"])
+    for x in ejes[0]:
+        ci = int(np.floor(x / celda))
+        for y in ejes[1]:
+            cj = int(np.floor(y / celda))
+            vecinos = []
+            for di_ in (-1, 0, 1):
+                for dj_ in (-1, 0, 1):
+                    vecinos.extend(cubos.get((ci + di_, cj + dj_), ()))
+            if not vecinos:
+                n_vacios += len(ejes[2]); continue
+            vec = np.array(vecinos)
+            sub = P[vec]
+            dh = np.hypot(sub[:, 0] - x, sub[:, 1] - y)
+            en_h = dh <= radio_h_m
+            if not en_h.any():
+                n_vacios += len(ejes[2]); continue
+            vec, sub, dh = vec[en_h], sub[en_h], dh[en_h]
+            for z in ejes[2]:
+                dv = np.abs(sub[:, 2] - z)
+                sel = dv <= radio_v_m
+                n_sel = int(sel.sum())
+                if n_sel < min_muestras:
+                    n_vacios += 1; continue
+                idxs = vec[sel]
+                if len({pozos_arr[i] for i in idxs}) < min_pozos:
+                    n_vacios += 1; continue
+                # Distancia anisotrópica: la separación vertical se multiplica
+                # por az antes de entrar al peso.
+                d = np.sqrt((ax * (sub[sel, 0] - x)) ** 2
+                            + (ay * (sub[sel, 1] - y)) ** 2
+                            + (az * (sub[sel, 2] - z)) ** 2)
+                d = np.maximum(d, 1e-6)
+                wgt = 1.0 / d ** potencia
+                sw = wgt.sum()
+                ucs_b = float((m["ucs"][idxs] * wgt).sum() / sw)
+                di_vals = m["di"][idxs]
+                fin = np.isfinite(di_vals)
+                di_b = (float((di_vals[fin] * wgt[fin]).sum() / wgt[fin].sum())
+                        if fin.any() else None)
+                # Litología del bloque: la de mayor peso acumulado, no la más
+                # frecuente — un pozo con muchos registros lejanos no debe
+                # ganarle a uno cercano.
+                peso_lito: Dict[str, float] = {}
+                for k, i in enumerate(idxs):
+                    lt = m["lito"][i]
+                    if lt: peso_lito[lt] = peso_lito.get(lt, 0.0) + float(wgt[k])
+                lito_b = max(peso_lito, key=peso_lito.get) if peso_lito else None
+                f_cal, calidad = _calidad_factor(lito_b)
+                dmin = float(np.sqrt((sub[sel, 0] - x) ** 2 + (sub[sel, 1] - y) ** 2
+                                     + (sub[sel, 2] - z) ** 2).min())
+                # Confianza = calidad de la etiqueta × proximidad × soporte.
+                # Los tres factores viven en [0, 1] y se declaran por separado
+                # en el reporte para que el número no sea una caja negra.
+                f_prox = float(max(0.0, 1.0 - dmin / max(radio_h_m, 1e-9)))
+                f_sop = float(min(1.0, n_sel / max(4.0 * min_muestras, 1.0)))
+                conf = round(f_cal * f_prox * f_sop, 4)
+                bloques.append({
+                    "x": round(float(x), 3), "y": round(float(y), 3),
+                    "z": round(float(z), 3), "tamano_m": bloque_m,
+                    "ucs": round(min(max(ucs_b, UCS_CONFIG["physical_min"]),
+                                     UCS_CONFIG["physical_max"]), 2),
+                    "di": round(di_b, 4) if di_b is not None else None,
+                    "confianza": conf, "lito": lito_b, "calidad_etiqueta": calidad,
+                    "banda": banda_resistencia(ucs_b),
+                    "n_muestras": n_sel, "dist_min_m": round(dmin, 3),
+                    "f_calidad": round(f_cal, 4), "f_proximidad": round(f_prox, 4),
+                    "f_soporte": round(f_sop, 4),
+                })
+    if not bloques:
+        return {"status": "sin_soporte",
+                "motivo": (f"Ningún bloque de {bloque_m:g} m reúne {min_muestras} "
+                           f"muestra(s) dentro del elipsoide de búsqueda "
+                           f"({radio_h_m:g} m en planta, {radio_v_m:g} m en cota). "
+                           "Los bloques quedan VACÍOS antes que interpolados desde "
+                           "lejos."),
+                "bloques": [], "n_vacios": n_vacios,
+                "terminologia": TERMINOLOGIA_C}
+    return {
+        "status": "ok", "bloques": bloques, "n_bloques": len(bloques),
+        "n_vacios": n_vacios,
+        "motivo_vacios": (f"{n_vacios} bloque(s) quedaron VACÍOS por no reunir "
+                          f"{min_muestras} muestra(s) dentro del elipsoide de "
+                          f"búsqueda ({radio_h_m:g} m en planta, {radio_v_m:g} m en "
+                          "cota). No se interpolan desde más lejos: un bloque sin "
+                          "soporte es información, no un hueco a rellenar."),
+        "bloque_m": bloque_m, "potencia": potencia,
+        "radio_h_m": radio_h_m, "radio_v_m": radio_v_m,
+        "anisotropia": list(anisotropia), "min_muestras": min_muestras,
+        "fuente_ucs": fuente, "puntos_sin_ucs": m["sin_ucs"],
+        "n_muestras": int(P.shape[0]),
+        "limites_ucs": [UCS_CONFIG["physical_min"], UCS_CONFIG["physical_max"]],
+        "bandas_fuente": BANDAS_RESISTENCIA_FUENTE,
+        "definicion_confianza": (
+            "Confianza = f_calidad × f_proximidad × f_soporte, los tres en [0, 1]. "
+            "f_calidad es el inverso del pi_factor del atributo: incorpora la "
+            "CALIDAD de la etiqueta, de modo que un dominio anclado en un ensayo "
+            "del sitio y otro anclado en literatura no pueden salir con la misma "
+            "confianza. f_proximidad decae con la distancia al dato más cercano. "
+            "f_soporte crece con el número de muestras dentro del elipsoide."),
+        "anisotropia_motivo": (
+            "El yacimiento es estratiforme: la litología continúa lateralmente y "
+            "cambia con la cota. Por eso la búsqueda es más larga en horizontal "
+            "que en vertical. La cota entra acá como GEOMETRÍA de interpolación, "
+            "nunca como variable predictora del modelo."),
+        "terminologia": TERMINOLOGIA_C,
+    }
+
+
+def export_block_model_csv(rep: Optional[Dict] = None) -> str:
+    """(9.2) Modelo de bloques como CSV: X, Y, Z, tamaño, UCS, DI, confianza."""
+    rep = rep if rep is not None else interpolate_block_model()
+    if rep.get("status") != "ok":
+        return f"# {rep.get('motivo', 'sin datos')}\n"
+    cols = ["x", "y", "z", "tamano_m", "ucs", "di", "confianza", "banda", "lito",
+            "calidad_etiqueta", "n_muestras", "dist_min_m",
+            "f_calidad", "f_proximidad", "f_soporte"]
+    df = pd.DataFrame(rep["bloques"])[cols]
+    cab = "\n".join("# " + l for l in [
+        f"{rep['terminologia']}.",
+        f"Bloque {rep['bloque_m']:g} m · IDW potencia {rep['potencia']:g} · "
+        f"anisotropía {rep['anisotropia']} · radio {rep['radio_h_m']:g} m planta / "
+        f"{rep['radio_v_m']:g} m cota.",
+        rep["anisotropia_motivo"],
+        rep["definicion_confianza"],
+        rep["motivo_vacios"],
+        f"UCS acotado a los límites físicos {rep['limites_ucs']} MPa.",
+        f"bandas: {rep['bandas_fuente']}",
+        f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
+    return cab + "\n" + df.to_csv(index=False)
+
+
+def export_block_model_dxf(rep: Optional[Dict] = None,
+                           path: str = "modelo_bloques.dxf",
+                           geometria: str = "caja") -> str:
+    """
+    (9.3) Modelo de bloques como DXF, con una CAPA POR BANDA de resistencia
+    para que se pueda prender y apagar por banda en el visor de la mina.
+
+    `geometria`: "caja" dibuja cada bloque como un cubo de 3DFACE (lo que el
+    planificador espera ver); "punto" deja solo el centro, mucho más liviano
+    para modelos grandes.
+    """
+    rep = rep if rep is not None else interpolate_block_model()
+    if rep.get("status") != "ok":
+        raise ValueError(rep.get("motivo", "sin datos para exportar"))
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+    # Capa por banda, más una para lo que no clasifica: nada queda sin capa.
+    for _, _, nombre in BANDAS_RESISTENCIA:
+        doc.layers.add(BLOQUE_LAYER_PREFIX + nombre)
+    doc.layers.add(BLOQUE_LAYER_PREFIX + "sin_banda")
+    for b in rep["bloques"]:
+        capa = BLOQUE_LAYER_PREFIX + (b["banda"] or "sin_banda")
+        x, y, z, s = b["x"], b["y"], b["z"], b["tamano_m"] / 2.0
+        if geometria == "punto":
+            msp.add_point((x, y, z), dxfattribs={"layer": capa})
+            continue
+        v = [(x - s, y - s, z - s), (x + s, y - s, z - s),
+             (x + s, y + s, z - s), (x - s, y + s, z - s),
+             (x - s, y - s, z + s), (x + s, y - s, z + s),
+             (x + s, y + s, z + s), (x - s, y + s, z + s)]
+        for cara in ((0, 1, 2, 3), (4, 5, 6, 7), (0, 1, 5, 4),
+                     (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)):
+            msp.add_3dface([v[i] for i in cara], dxfattribs={"layer": capa})
+    doc.header["$PROJECTNAME"] = TERMINOLOGIA_C
+    doc.saveas(path)
+    return path
+
+
+def block_model_summary(rep: Optional[Dict] = None) -> Dict:
+    """(9.4) Resumen por banda y por litología, para la tabla del capítulo."""
+    rep = rep if rep is not None else interpolate_block_model()
+    if rep.get("status") != "ok":
+        return {"status": rep.get("status"), "motivo": rep.get("motivo")}
+    por_banda: Dict[str, Dict] = {}
+    for b in rep["bloques"]:
+        k = b["banda"] or "sin_banda"
+        d = por_banda.setdefault(k, {"n": 0, "ucs": [], "di": [], "conf": []})
+        d["n"] += 1
+        d["ucs"].append(b["ucs"])
+        if b["di"] is not None: d["di"].append(b["di"])
+        d["conf"].append(b["confianza"])
+    resumen = {k: {"n_bloques": v["n"],
+                   "volumen_m3": round(v["n"] * rep["bloque_m"] ** 3, 1),
+                   "ucs_mediana": round(float(np.median(v["ucs"])), 2),
+                   "di_mediana": round(float(np.median(v["di"])), 4) if v["di"] else None,
+                   "confianza_mediana": round(float(np.median(v["conf"])), 4)}
+               for k, v in sorted(por_banda.items())}
+    return {"status": "ok", "por_banda": resumen,
+            "n_bloques": rep["n_bloques"], "n_vacios": rep["n_vacios"],
+            "cobertura": round(rep["n_bloques"] / max(rep["n_bloques"] + rep["n_vacios"], 1), 4),
+            "terminologia": TERMINOLOGIA_C}
 
 
 def export_se_ucs_coherence_csv(rep: Optional[Dict] = None) -> str:
