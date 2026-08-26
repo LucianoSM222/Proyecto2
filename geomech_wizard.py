@@ -4691,6 +4691,270 @@ def se_ucs_coherence_report() -> Dict:
     }
 
 
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  SESIÓN 7 — CURVAS DE RESPUESTA A PP Y PRESCRIPCIÓN                     ║
+# ║                                                                          ║
+# ║  EL CONFUNDIMIENTO QUE GOBIERNA LA SESIÓN: PP es la ÚNICA variable que  ║
+# ║  el operador manipula, y la manipula EN RESPUESTA a la roca — sube PP   ║
+# ║  en roca dura. El análisis agregado muestra por eso la relación         ║
+# ║  INVERTIDA: parece que subir PP endurece la roca. En estos datos el     ║
+# ║  efecto ya está medido: PP mediana 211 bar en Bht y Kpcli contra 180    ║
+# ║  en Brecha mixta, que es la unidad que se perfora más lento.            ║
+# ║                                                                          ║
+# ║  De ahí la separación:                                                  ║
+# ║    · CARACTERIZACIÓN  roca <- MWD, PP como covariable de CONTEXTO       ║
+# ║                       (train_rf / ML_FEATURES — no se toca desde aquí)  ║
+# ║    · PRESCRIPCIÓN     desempeño <- dominio y PP, PP como variable de    ║
+# ║                       DECISIÓN optimizable (este bloque)                ║
+# ║                                                                          ║
+# ║  Todo análisis de PP va ESTRATIFICADO POR DOMINIO. Agregado no          ║
+# ║  significa nada, y el reporte lo calcula solo para poder mostrar la     ║
+# ║  trampa junto a su advertencia.                                         ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+PP_MIN_OPERACIONAL, PP_MAX_OPERACIONAL = 90.0, 230.0     # bar
+PP_PASO_BAR = 10.0          # ancho del bin de PP en las curvas
+PP_MIN_PUNTOS_BIN = 20      # bins con menos muestras no se grafican
+
+
+def _bins_pp(pp: float) -> float:
+    """Centro del bin de PP al que cae una medición."""
+    return float(np.floor(pp / PP_PASO_BAR) * PP_PASO_BAR + PP_PASO_BAR / 2.0)
+
+
+def _curva_pp(puntos) -> List[Dict]:
+    """Curva PP → (ROP, SE, CV(SE)) a partir de una lista de MWDPoint."""
+    acc: Dict[float, Dict[str, list]] = {}
+    for p in puntos:
+        if p.pp is None or not np.isfinite(p.pp): continue
+        if not (PP_MIN_OPERACIONAL <= p.pp <= PP_MAX_OPERACIONAL): continue
+        if p.vel is None or not np.isfinite(p.vel) or p.vel < ROP_MIN_FISICA: continue
+        if p.se is None or not np.isfinite(p.se): continue
+        d = acc.setdefault(_bins_pp(p.pp), {"rop": [], "se": []})
+        d["rop"].append(float(p.vel)); d["se"].append(float(p.se))
+    curva = []
+    for pp in sorted(acc):
+        rop = np.array(acc[pp]["rop"]); se = np.array(acc[pp]["se"])
+        if rop.size < PP_MIN_PUNTOS_BIN: continue
+        curva.append({"pp": pp, "n": int(rop.size),
+                      "rop_mediana": round(float(np.median(rop)), 4),
+                      "se_mediana": round(float(np.median(se)), 2),
+                      # CV(SE): la dispersión de la energía específica es la
+                      # señal de que el equipo trabaja inestable a ese PP.
+                      "cv_se": round(float(se.std() / abs(se.mean())), 4) if se.mean() else None})
+    return curva
+
+
+def _saturacion(curva: List[Dict]) -> Optional[float]:
+    """
+    PP a partir del cual subir más deja de mejorar la ROP. Se toma el primer
+    bin cuya ROP ya alcanzó el 98% del máximo de la curva: pasado ese punto,
+    más percusión es desgaste sin retorno.
+    """
+    if len(curva) < 3: return None
+    rops = [c["rop_mediana"] for c in curva]
+    techo = max(rops)
+    if techo <= 0: return None
+    for c in curva:
+        if c["rop_mediana"] >= 0.98 * techo:
+            return c["pp"]
+    return None
+
+
+def _pendiente(xs, ys) -> Optional[float]:
+    x, y = np.asarray(xs, dtype=np.float64), np.asarray(ys, dtype=np.float64)
+    if x.size < 2 or x.std() == 0: return None
+    return float(np.polyfit(x, y, 1)[0])
+
+
+def pp_response_curves(solo_roca_intacta: bool = True) -> Dict:
+    """
+    (Sesión 7) Curvas PP → (ROP, SE, CV(SE)) POR DOMINIO, con punto de
+    saturación. Estratificado por dominio siempre: el agregado se calcula
+    aparte y viene con su advertencia, porque es justo la lectura que el
+    confundimiento del operador vuelve engañosa.
+    """
+    por_dom: Dict[str, list] = {}
+    todos = []
+    for w in wells.values():
+        for p in w.points:
+            if not p.entrenable or not p.dominio: continue
+            if getattr(p, "ambiguo", False): continue
+            if solo_roca_intacta and p.di is not None and p.di > di_threshold:
+                continue
+            por_dom.setdefault(p.lito or p.dominio, []).append(p)
+            todos.append(p)
+    if not por_dom:
+        return {"status": "sin_datos",
+                "motivo": "No hay puntos con dominio asignado para construir curvas.",
+                "estratificado_por_dominio": True}
+    dominios = {}
+    for dom, pts in por_dom.items():
+        curva = _curva_pp(pts)
+        if len(curva) < 2: continue
+        sat = _saturacion(curva)
+        pend = _pendiente([c["pp"] for c in curva], [c["rop_mediana"] for c in curva])
+        interp = (
+            f"Dentro de {dom}, subir PP "
+            + ("MEJORA el avance" if (pend or 0) > 0 else
+               "NO mejora el avance" if (pend or 0) == 0 else "EMPEORA el avance")
+            + (f"; la ROP satura en {sat:g} bar, y más percusión pasado ese punto es "
+               f"desgaste sin retorno." if sat is not None else
+               "; no se detecta saturación en el rango observado."))
+        dominios[dom] = {"curva": curva, "pp_saturacion": sat,
+                         "pendiente_rop": round(pend, 6) if pend is not None else None,
+                         "n_puntos": len(pts), "interpretacion": interp}
+    if not dominios:
+        return {"status": "sin_datos",
+                "motivo": (f"Ningún dominio alcanza {PP_MIN_PUNTOS_BIN} puntos en al "
+                           f"menos dos bins de PP de {PP_PASO_BAR:g} bar."),
+                "estratificado_por_dominio": True}
+
+    # El agregado existe SOLO para mostrar la trampa junto a su advertencia.
+    curva_agg = _curva_pp(todos)
+    pend_agg = _pendiente([c["pp"] for c in curva_agg],
+                          [c["rop_mediana"] for c in curva_agg]) if curva_agg else None
+    agregado = {
+        "curva": curva_agg, "pendiente_rop": round(pend_agg, 6) if pend_agg is not None else None,
+        "advertencia": (
+            "NO USAR para decidir PP. Este agregado mezcla dominios, y como el "
+            "operador sube PP en roca dura, la relación aparece INVERTIDA: parece "
+            "que subir PP empeora el avance cuando dentro de cada dominio lo "
+            "mejora. Es la trampa que esta sesión existe para evitar; se calcula "
+            "solo para poder mostrarla al lado de las curvas por dominio."),
+    }
+    return {"status": "ok", "estratificado_por_dominio": True,
+            "dominios": dominios, "agregado_todos_los_dominios": agregado,
+            "solo_roca_intacta": solo_roca_intacta,
+            "rango_pp_bar": [PP_MIN_OPERACIONAL, PP_MAX_OPERACIONAL],
+            "advertencia_confundimiento": (
+                "PP es la ÚNICA variable que el operador manipula, y la manipula EN "
+                "RESPUESTA a la roca. Por eso toda curva va estratificada por dominio: "
+                "agregar dominios invierte la relación. Estas curvas describen el "
+                "desempeño del EQUIPO dentro de una roca dada, no la roca."),
+            "terminologia": TERMINOLOGIA_C}
+
+
+def pp_prescription(dominio: str, objetivo: str = "rop") -> Dict:
+    """
+    (Sesión 7) Modelo de PRESCRIPCIÓN: qué PP conviene en un dominio dado.
+
+    Aquí PP es variable de DECISIÓN, no covariable de contexto — al revés que
+    en el modelo de caracterización, que sigue usándola como contexto en
+    ML_FEATURES y no se toca desde acá.
+
+    `objetivo`: "rop" maximiza avance; "estabilidad" minimiza CV(SE), que es
+    la dispersión de la energía específica y delata al equipo trabajando
+    inestable.
+
+    Sin datos del dominio NO recomienda nada: una recomendación de PP sin
+    respaldo histórico es peor que ninguna.
+    """
+    rep = pp_response_curves()
+    if rep["status"] != "ok" or dominio not in rep.get("dominios", {}):
+        return {"status": "sin_datos", "dominio": dominio, "pp_recomendada": None,
+                "rol_de_pp": "variable de decisión",
+                "motivo": (f"No hay curva de respuesta para «{dominio}»: se necesitan "
+                           f"al menos dos bins de PP con {PP_MIN_PUNTOS_BIN} puntos "
+                           f"cada uno en roca intacta de ese dominio. Sin casos "
+                           f"históricos comparables NO se recomienda un PP."),
+                "terminologia": TERMINOLOGIA_C}
+    d = rep["dominios"][dominio]
+    curva = d["curva"]
+    if objetivo == "estabilidad":
+        cands = [c for c in curva if c["cv_se"] is not None]
+        if not cands:
+            return {"status": "sin_datos", "dominio": dominio, "pp_recomendada": None,
+                    "rol_de_pp": "variable de decisión",
+                    "motivo": "No hay CV(SE) calculable en la curva.",
+                    "terminologia": TERMINOLOGIA_C}
+        mejor = min(cands, key=lambda c: c["cv_se"])
+        obj_txt = "minimizar CV(SE): el equipo trabaja más estable"
+    else:
+        # Con saturación, el PP recomendado es el de saturación: más allá es
+        # desgaste sin ganancia de avance.
+        mejor = (next((c for c in curva if c["pp"] == d["pp_saturacion"]), None)
+                 if d["pp_saturacion"] is not None else None)
+        if mejor is None:
+            mejor = max(curva, key=lambda c: c["rop_mediana"])
+        obj_txt = "maximizar ROP sin pasar el punto de saturación"
+    pp = float(np.clip(mejor["pp"], PP_MIN_OPERACIONAL, PP_MAX_OPERACIONAL))
+    return {"status": "ok", "dominio": dominio, "pp_recomendada": pp,
+            "objetivo": obj_txt, "rol_de_pp": "variable de decisión",
+            "rop_esperada": mejor["rop_mediana"], "cv_se_esperado": mejor["cv_se"],
+            "n_respaldo": mejor["n"], "pp_saturacion": d["pp_saturacion"],
+            "nota": ("Prescripción basada en el desempeño histórico del EQUIPO dentro "
+                     "de este dominio. No dice nada sobre la roca: para eso está el "
+                     "modelo de caracterización, donde PP es covariable de contexto."),
+            "terminologia": TERMINOLOGIA_C}
+
+
+def contact_anticipation(dominio: Optional[str] = None) -> Dict:
+    """
+    (Sesión 7) Función de anticipación: cuántos metros antes del contacto
+    previsto conviene bajar PP.
+
+    El margen operacional NO se inventa: sale del desfase δ medido en C.5
+    entre los contactos que predice la malla y la firma detectada por el MWD.
+    Si ese desfase no es sistemático —o no hay con qué medirlo— se ADVIERTE
+    sin recomendar.
+    """
+    c5 = contact_offset_report()
+    if c5.get("status") != "ok":
+        return {"status": "sin_datos", "margen_m": None,
+                "fuente_margen": "desfase δ de contactos (C.5)",
+                "motivo": ("No hay desfase de contactos medido: "
+                           + str(c5.get("motivo", "sin datos"))
+                           + " Sin ese margen NO se recomienda anticipar el cambio de "
+                             "PP; hacerlo sería inventar una distancia operacional."),
+                "terminologia": TERMINOLOGIA_C}
+    if not c5.get("sistematico"):
+        return {"status": "sin_datos", "margen_m": None,
+                "fuente_margen": "desfase δ de contactos (C.5)",
+                "motivo": (f"El desfase medido (media {c5['media']:+.2f} m, desviación "
+                           f"{c5['desviacion']:.2f} m) es simétrico alrededor de cero: "
+                           f"es ruido de interpolación, no un desplazamiento de la "
+                           f"malla. ADVERTENCIA sin recomendación: no hay margen "
+                           f"sistemático que anticipar."),
+                "terminologia": TERMINOLOGIA_C}
+    margen = c5["margen_operacional_m"]
+    pres = pp_prescription(dominio) if dominio else None
+    return {"status": "ok", "margen_m": margen,
+            "fuente_margen": "desfase δ de contactos (C.5)",
+            "sesgo_delta_m": c5["media"], "desviacion_delta_m": c5["desviacion"],
+            "dominio": dominio,
+            "pp_sugerida_tras_el_contacto": (pres or {}).get("pp_recomendada"),
+            "recomendacion": (
+                f"El desfase entre el contacto que predice la malla y la firma del MWD "
+                f"es sistemático ({c5['media']:+.2f} ± {c5['desviacion']:.2f} m): "
+                f"conviene anticipar el cambio de PP {margen:.1f} m antes del contacto "
+                f"previsto."
+                + (f" PP sugerida en el dominio de destino «{dominio}»: "
+                   f"{pres['pp_recomendada']:g} bar." if pres and pres.get("pp_recomendada")
+                   else " No hay PP respaldada para el dominio de destino.")),
+            "terminologia": TERMINOLOGIA_C}
+
+
+def export_pp_curves_csv(rep: Optional[Dict] = None) -> str:
+    """Curvas de respuesta a PP como CSV, con las advertencias arriba."""
+    rep = rep if rep is not None else pp_response_curves()
+    if rep.get("status") != "ok":
+        return f"# {rep.get('motivo', 'sin datos')}\n"
+    filas = []
+    for dom, d in rep["dominios"].items():
+        for c in d["curva"]:
+            filas.append({"dominio": dom, "pp_bar": c["pp"], "n": c["n"],
+                          "rop_mediana": c["rop_mediana"], "se_mediana": c["se_mediana"],
+                          "cv_se": c["cv_se"], "pp_saturacion": d["pp_saturacion"]})
+    cab = "\n".join("# " + l for l in [
+        "Curvas de respuesta a PP por dominio (roca intacta).",
+        rep["advertencia_confundimiento"],
+        "PP es variable de DECISIÓN aquí; en el modelo de caracterización es "
+        "covariable de contexto. Son modelos distintos.",
+        f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
+    return cab + "\n" + pd.DataFrame(filas).to_csv(index=False)
+
+
 def export_se_ucs_coherence_csv(rep: Optional[Dict] = None) -> str:
     """Coherencia SE↔UCS como CSV, con el veredicto y las advertencias arriba."""
     rep = rep if rep is not None else se_ucs_coherence_report()
