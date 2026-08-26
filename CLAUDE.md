@@ -87,7 +87,11 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | 7 | Curvas PP y prescripción | (prompt en la hoja de ruta) | ✅ `b6753c2` |
 | 8 | Discriminador fractura/contacto | (prompt en la hoja de ruta) | 🟡 `6664435` implementado; contra sondajes 104/217 = azar |
 | 9 | Modelo de bloques IDW | (prompt en la hoja de ruta) | ✅ `6664435` |
-| 10 | Kit del Capítulo 5 | (prompt en la hoja de ruta) | ✅ |
+| 10 | Kit del Capítulo 5 | (prompt en la hoja de ruta) | ✅ 19/22 ítems |
+| P5 | Filtro del plano del abanico | — | ✅ `929a132` |
+| PF | Perfil de faena configurable | — | ✅ `47e273b` |
+| P1-2 | Variantes del DI · RQD propagado | — | ✅ `ee8d3c5` |
+| P3 | Calibración de pesos contra RQD | — | ✅ `4ced6b6` |
 
 Hallazgos que condicionan la interpretación, no defectos pendientes:
 
@@ -100,10 +104,34 @@ Hallazgos que condicionan la interpretación, no defectos pendientes:
   diferencia.
 - Discriminador fractura/contacto: 47,9% de acierto contra etiquetas de
   sondaje a 10 m, que es el azar entre dos clases. 57,6% de los picos quedan
-  indeterminados, con el motivo declarado uno por uno.
+  indeterminados, con el motivo declarado uno por uno. Descontando los picos
+  que son plano de abanico sube a 50,8%: sigue siendo el azar.
+- UN ABANICO DE TIROS ES UN PLANO. De 33 grupos de picos, 18 se explican por
+  la geometría de perforación (841 picos, 18,3%). Los tres grupos mayores
+  —590, 533 y 478 picos— tienen 0,5°, 0,0° y 0,5° entre su normal y la del
+  abanico. No hay ninguna estructura discreta identificable hoy.
+- El RQD de sondaje solo alcanza a PCC_0042: los 10 sondajes con RQD están
+  todos junto a ese caserón, y PCS_1043 y PCC_1541 quedan en 0% a cualquier
+  radio. Cualquier calibración es "calibrada en PCC_0042".
+- Vecindad por SEGMENTO, no por bola: con radio 10 m y tramos de 3 m todos
+  los intervalos de un sondaje compartían casi los mismos puntos MWD. Al
+  corregirlo, rho(RQD_MWD, RQD_sondaje) con los pesos de convención pasó de
+  -0,10 a +0,18 a 5 m.
 
 Hoja de ruta, prompts por sesión y criterio de modelo: `docs/roadmap_ejecucion.md`.
 Documento maestro completo (respaldo): `docs/MWD_GeoMech_Documento_Maestro.md`.
+
+## Perfil de faena
+
+Los parámetros de operación viven en `param_registry` (32 en seis secciones),
+no en el código: `get_param` / `set_param` / `reset_param`, con validación y
+procedencia declarada. `export_site_profile()` e `import_site_profile()` en
+JSON es lo que recibe una faena nueva. Seis parámetros están PROTEGIDOS —la
+ventana, el umbral y los cuatro pesos del DI— y rechazan la escritura.
+
+Para calibrar el DI se crea una VARIANTE (`create_di_variant`), nunca se toca
+la de convención. Fernández busca sus pesos con `movvar`: calibrar es su
+método, no una desviación.
 
 ## Suite de tests
 
