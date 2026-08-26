@@ -180,7 +180,7 @@
      DQ: 54 archivos → 33 planes, 498 tiros · 159 con coordenadas distintas entre revisiones ⚠
      MW: 134 pozos. 162.882 puntos
      match: {'matched': 122, 'fallback': 3, 'ambiguous': 9, 'no_dq': 0}
-     (0.3s mallas + 3.4s XML)
+     (0.3s mallas + 3.6s XML)
 
 ========================================================================
   PCC_0042
@@ -589,7 +589,7 @@
      DQ: 107 archivos → 57 planes, 604 tiros · 214 con coordenadas distintas entre revisiones ⚠
      MW: 345 pozos. 454.471 puntos
      match: {'matched': 316, 'fallback': 22, 'ambiguous': 7, 'no_dq': 0}
-     (0.1s mallas + 11.7s XML)
+     (0.1s mallas + 11.2s XML)
 
 ========================================================================
   PCC_1541
@@ -754,30 +754,8 @@
      DQ: 37 archivos → 29 planes, 255 tiros · 33 con coordenadas distintas entre revisiones ⚠
      MW: 140 pozos. 164.524 puntos
      match: {'matched': 127, 'fallback': 13, 'ambiguous': 0, 'no_dq': 0}
-     (0.1s mallas + 3.5s XML)
+     (0.1s mallas + 3.6s XML)
 ⚠  Sondaje "DDH20-ZC-07": una sola estación de desviación (en 0.0 m). Se asume trazado recto con azimut 62.83° / inclinación -89.06° hasta la profundidad declarada (52.8 m).
 ⚠  DI "PCS_1043_AUX1_H3": 13 pts, mín=14.
 ⚠  DI "PCS_1043_AUX2_H4": 9 pts, mín=14.
 ⚠  DI "PCS_1043_PR01_TH_P01_H14": 3 pts, mín=14.
-pozos=619  mallas=23  sondajes=11  R²CV=0.189  (167.2s)
-
-========================================================================
-  9 — MODELO DE BLOQUES POR CASERÓN
-========================================================================
-  status: ok
-  bloque 2.5 m · anisotropía [1.0, 1.0, 3.0] · radio 7.5/2.5 m
-    caserón       bloques    vacíos  cobertura   muestras  encajonado (E×N×Z m)
-    PCC_0042        6.765 2.322.247       0.3%    451.468  [556.9. 930.3. 68.3]
-    PCC_1541        2.417     1.391      63.5%    164.524  [42.1. 38.9. 34.2]
-    PCS_1043        3.656    18.268      16.7%    161.134  [68.2. 70.1. 66.8]
-
-    banda ISRM          bloques          m³  UCS med   DI med  conf med
-    R5_muy_alta          12.838     200.594    141.9    0.691     0.257
-
-========================================================================
-  10 — KIT DEL CAPÍTULO 5
-========================================================================
-/usr/local/lib/python3.11/dist-packages/joblib/externals/loky/backend/resource_tracker.py:359: UserWarning: resource_tracker: There appear to be 6 leaked semlock objects to clean up at shutdown
-  warnings.warn(
-/usr/local/lib/python3.11/dist-packages/joblib/externals/loky/backend/resource_tracker.py:359: UserWarning: resource_tracker: There appear to be 1 leaked folder objects to clean up at shutdown
-  warnings.warn(
