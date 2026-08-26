@@ -5,7 +5,7 @@
 # 35751 bloque(s) quedaron VACÍOS por no reunir 3 muestra(s) dentro del elipsoide de búsqueda (7.5 m en planta, 2.5 m en cota). No se interpolan desde más lejos: un bloque sin soporte es información, no un hueco a rellenar. El encajonado se calcula POR CASERÓN: un encajonado único sobre caserones separados por kilómetros contaría el aire entre ellos y volvería la cobertura una cifra sin significado.
 # UCS acotado a los límites físicos [0.0, 450.0] MPa.
 # bandas: Clasificación ISRM de resistencia de la roca intacta (Brown, 1981). Criterio trazable, no percentiles de la muestra.
-# generado: 2026-08-26 10:39
+# generado: 2026-08-26 10:50
 x,y,z,tamano_m,caseron,ucs,di,confianza,banda,lito,calidad_etiqueta,n_muestras,dist_min_m,f_calidad,f_proximidad,f_soporte
 376983.517,6958914.09,274.608,2.5,PCC_0042,134.39,1.8514,0.0316,R5_muy_alta,Bht,1.0,68,7.084,0.5698,0.0555,1.0
 376983.517,6958914.09,277.108,2.5,PCC_0042,132.66,1.1315,0.0346,R5_muy_alta,Bht,1.0,188,7.044,0.5698,0.0608,1.0

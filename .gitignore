@@ -12,3 +12,7 @@ resultados/kit_capitulo5/*
 # ...salvo el índice, que es lo que mapea cada archivo a su sección.
 !resultados/kit_capitulo5/INDICE_capitulo5.csv
 !resultados/kit_capitulo5/INDICE_capitulo5.md
+
+# Modelo de bloques en DXF: 20 MB de binario regenerable con `python3 run_sesion9.py`.
+# El CSV equivalente sí se versiona: es legible y cabe.
+resultados/*.dxf

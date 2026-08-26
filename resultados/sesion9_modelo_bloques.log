@@ -759,3 +759,29 @@
 ⚠  DI "PCS_1043_AUX2_H4": 9 pts, mín=14.
 ⚠  DI "PCS_1043_PR01_TH_P01_H14": 3 pts, mín=14.
 pozos=619  mallas=23  (42.9s)
+entrenamiento: {'n_train': 399262, 'n_excl_disc': 31502, 'funnel': [{'etapa': 'total', 'label': 'Total de puntos MWD', 'quedan': 777126, 'perdidos': 0}, {'etapa': 'entrenable', 'label': 'Entrenable (emboquillado <2 m + filtros de limpieza)', 'quedan': 777126, 'perdidos': 0}, {'etapa': 'caseron_entrena', 'label': 'En un caserón que ENTRENA (todos los cargados)', 'quedan': 777126, 'perdidos': 0}, {'etapa': 'con_dominio', 'label': 'Con dominio asignado (dentro de alguna malla)', 'quedan': 437910, 'perdidos': 339216}, {'etapa': 'sin_ambiguedad', 'label': 'Sin ambigüedad de traslape (A.5)', 'quedan': 437910, 'perdidos': 0}, {'etapa': 'banda_ucs', 'label': 'Dominio con banda de UCS asignada', 'quedan': 430764, 'perdidos': 7146}, {'etapa': 'no_excluido', 'label': 'Atributo no excluido explícitamente (T1.5)', 'quedan': 430764, 'perdidos': 0}, {'etapa': 'rango_ucs', 'label': 'Etiqueta de UCS dentro de [0, 450] MPa', 'quedan': 430764, 'perdidos': 0}, {'etapa': 'roca_intacta', 'label': 'DI ≤ umbral (1.5) — roca intacta', 'quedan': 399262, 'perdidos': 31502}], 'n_excl_ambiguo': 0, 'n_compuestos': 0, 'n_anidamiento': 0, 'overlap_motivos': {}, 'r2_train': 0.247, 'rmse_train': 25.0, 'rmsea': 0.0396, 'cv_r2_mean': 0.189, 'cv_r2_std': 0.01, 'cv_n_grupos': 444, 'cv_warning': None, 'rmse_test': 34.7, 'overfit': 9.6, 'feat_imp': {'ROP': 0.0123, 'PP': 0.1139, 'AP': 0.0426, 'DP': 0.0268, 'RP': 0.093, 'FP': 0.1312, 'SE': 0.0143}}  (112.1s)
+
+========================================================================
+  9 — MODELO DE BLOQUES (IDW anisotrópico)
+========================================================================
+  status: ok  (55.2s)
+  bloque 2.5 m · IDW p=2 · anisotropía [1.0, 1.0, 3.0] · radio 7.5/2.5 m
+    caserón       bloques   vacíos     fuera  cobertura  encajonado (E×N×Z m)
+    PCC_0042        7.041   16.075 3.367.966      30.5%  [581.9. 955.3. 93.3]
+    PCC_1541        2.674    8.122     6.052      24.8%  [67.1. 63.9. 59.2]
+    PCS_1043        3.803   11.554    39.477      24.8%  [93.2. 95.1. 91.8]
+  muestras MWD con UCS: 777.126
+  bloques con valor : 13.518
+  bloques VACÍOS    : 35.751  (72.6% del volumen encajonado)
+  35751 bloque(s) quedaron VACÍOS por no reunir 3 muestra(s) dentro del elipsoide de búsqueda (7.5 m en planta, 2.5 m en cota). No se interpolan desde más lejos: un bloque sin soporte es información, no un hueco a rellenar. El encajonado se calcula POR CASERÓN: un encajonado único sobre caserones separados por kilómetros contaría el aire entre ellos y volvería la cobertura una cifra sin significado.
+
+  por banda ISRM (Clasificación ISRM de resistencia de la roca intacta (Brown, 1981). Criterio trazable, no percentiles de la muestra.):
+    banda               bloques          m³  UCS med   DI med  conf med
+    R5_muy_alta          13.518     211.219    142.2    0.689     0.246
+
+  cobertura del encajonado: 27.4%
+  Confianza = f_calidad × f_proximidad × f_soporte, los tres en [0, 1]. f_calidad es el inverso del pi_factor del atributo: incorpora la CALIDAD de la etiqueta, de modo que un dominio anclado en un ensayo del sitio y otro anclado en literatura no pueden salir con la misma confianza. f_proximidad decae con la distancia al dato más cercano. f_soporte crece con el número de muestras dentro del elipsoide.
+
+  CSV: /home/user/Proyecto2/resultados/sesion9_modelo_bloques.csv  (1.502.192 bytes)
+  DXF: /home/user/Proyecto2/resultados/sesion9_modelo_bloques.dxf  (20.1 MB)
+  total: 247.7s
