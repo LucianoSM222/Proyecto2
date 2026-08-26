@@ -6595,6 +6595,34 @@ def _di_desde_z2(z2: Dict[str, np.ndarray], pesos: Dict[str, float]) -> np.ndarr
     return np.sqrt(total)
 
 
+def _rqd_deere_np(largos: np.ndarray, di: np.ndarray, umbral: float) -> Optional[float]:
+    """
+    Regla de Deere vectorizada sobre arrays YA ORDENADOS por largo. Idéntica a
+    _rqd_deere; existe porque la calibración la evalúa cientos de miles de
+    veces y construir listas de tuplas y reordenarlas en cada evaluación es lo
+    que volvía impracticable el radio grande.
+    """
+    n = largos.size
+    if n < 2:
+        return None
+    total = float(largos[-1] - largos[0])
+    if total <= 0:
+        return None
+    ok = di <= umbral
+    if not ok.any():
+        return 0.0
+    d = np.diff(ok.astype(np.int8))
+    ini = np.flatnonzero(d == 1) + 1
+    fin = np.flatnonzero(d == -1)
+    if ok[0]:
+        ini = np.concatenate(([0], ini))
+    if ok[-1]:
+        fin = np.concatenate((fin, [n - 1]))
+    tramos = largos[fin] - largos[ini]
+    buenos = tramos[tramos >= RQD_TRAMO_MIN_M]
+    return 100.0 * float(buenos.sum()) / total
+
+
 def _rho_de_pesos(pesos: Dict[str, float], window: int, umbral: float,
                   pozos_rel: List[str], intervalos: List[Dict],
                   radio_m: float, min_puntos: int,
@@ -6629,17 +6657,11 @@ def _rho_de_pesos(pesos: Dict[str, float], window: int, umbral: float,
         if sondajes_filtro is not None and iv["sondaje"] not in sondajes_filtro:
             continue
         valores = []
-        for wn, idxs in iv["vecinos"].items():
+        for wn, (idxs, largos) in iv["vecinos"].items():
             perfil = perfiles.get(wn)
-            if perfil is None:
+            if perfil is None or idxs.size < 2:
                 continue
-            w = wells[wn]
-            lista = [(w.points[i].largo, float(perfil[i]))
-                     for i in idxs if i < len(perfil) and np.isfinite(perfil[i])]
-            if len(lista) < 2:
-                continue
-            lista.sort()
-            v = _rqd_deere(lista, umbral)
+            v = _rqd_deere_np(largos, perfil[idxs], umbral)
             if v is not None:
                 valores.append(v)
         if not valores:
@@ -6674,10 +6696,23 @@ def _preparar_intervalos_calibracion(radio_m: float, min_puntos: int):
         cerca = _vecinos_de_intervalo(P, iv, radio_m, margen)
         if len(cerca) < min_puntos:
             continue
-        vecinos: Dict[str, list] = {}
+        # Los índices y los largos se ordenan UNA vez acá: dentro de la
+        # búsqueda solo cambian los valores de DI, nunca el orden.
+        crudo: Dict[str, list] = {}
         for k in cerca:
             wn, i = meta[k]
-            vecinos.setdefault(wn, []).append(i)
+            crudo.setdefault(wn, []).append(i)
+        vecinos = {}
+        for wn, idxs in crudo.items():
+            if len(idxs) < 2:
+                continue
+            arr = np.array(idxs, dtype=np.int64)
+            largos = np.array([wells[wn].points[i].largo for i in arr],
+                              dtype=np.float64)
+            orden = np.argsort(largos)
+            vecinos[wn] = (arr[orden], largos[orden])
+        if not vecinos:
+            continue
         listos.append({**iv, "vecinos": vecinos})
         pozos_rel.update(vecinos)
     return listos, sorted(pozos_rel)

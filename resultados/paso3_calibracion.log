@@ -589,7 +589,7 @@
      DQ: 107 archivos → 57 planes, 604 tiros · 214 con coordenadas distintas entre revisiones ⚠
      MW: 345 pozos. 454.471 puntos
      match: {'matched': 316, 'fallback': 22, 'ambiguous': 7, 'no_dq': 0}
-     (0.1s mallas + 11.7s XML)
+     (0.1s mallas + 12.8s XML)
 
 ========================================================================
   PCC_1541
@@ -754,48 +754,14 @@
      DQ: 37 archivos → 29 planes, 255 tiros · 33 con coordenadas distintas entre revisiones ⚠
      MW: 140 pozos. 164.524 puntos
      match: {'matched': 127, 'fallback': 13, 'ambiguous': 0, 'no_dq': 0}
-     (0.1s mallas + 3.9s XML)
+     (0.1s mallas + 6.3s XML)
 ⚠  Sondaje "DDH20-ZC-07": una sola estación de desviación (en 0.0 m). Se asume trazado recto con azimut 62.83° / inclinación -89.06° hasta la profundidad declarada (52.8 m).
 ⚠  DI "PCS_1043_AUX1_H3": 13 pts, mín=14.
 ⚠  DI "PCS_1043_AUX2_H4": 9 pts, mín=14.
 ⚠  DI "PCS_1043_PR01_TH_P01_H14": 3 pts, mín=14.
-pozos=619  sondajes=11  (37.6s)
+pozos=619  sondajes=11  (41.6s)
 
 ========================================================================
   PARES CON VECINDAD POR SEGMENTO (no por bola)
 ========================================================================
   radio    5 m ·   30 pares · 4 sondaje(s) · rho= 0.1791 · sd(RQD_MWD)= 8.55 sd(RQD_sond)=14.48
-  radio   10 m ·   51 pares · 4 sondaje(s) · rho= 0.0912 · sd(RQD_MWD)= 8.94 sd(RQD_sond)=23.74
-  radio   25 m ·   82 pares · 5 sondaje(s) · rho= 0.1238 · sd(RQD_MWD)= 7.84 sd(RQD_sond)=21.05
-
-========================================================================
-  CALIBRACIÓN
-========================================================================
-
-  ── radio 5 m — status: ok  (108.6s)
-     pares=30 · sondajes=4 ['DDH13-LP-50', 'DDH16-IR-31', 'DDH22-ZC-29', 'DDH25-ZC-42']
-     pesos convención : {'pp': 0.35, 'pr': 0.2, 'pd': 0.25, 'pf': 0.2}
-     pesos calibrados : {'pp': np.float64(0.0477), 'pr': np.float64(0.2959), 'pd': np.float64(0.6532), 'pf': np.float64(0.0032)}
-     rho convención   : 0.1791
-     rho ajuste       : 0.2489
-     rho VALIDACIÓN   : -0.2127
-     NO GENERALIZA: rho de ajuste +0.249 contra rho de VALIDACIÓN -0.213. Los pesos describen los sondajes con los que se ajustaron y no transfieren al que se dejó fuera. Con esta cantidad de sondajes es el resultado esperable, y es un resultado: dice que hacen falta más sondajes con RQD, no otros pesos.
-     pliegues (dejando-un-sondaje-fuera):
-       DDH13-LP-50      rho=-0.165  n=13  pesos={'pp': np.float64(0.0037), 'pr': np.float64(0.1105), 'pd': np.float64(0.5138), 'pf': np.float64(0.372)}
-       DDH16-IR-31      rho=  n/d  n=3  pesos={'pp': np.float64(0.2537), 'pr': np.float64(0.3851), 'pd': np.float64(0.1893), 'pf': np.float64(0.1719)}
-       DDH22-ZC-29      rho=-0.261  n=10  pesos={'pp': np.float64(0.6666), 'pr': np.float64(0.0217), 'pd': np.float64(0.1758), 'pf': np.float64(0.1359)}
-       DDH25-ZC-42      rho=  n/d  n=4  pesos={'pp': np.float64(0.0477), 'pr': np.float64(0.2959), 'pd': np.float64(0.6532), 'pf': np.float64(0.0032)}
-
-  ── radio 10 m — status: ok  (525.2s)
-     pares=51 · sondajes=4 ['DDH13-LP-50', 'DDH16-IR-31', 'DDH22-ZC-29', 'DDH25-ZC-42']
-     pesos convención : {'pp': 0.35, 'pr': 0.2, 'pd': 0.25, 'pf': 0.2}
-     pesos calibrados : {'pp': np.float64(0.0023), 'pr': np.float64(0.169), 'pd': np.float64(0.8196), 'pf': np.float64(0.0091)}
-     rho convención   : 0.0889
-     rho ajuste       : 0.2468
-     rho VALIDACIÓN   : 0.1158
-     GENERALIZA DÉBILMENTE: ajuste +0.247, validación +0.116. Hay señal que sobrevive al sondaje dejado fuera, pero no alcanza para usar el DI calibrado como estimador de RQD.
-     pliegues (dejando-un-sondaje-fuera):
-       DDH13-LP-50      rho=-0.112  n=14  pesos={'pp': np.float64(0.0023), 'pr': np.float64(0.169), 'pd': np.float64(0.8196), 'pf': np.float64(0.0091)}
-       DDH16-IR-31      rho=+0.209  n=14  pesos={'pp': np.float64(0.1737), 'pr': np.float64(0.0023), 'pd': np.float64(0.8123), 'pf': np.float64(0.0117)}
-       DDH22-ZC-29      rho=+0.200  n=15  pesos={'pp': np.float64(0.0329), 'pr': np.float64(0.0133), 'pd': np.float64(0.3763), 'pf': np.float64(0.5775)}
-       DDH25-ZC-42      rho=+0.167  n=8  pesos={'pp': np.float64(0.0477), 'pr': np.float64(0.2959), 'pd': np.float64(0.6532), 'pf': np.float64(0.0032)}
