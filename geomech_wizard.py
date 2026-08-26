@@ -5530,6 +5530,17 @@ IDW_RADIO_V_M = 2.5
 # separación vertical cuenta como tres metros de separación horizontal.
 IDW_ANISOTROPIA = (1.0, 1.0, 3.0)
 IDW_MIN_MUESTRAS = 3
+# Holgura alrededor del espacio EFECTIVAMENTE PERFORADO. El modelo existe para
+# la tronadura que viene, así que su dominio es el volumen de los tiros; la
+# holgura la extiende lo justo para que sirva de soporte a dilución,
+# estabilidad y fortificación, sin inventar macizo lejos del dato.
+#
+# No es lo mismo que el radio de búsqueda: dentro de la holgura un bloque
+# PUEDE quedar vacío por falta de muestras cercanas, y eso se cuenta. Fuera de
+# la holgura el bloque no es "vacío", simplemente NO PERTENECE al modelo, y
+# contarlo hundía la cobertura a cifras sin significado — un caserón cuyos
+# pozos se reparten en 900 m tiene un encajonado casi todo aire.
+HOLGURA_MODELO_M = 15.0
 # Para no interpolar desde un solo pozo cuando hay muchos puntos alineados: el
 # soporte se cuenta por POZOS distintos, no por registros MWD.
 IDW_MIN_POZOS = 1
@@ -5619,15 +5630,19 @@ def interpolate_block_model(bloque_m: float = BLOQUE_M,
                             min_muestras: int = IDW_MIN_MUESTRAS,
                             min_pozos: int = IDW_MIN_POZOS,
                             fuente: str = "ucs_matriz",
-                            agrupar_por_caseron: bool = True) -> Dict:
+                            agrupar_por_caseron: bool = True,
+                            holgura_m: float = HOLGURA_MODELO_M) -> Dict:
     """
     (9.1) Interpola UCS y DI a un modelo de bloques con IDW anisotrópico y
     máscara de soporte.
 
-    Un bloque recibe valor SOLO si dentro del elipsoide de búsqueda
-    (radio_h_m en el plano, radio_v_m en cota) hay al menos `min_muestras`
-    registros de al menos `min_pozos` pozo(s). Si no los hay, queda VACÍO y se
-    cuenta — nunca se estira la búsqueda para llenarlo.
+    El DOMINIO del modelo es el espacio perforado más `holgura_m`. Un bloque
+    más lejos que eso de todo tiro no es un bloque vacío: está FUERA, y no
+    entra en la cobertura. Dentro del dominio, un bloque recibe valor solo si
+    en el elipsoide de búsqueda (radio_h_m en planta, radio_v_m en cota) hay
+    al menos `min_muestras` registros de al menos `min_pozos` pozo(s). Si no
+    los hay queda VACÍO y se cuenta — nunca se estira la búsqueda para
+    llenarlo.
     """
     m = _muestras_bloques(fuente)
     P = m["P"]
@@ -5642,7 +5657,7 @@ def interpolate_block_model(bloque_m: float = BLOQUE_M,
                 "terminologia": TERMINOLOGIA_C}
 
     ax, ay, az = anisotropia
-    bloques, n_vacios = [], 0
+    bloques, n_vacios, n_fuera = [], 0, 0
     pozos_arr = np.array(m["pozo"])
     caseron_arr = np.array(m["caseron"])
     por_caseron: Dict[str, Dict] = {}
@@ -5658,9 +5673,11 @@ def interpolate_block_model(bloque_m: float = BLOQUE_M,
       if gidx.size == 0:
         continue
       Pg = P[gidx]
-      n_bloques_antes, n_vacios_antes = len(bloques), n_vacios
-      lo = Pg.min(axis=0) - bloque_m
-      hi = Pg.max(axis=0) + bloque_m
+      n_bloques_antes, n_vacios_antes, n_fuera_antes = len(bloques), n_vacios, n_fuera
+      # El encajonado sale del espacio perforado más la holgura, y es un
+      # prisma recto: no complica el recorrido y el planificador lo entiende.
+      lo = Pg.min(axis=0) - holgura_m
+      hi = Pg.max(axis=0) + holgura_m
       ejes = [np.arange(lo[k] + bloque_m / 2.0, hi[k] + bloque_m / 2.0, bloque_m)
               for k in range(3)]
       # Índice espacial: celda de lado radio_h_m sobre el plano, para no evaluar
@@ -5676,19 +5693,31 @@ def interpolate_block_model(bloque_m: float = BLOQUE_M,
           for y in ejes[1]:
               cj = int(np.floor(y / celda))
               vecinos = []
-              for di_ in (-1, 0, 1):
-                  for dj_ in (-1, 0, 1):
+              # La holgura puede superar el lado de la celda del índice: se
+              # barre el vecindario necesario para no perder tiros de borde.
+              rad_celdas = int(np.ceil(max(radio_h_m, holgura_m) / celda))
+              for di_ in range(-rad_celdas, rad_celdas + 1):
+                  for dj_ in range(-rad_celdas, rad_celdas + 1):
                       vecinos.extend(cubos.get((ci + di_, cj + dj_), ()))
               if not vecinos:
-                  n_vacios += len(ejes[2]); continue
+                  n_fuera += len(ejes[2]); continue
               vec = np.array(vecinos)
-              sub = P[vec]
-              dh = np.hypot(sub[:, 0] - x, sub[:, 1] - y)
-              en_h = dh <= radio_h_m
-              if not en_h.any():
-                  n_vacios += len(ejes[2]); continue
-              vec, sub, dh = vec[en_h], sub[en_h], dh[en_h]
+              sub_all = P[vec]
+              dh_all = np.hypot(sub_all[:, 0] - x, sub_all[:, 1] - y)
+              # Dominio: ¿hay algún tiro dentro de la holgura, en planta?
+              en_dom = dh_all <= holgura_m
+              if not en_dom.any():
+                  n_fuera += len(ejes[2]); continue
+              sub_dom, dh_dom = sub_all[en_dom], dh_all[en_dom]
+              en_h = dh_all <= radio_h_m
+              vec, sub, dh = vec[en_h], sub_all[en_h], dh_all[en_h]
               for z in ejes[2]:
+                  # Fuera del dominio en cota: el bloque no pertenece al modelo.
+                  if not np.any((dh_dom <= holgura_m)
+                                & (np.abs(sub_dom[:, 2] - z) <= holgura_m)):
+                      n_fuera += 1; continue
+                  if sub.shape[0] == 0:
+                      n_vacios += 1; continue
                   dv = np.abs(sub[:, 2] - z)
                   sel = dv <= radio_v_m
                   n_sel = int(sel.sum())
@@ -5742,9 +5771,13 @@ def interpolate_block_model(bloque_m: float = BLOQUE_M,
                   })
       n_con = len(bloques) - n_bloques_antes
       n_vac = n_vacios - n_vacios_antes
+      n_fue = n_fuera - n_fuera_antes
       por_caseron[nombre_cas] = {
-          "n_bloques": n_con, "n_vacios": n_vac,
+          "n_bloques": n_con, "n_vacios": n_vac, "n_fuera_del_dominio": n_fue,
           "n_muestras": int(gidx.size),
+          # Cobertura SOBRE EL DOMINIO —espacio perforado más holgura—, no
+          # sobre el encajonado: es la fracción del volumen que va a tronarse
+          # y que el modelo alcanza a describir.
           "cobertura": round(n_con / max(n_con + n_vac, 1), 4),
           "encajonado_m": [round(float(hi[k] - lo[k]), 1) for k in range(3)]}
     if not bloques:

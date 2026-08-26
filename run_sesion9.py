@@ -50,6 +50,12 @@ def main():
     print(f"  bloque {rep['bloque_m']:g} m · IDW p={rep['potencia']:g} · "
           f"anisotropía {rep['anisotropia']} · radio {rep['radio_h_m']:g}/"
           f"{rep['radio_v_m']:g} m")
+    print(f"    {'caserón':<12}{'bloques':>9}{'vacíos':>9}{'fuera':>10}"
+          f"{'cobertura':>11}  encajonado (E×N×Z m)")
+    for c, d in sorted(rep.get("por_caseron", {}).items()):
+        print(f"    {c:<12}{d['n_bloques']:>9,}{d['n_vacios']:>9,}"
+              f"{d['n_fuera_del_dominio']:>10,}{d['cobertura']*100:>10.1f}%  "
+              f"{d['encajonado_m']}".replace(",", "."))
     print(f"  muestras MWD con UCS: {rep['n_muestras']:,}".replace(",", "."))
     print(f"  bloques con valor : {rep['n_bloques']:,}".replace(",", "."))
     print(f"  bloques VACÍOS    : {rep['n_vacios']:,}  "

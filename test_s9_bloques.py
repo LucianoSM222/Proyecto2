@@ -124,6 +124,36 @@ def mascara_de_soporte():
           max((b["dist_min_m"] for b in rep["bloques"]), default=None))
 
 
+def dominio_es_el_espacio_perforado():
+    section("9 — El dominio es el espacio PERFORADO más la holgura, no el encajonado")
+    reset()
+    # Dos pozos separados 60 m. Entre medio no hay tiro alguno: esos bloques no
+    # son "vacíos", están FUERA del modelo. El caserón que se va a tronar es el
+    # volumen de los tiros, no el prisma que los encierra a los dos.
+    _pozo("W_izq", E0, N0, Z0, n=40)
+    _pozo("W_der", E0 + 60.0, N0, Z0, n=40)
+    rep = gw.interpolate_block_model(holgura_m=10.0)
+    check(rep["status"] == "ok", "corre", rep.get("motivo"))
+    if rep["status"] != "ok":
+        return
+    cas = rep["por_caseron"]["CAS_A"]
+    check(cas["n_fuera_del_dominio"] > 0,
+          "los bloques del vacío central quedan FUERA, contados aparte",
+          cas.get("n_fuera_del_dominio"))
+    check(cas["cobertura"] == round(cas["n_bloques"] /
+                                    max(cas["n_bloques"] + cas["n_vacios"], 1), 4),
+          "la cobertura se mide sobre el DOMINIO, no sobre el encajonado", cas)
+    # Una holgura mayor agranda el dominio: más bloques dentro, no menos.
+    rep2 = gw.interpolate_block_model(holgura_m=30.0)
+    c2 = rep2["por_caseron"]["CAS_A"]
+    check(c2["n_vacios"] > cas["n_vacios"],
+          "subir la holgura mete más bloques al dominio",
+          (cas["n_vacios"], c2["n_vacios"]))
+    check(gw.HOLGURA_MODELO_M == 15.0,
+          "la holgura por defecto son 15 m, dentro del rango pedido de 10-20",
+          gw.HOLGURA_MODELO_M)
+
+
 def anisotropia_horizontal():
     section("9 — Anisotropía: el yacimiento es estratiforme, la cota separa")
     reset()
@@ -270,6 +300,7 @@ def la_cota_no_es_predictora():
 ALL_TESTS = [
     bloque_de_dos_metros_y_medio,
     mascara_de_soporte,
+    dominio_es_el_espacio_perforado,
     anisotropia_horizontal,
     confianza_incorpora_calidad_de_etiqueta,
     ucs_dentro_de_limites_fisicos,

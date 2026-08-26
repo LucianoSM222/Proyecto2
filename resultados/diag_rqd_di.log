@@ -180,7 +180,7 @@
      DQ: 54 archivos → 33 planes, 498 tiros · 159 con coordenadas distintas entre revisiones ⚠
      MW: 134 pozos. 162.882 puntos
      match: {'matched': 122, 'fallback': 3, 'ambiguous': 9, 'no_dq': 0}
-     (0.3s mallas + 3.8s XML)
+     (5.1s mallas + 7.0s XML)
 
 ========================================================================
   PCC_0042
@@ -589,7 +589,7 @@
      DQ: 107 archivos → 57 planes, 604 tiros · 214 con coordenadas distintas entre revisiones ⚠
      MW: 345 pozos. 454.471 puntos
      match: {'matched': 316, 'fallback': 22, 'ambiguous': 7, 'no_dq': 0}
-     (0.2s mallas + 13.8s XML)
+     (1.8s mallas + 20.6s XML)
 
 ========================================================================
   PCC_1541
@@ -754,8 +754,89 @@
      DQ: 37 archivos → 29 planes, 255 tiros · 33 con coordenadas distintas entre revisiones ⚠
      MW: 140 pozos. 164.524 puntos
      match: {'matched': 127, 'fallback': 13, 'ambiguous': 0, 'no_dq': 0}
-     (0.1s mallas + 6.2s XML)
+     (0.6s mallas + 6.9s XML)
+⚠  Sondaje "DDH20-ZC-07": una sola estación de desviación (en 0.0 m). Se asume trazado recto con azimut 62.83° / inclinación -89.06° hasta la profundidad declarada (52.8 m).
 ⚠  DI "PCS_1043_AUX1_H3": 13 pts, mín=14.
 ⚠  DI "PCS_1043_AUX2_H4": 9 pts, mín=14.
 ⚠  DI "PCS_1043_PR01_TH_P01_H14": 3 pts, mín=14.
-pozos=619  mallas=23  (42.9s)
+pozos=619  sondajes=11  (61.6s)
+
+========================================================================
+  1 — ¿CUÁNTO MWD TIENE UN SONDAJE CON RQD CERCA?
+========================================================================
+  intervalos con RQD : 596
+  sondajes           : 10
+  metraje logueado   : 1.724.2 m
+  RQD  min/p25/med/p75/max : 0 / 67 / 80 / 95 / 100
+
+  puntos MWD entrenables: 777.126
+  distancia al intervalo de RQD más cercano:
+       radio      puntos       %   pozos
+          2m       3.327    0.4%      28
+          3m       9.234    1.2%      57
+          5m      31.643    4.1%     106
+         10m     112.401   14.5%     180
+         15m     223.215   28.7%     231
+         25m     370.441   47.7%     316
+         50m     444.129   57.2%     338
+     mediana       26.1m
+
+========================================================================
+  2 — ¿LOS PICOS DEL DI SON ESTRUCTURA O RUIDO?
+========================================================================
+  picos totales: 4.599  ·  pozos: 619
+  picos por pozo — media 7.4  mediana 7  máx 18  pozos sin ningún pico: 4
+  espaciamiento entre picos consecutivos del mismo pozo — mediana 1.80 m  p10 1.08  p90 8.69
+
+  agrupamiento 3D (eps=2.5 m, el burden de la operación):
+    picos AISLADOS (ningún otro pico a 2.5 m): 36  (0.8%)
+    grupos formados: 53
+    grupos de ≥3 picos: 38
+      · PLANOS   (caen en un plano → falla o fractura): 21
+      · lineales (alineados con el propio pozo, no informan): 7
+      · difusos  (nube sin forma → zona fracturada o ruido): 10
+
+  planos que cruzan 2 o más POZOS (lo que sería una estructura real): 21
+    n=590 picos · 80 pozos · DI medio 2.64 · manteo 88° · rumbo 131° · E377008 N6958896 Z281
+    n=533 picos · 67 pozos · DI medio 2.93 · manteo 86° · rumbo 135° · E377504 N6958063 Z344
+    n=478 picos · 65 pozos · DI medio 2.95 · manteo 88° · rumbo 317° · E377540 N6958026 Z341
+    n= 69 picos · 12 pozos · DI medio 3.60 · manteo 89° · rumbo 307° · E377015 N6958936 Z301
+    n= 63 picos · 10 pozos · DI medio 2.89 · manteo 88° · rumbo 127° · E377004 N6958944 Z303
+    n= 52 picos · 17 pozos · DI medio 2.38 · manteo 85° · rumbo 51° · E377028 N6958892 Z302
+    n= 36 picos · 12 pozos · DI medio 4.82 · manteo 88° · rumbo 223° · E377199 N6958371 Z305
+    n= 22 picos · 9 pozos · DI medio 3.29 · manteo 86° · rumbo 226° · E377175 N6958345 Z324
+
+========================================================================
+  3 — RELACIÓN EMPÍRICA DI ↔ RQD (pesos de convención, SIN tocar)
+========================================================================
+
+  radio 5 m — n=31.643
+    ρ(DI, RQD) = 0.0386   (se espera NEGATIVO: más DI → menos RQD)
+       banda RQD         n  DI medio   DI p90
+           25-50       390     0.612    1.207
+           50-75     1.467     0.699    1.584
+           75-90    21.800     0.586    0.961
+          90-101     7.986     0.916    1.864
+    fracción de puntos sobre el umbral DI>1.5: 6.18%  (el RQD del sondaje dice que hay 18.5% de roca no recuperable)
+
+  radio 10 m — n=112.401
+    ρ(DI, RQD) = -0.0044   (se espera NEGATIVO: más DI → menos RQD)
+       banda RQD         n  DI medio   DI p90
+            0-25     3.356     0.635    1.259
+           25-50     3.719     0.825    1.892
+           50-75    15.940     0.788    1.816
+           75-90    65.023     0.610    0.993
+          90-101    24.363     0.779    1.375
+    fracción de puntos sobre el umbral DI>1.5: 7.29%  (el RQD del sondaje dice que hay 22.9% de roca no recuperable)
+
+  radio 25 m — n=370.441
+    ρ(DI, RQD) = -0.0069   (se espera NEGATIVO: más DI → menos RQD)
+       banda RQD         n  DI medio   DI p90
+            0-25    20.697     0.638    1.254
+           25-50    17.833     0.784    1.733
+           50-75    70.741     0.771    1.717
+           75-90   151.957     0.630    1.083
+          90-101   109.213     0.690    1.181
+    fracción de puntos sobre el umbral DI>1.5: 7.80%  (el RQD del sondaje dice que hay 23.9% de roca no recuperable)
+
+  total: 65.6s

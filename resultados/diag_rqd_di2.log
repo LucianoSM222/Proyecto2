@@ -180,7 +180,7 @@
      DQ: 54 archivos → 33 planes, 498 tiros · 159 con coordenadas distintas entre revisiones ⚠
      MW: 134 pozos. 162.882 puntos
      match: {'matched': 122, 'fallback': 3, 'ambiguous': 9, 'no_dq': 0}
-     (0.3s mallas + 3.8s XML)
+     (0.3s mallas + 4.3s XML)
 
 ========================================================================
   PCC_0042
@@ -589,7 +589,7 @@
      DQ: 107 archivos → 57 planes, 604 tiros · 214 con coordenadas distintas entre revisiones ⚠
      MW: 345 pozos. 454.471 puntos
      match: {'matched': 316, 'fallback': 22, 'ambiguous': 7, 'no_dq': 0}
-     (0.2s mallas + 13.8s XML)
+     (0.2s mallas + 13.0s XML)
 
 ========================================================================
   PCC_1541
@@ -754,8 +754,84 @@
      DQ: 37 archivos → 29 planes, 255 tiros · 33 con coordenadas distintas entre revisiones ⚠
      MW: 140 pozos. 164.524 puntos
      match: {'matched': 127, 'fallback': 13, 'ambiguous': 0, 'no_dq': 0}
-     (0.1s mallas + 6.2s XML)
+     (0.1s mallas + 7.0s XML)
+⚠  Sondaje "DDH20-ZC-07": una sola estación de desviación (en 0.0 m). Se asume trazado recto con azimut 62.83° / inclinación -89.06° hasta la profundidad declarada (52.8 m).
 ⚠  DI "PCS_1043_AUX1_H3": 13 pts, mín=14.
 ⚠  DI "PCS_1043_AUX2_H4": 9 pts, mín=14.
 ⚠  DI "PCS_1043_PR01_TH_P01_H14": 3 pts, mín=14.
-pozos=619  mallas=23  (42.9s)
+sondajes=11  intervalos con RQD=596  (44.0s)
+puntos MWD con DI: 777.101
+
+========================================================================
+  RADIO 5 m — un número por intervalo, mismo soporte
+========================================================================
+  intervalos con ≥30 puntos MWD a 5 m: 35 de 596
+
+  RQD_MWD (Deere) contra RQD del sondaje, barriendo el umbral de DI:
+     umbral DI      n      rho   RQD_MWD medio  RQD sondaje medio
+           0.8     35   -0.104            80.8               76.9
+           1.0     35   -0.089            83.7               76.9
+           1.2     35   -0.105            87.1               76.9
+           1.5     35   -0.106            89.4               76.9  ←convención
+           2.0     35    0.017            92.0               76.9
+           2.5     35   -0.112            95.3               76.9
+
+  proxy simple (% de metraje con DI ≤ 1.5): rho=-0.085  n=35
+    rango RQD_MWD  : 44.4 a 100.0  (sd 9.88)
+    rango RQD sondaje: 37.7 a 100.0  (sd 14.19)
+
+========================================================================
+  RADIO 10 m — un número por intervalo, mismo soporte
+========================================================================
+  intervalos con ≥30 puntos MWD a 10 m: 66 de 596
+
+  RQD_MWD (Deere) contra RQD del sondaje, barriendo el umbral de DI:
+     umbral DI      n      rho   RQD_MWD medio  RQD sondaje medio
+           0.8     66    0.045            78.1               68.5
+           1.0     66    0.094            81.9               68.5
+           1.2     66    0.101            84.8               68.5
+           1.5     66    0.075            88.1               68.5  ←convención
+           2.0     66    0.062            91.9               68.5
+           2.5     66    0.040            94.1               68.5
+
+  proxy simple (% de metraje con DI ≤ 1.5): rho=0.073  n=66
+    rango RQD_MWD  : 38.9 a 100.0  (sd 8.75)
+    rango RQD sondaje: 0.0 a 100.0  (sd 22.64)
+
+========================================================================
+  RADIO 15 m — un número por intervalo, mismo soporte
+========================================================================
+  intervalos con ≥30 puntos MWD a 15 m: 82 de 596
+
+  RQD_MWD (Deere) contra RQD del sondaje, barriendo el umbral de DI:
+     umbral DI      n      rho   RQD_MWD medio  RQD sondaje medio
+           0.8     82   -0.007            79.6               67.4
+           1.0     82    0.050            83.5               67.4
+           1.2     82    0.017            86.5               67.4
+           1.5     82   -0.061            90.0               67.4  ←convención
+           2.0     82   -0.176            94.0               67.4
+           2.5     82   -0.173            96.0               67.4
+
+  proxy simple (% de metraje con DI ≤ 1.5): rho=-0.098  n=82
+    rango RQD_MWD  : 54.5 a 100.0  (sd 6.26)
+    rango RQD sondaje: 0.0 a 100.0  (sd 21.90)
+
+========================================================================
+  RADIO 25 m — un número por intervalo, mismo soporte
+========================================================================
+  intervalos con ≥30 puntos MWD a 25 m: 122 de 596
+
+  RQD_MWD (Deere) contra RQD del sondaje, barriendo el umbral de DI:
+     umbral DI      n      rho   RQD_MWD medio  RQD sondaje medio
+           0.8    122    0.084            80.8               66.4
+           1.0    122    0.087            84.7               66.4
+           1.2    122    0.082            87.5               66.4
+           1.5    122   -0.023            90.8               66.4  ←convención
+           2.0    122   -0.104            94.2               66.4
+           2.5    122   -0.095            96.4               66.4
+
+  proxy simple (% de metraje con DI ≤ 1.5): rho=-0.054  n=122
+    rango RQD_MWD  : 66.3 a 100.0  (sd 4.49)
+    rango RQD sondaje: 0.0 a 100.0  (sd 21.13)
+
+  total: 113.0s
