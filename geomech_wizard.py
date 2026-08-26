@@ -6561,10 +6561,46 @@ CAL_MIN_SONDAJES = 2
 CAL_PARAMS = ("pp", "pr", "pd", "pf")
 
 
+def _z2_por_param(points, window: int, params) -> Optional[Dict[str, np.ndarray]]:
+    """
+    El z² de la varianza móvil de cada variable, que es la única parte cara de
+    di_profile y NO depende de los pesos:
+
+        DI = sqrt( Σ_k  w_k_normalizado · z_k² )
+
+    Precalcularlo una vez por pozo convierte cada evaluación de pesos en una
+    suma ponderada. Sin esto, la búsqueda recalcula el perfil completo por
+    cada combinación y la calibración deja de ser practicable.
+    """
+    half = window // 2
+    n = len(points)
+    if n < window:
+        return None
+    out = {}
+    for k in params:
+        arr = np.array([getattr(p, k) for p in points], dtype=np.float64)
+        mv = _moving_variance(arr, half)
+        std = mv.std() or 1e-9
+        out[k] = ((mv - mv.mean()) / std) ** 2
+    return out
+
+
+def _di_desde_z2(z2: Dict[str, np.ndarray], pesos: Dict[str, float]) -> np.ndarray:
+    """DI a partir del z² precalculado. Idéntico a di_profile por construcción."""
+    total_w = sum(pesos.get(k, 0.0) for k in z2) or 1.0
+    total = None
+    for k, z in z2.items():
+        aporte = (pesos.get(k, 0.0) / total_w) * z
+        total = aporte if total is None else total + aporte
+    return np.sqrt(total)
+
+
 def _rho_de_pesos(pesos: Dict[str, float], window: int, umbral: float,
                   pozos_rel: List[str], intervalos: List[Dict],
                   radio_m: float, min_puntos: int,
-                  sondajes_filtro: Optional[set] = None) -> Tuple[Optional[float], int]:
+                  sondajes_filtro: Optional[set] = None,
+                  z2_cache: Optional[Dict[str, Dict[str, np.ndarray]]] = None
+                  ) -> Tuple[Optional[float], int]:
     """
     rho de Spearman entre el RQD_MWD que producen estos pesos y el RQD de los
     sondajes, sobre los intervalos pedidos. Devuelve (rho, n_pares).
@@ -6575,6 +6611,11 @@ def _rho_de_pesos(pesos: Dict[str, float], window: int, umbral: float,
     """
     perfiles = {}
     for wn in pozos_rel:
+        if z2_cache is not None:
+            z2 = z2_cache.get(wn)
+            if z2:
+                perfiles[wn] = _di_desde_z2(z2, pesos)
+            continue
         w = wells.get(wn)
         if w is None or len(w.points) < window:
             continue
@@ -6682,6 +6723,17 @@ def calibrate_di_weights(radio_m: Optional[float] = None,
                 "n_sondajes": len(sondajes), "sondajes": sondajes,
                 "n_intervalos": len(intervalos), "radio_m": radio_m}
 
+    # El z² de cada variable se calcula UNA vez por pozo: es lo único caro y no
+    # depende de los pesos.
+    z2_cache = {}
+    for wn in pozos_rel:
+        w = wells.get(wn)
+        if w is None:
+            continue
+        z2 = _z2_por_param(w.points, window, params)
+        if z2 is not None:
+            z2_cache[wn] = z2
+
     rng = np.random.default_rng(seed)
     # Muestreo de Dirichlet sobre el símplex: cubre el espacio de pesos sin
     # privilegiar ninguna esquina. Se incluye la combinación de CONVENCIÓN como
@@ -6697,7 +6749,7 @@ def calibrate_di_weights(radio_m: Optional[float] = None,
         mejor_w, mejor_rho, mejor_n = None, None, 0
         for w in cand:
             rho, n = _rho_de_pesos(w, window, umbral, pozos_rel, intervalos,
-                                   radio_m, min_puntos, filtro)
+                                   radio_m, min_puntos, filtro, z2_cache)
             if rho is None or not np.isfinite(rho):
                 continue
             if mejor_rho is None or rho > mejor_rho:
@@ -6714,7 +6766,7 @@ def calibrate_di_weights(radio_m: Optional[float] = None,
     rho_conv, _ = _rho_de_pesos(
         {k: v for k, v in conv.get("weights", {}).items() if k in params} or
         {k: 1.0 / len(params) for k in params},
-        window, umbral, pozos_rel, intervalos, radio_m, min_puntos, None)
+        window, umbral, pozos_rel, intervalos, radio_m, min_puntos, None, z2_cache)
 
     # Validación dejando-un-sondaje-fuera: se ajusta sin ese sondaje y se mide
     # SOBRE él. Es la única forma de saber si los pesos describen la roca o
@@ -6728,7 +6780,8 @@ def calibrate_di_weights(radio_m: Optional[float] = None,
                              "motivo": "sin pares al dejar este sondaje fuera"})
             continue
         rho_out, n_out = _rho_de_pesos(w_fit, window, umbral, pozos_rel,
-                                       intervalos, radio_m, min_puntos, {s})
+                                       intervalos, radio_m, min_puntos, {s},
+                                       z2_cache)
         pliegues.append({"sondaje": s, "rho": rho_out, "n_pares": n_out,
                          "rho_ajuste_pliegue": rho_fit,
                          "pesos_pliegue": {k: round(v, 4) for k, v in w_fit.items()}})
