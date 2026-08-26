@@ -5878,9 +5878,23 @@ def block_model_summary(rep: Optional[Dict] = None) -> Dict:
                    "di_mediana": round(float(np.median(v["di"])), 4) if v["di"] else None,
                    "confianza_mediana": round(float(np.median(v["conf"])), 4)}
                for k, v in sorted(por_banda.items())}
+    # La cobertura GLOBAL sobre un encajonado que abarca varios caserones no
+    # significa nada: un caserón compacto y bien perforado y un nivel de 900 m
+    # de largo con pozos dispersos se promedian en una cifra que no describe a
+    # ninguno de los dos. Se entrega por caserón, y la global va acompañada de
+    # esa advertencia.
+    por_cas = rep.get("por_caseron") or {}
     return {"status": "ok", "por_banda": resumen,
             "n_bloques": rep["n_bloques"], "n_vacios": rep["n_vacios"],
+            "por_caseron": {c: {"n_bloques": d["n_bloques"], "n_vacios": d["n_vacios"],
+                                "cobertura": d["cobertura"],
+                                "volumen_m3": round(d["n_bloques"] * rep["bloque_m"] ** 3, 1)}
+                            for c, d in por_cas.items()},
             "cobertura": round(rep["n_bloques"] / max(rep["n_bloques"] + rep["n_vacios"], 1), 4),
+            "cobertura_advertencia": (
+                "La cobertura global mezcla caserones de tamaño y densidad de "
+                "perforación distintos: leer la de cada caserón, no el promedio."
+                if len(por_cas) > 1 else None),
             "terminologia": TERMINOLOGIA_C}
 
 
@@ -7702,12 +7716,19 @@ def _kit_resumen_bloques() -> str:
     rep = block_model_summary()
     if rep.get("status") != "ok":
         raise KitSinDatos(rep.get("motivo") or "Sin modelo de bloques.")
-    filas = [{"banda": k, **v} for k, v in rep["por_banda"].items()]
+    filas = [{"nivel": "banda", "clave": k, **v} for k, v in rep["por_banda"].items()]
+    for c, d in (rep.get("por_caseron") or {}).items():
+        filas.append({"nivel": "caseron", "clave": c, "n_bloques": d["n_bloques"],
+                      "volumen_m3": d["volumen_m3"],
+                      "confianza_mediana": None, "ucs_mediana": None,
+                      "di_mediana": None, "cobertura": d["cobertura"],
+                      "n_vacios": d["n_vacios"]})
     cab = "\n".join("# " + l for l in [
-        f"{TERMINOLOGIA_C} — resumen del modelo de bloques por banda ISRM.",
-        f"bloques con valor: {rep['n_bloques']} · vacíos: {rep['n_vacios']} · "
-        f"cobertura del encajonado: {rep['cobertura']*100:.1f}%",
-        f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
+        f"{TERMINOLOGIA_C} — resumen del modelo de bloques por banda ISRM y por caserón.",
+        f"bloques con valor: {rep['n_bloques']} · vacíos: {rep['n_vacios']}"]
+        + ([rep["cobertura_advertencia"]] if rep.get("cobertura_advertencia") else
+           [f"cobertura del encajonado: {rep['cobertura']*100:.1f}%"])
+        + [f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
     return cab + "\n" + pd.DataFrame(filas).to_csv(index=False)
 
 
@@ -7743,13 +7764,27 @@ def _kit_fig_di_rqd():
     return build_di_rqd_figure(data)
 
 
-def _kit_csv_o_motivo(fn, motivo_vacio: str):
-    """Envuelve un exportador que ya devuelve CSV: si viene vacío, lo declara."""
+def _kit_csv_o_motivo(fn, motivo_vacio: str, encabezado: str = ""):
+    """
+    Envuelve un exportador ya existente. Los de la aplicación no son
+    uniformes: unos devuelven el CSV como texto (con su encuadre en
+    comentarios) y otros devuelven el DataFrame crudo, porque alimentan el
+    botón de descarga de la UI. Acá se aceptan los dos y en ambos casos se
+    distingue "vacío" —que se declara con su motivo— de "con filas".
+    """
     def _gen():
-        txt = fn()
-        cuerpo = [l for l in (txt or "").splitlines() if l and not l.startswith("#")]
+        salida = fn()
+        if isinstance(salida, pd.DataFrame):
+            if salida.empty:
+                raise KitSinDatos(motivo_vacio)
+            cab = ("\n".join("# " + l for l in
+                              [encabezado, f"generado: {time.strftime('%Y-%m-%d %H:%M')}"]
+                              if l) + "\n") if encabezado else ""
+            return cab + salida.to_csv(index=False)
+        txt = salida or ""
+        cuerpo = [l for l in txt.splitlines() if l and not l.startswith("#")]
         if len(cuerpo) <= 1:
-            comentario = next((l[1:].strip() for l in (txt or "").splitlines()
+            comentario = next((l[1:].strip() for l in txt.splitlines()
                                if l.startswith("#")), "")
             raise KitSinDatos(comentario or motivo_vacio)
         return txt
@@ -7847,15 +7882,32 @@ KIT_INDICE_MD = "INDICE_capitulo5.md"
 # Exportadores que ya devuelven CSV y cuyo "vacío" hay que interpretar.
 _KIT_CSV_DIRECTOS = {
     "export_vocabulary_csv": "El registro de vocabulario está vacío.",
-    "export_di_rqd_csv": "Ningún caserón reúne RQD de laboratorio y MWD.",
-    "export_validation_csv": "Sin modelo entrenado no hay validación por pozo.",
+    "export_di_rqd_csv": ("Ningún caserón reúne RQD de laboratorio del Excel "
+                          "geomecánico y puntos MWD suficientes: sin las dos "
+                          "fuentes no hay contraste independiente que hacer."),
+    "export_validation_csv": ("No se corrió la validación multipozo de posición "
+                              "de mallas: sin resultados no hay detalle por pozo."),
     "export_concordance_csv": "Sin contraste disponible no hay concordancia.",
     "export_se_ucs_coherence_csv": "Sin dominios con UCS de laboratorio.",
     "export_pp_curves_csv": "Sin puntos con dominio para construir curvas.",
     "export_discriminator_csv": "Sin picos de DI que clasificar.",
     "export_rqd_mwd_csv": "Sin pozos con DI calculado.",
     "export_block_model_csv": "Sin modelo de bloques.",
-    "export_predictions_csv": "Sin predicciones: entrenar y predecir antes.",
+    "export_predictions_csv": ("Sin puntos MWD cargados no hay predicciones que "
+                               "exportar."),
+}
+
+# Encuadre para los exportadores que devuelven el DataFrame crudo y por lo
+# tanto no traen encabezado propio.
+_KIT_ENCABEZADOS = {
+    "export_di_rqd_csv": ("Validación INDEPENDIENTE del DI: el RQD del Excel "
+                          "geomecánico proviene de mapeo y sondajes, no del MWD."),
+    "export_validation_csv": ("Validación multipozo de la posición de cada malla: "
+                              "offset entre el cruce pozo-malla y el pico de DI "
+                              "más cercano."),
+    "export_predictions_csv": ("Predicciones punto a punto. ucs_matriz es la UCS "
+                               "de la matriz rocosa SIN discontinuidades; ucs_ml "
+                               "es la predicción cruda, con su intervalo p10-p90."),
 }
 
 
@@ -7922,7 +7974,8 @@ def build_chapter5_kit(outdir: str, fmt_figura: str = "auto") -> Dict:
             else:
                 if it["generador"] in _KIT_CSV_DIRECTOS:
                     texto = _kit_csv_o_motivo(
-                        gen, _KIT_CSV_DIRECTOS[it["generador"]])()
+                        gen, _KIT_CSV_DIRECTOS[it["generador"]],
+                        _KIT_ENCABEZADOS.get(it["generador"], ""))()
                 else:
                     texto = gen()
                 nombre = _kit_nombre(it, KIT_EXT.get(it["tipo"], ".csv"))

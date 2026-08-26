@@ -165,6 +165,40 @@ def nomenclatura_consistente():
               [i["archivo"] for i in gen[:3]])
 
 
+def exportadores_que_devuelven_dataframe():
+    section("10 — Los exportadores de la UI devuelven DataFrame, no texto CSV")
+    reset()
+    _pozo("W1", E0)
+    _pozo("W2", E0 + 3.0, ucs=200.0)
+    with tempfile.TemporaryDirectory() as td:
+        rep = gw.build_chapter5_kit(td)
+        por_id = {i["id"]: i for i in rep["items"]}
+        # T5.17 sale de export_predictions_csv, que devuelve el DataFrame crudo
+        # porque alimenta el botón de descarga de la aplicación.
+        it = por_id["T5.17"]
+        check(it["estado"] == "ok",
+              "el kit acepta el DataFrame y escribe el CSV igual", it.get("motivo"))
+        if it["estado"] == "ok":
+            texto = open(os.path.join(td, it["archivo"]), encoding="utf-8").read()
+            check(texto.startswith("#"),
+                  "poniéndole el encuadre que el exportador no trae", texto[:60])
+            check("ucs_matriz" in texto, "y con las columnas de la predicción",
+                  texto.splitlines()[3][:120] if len(texto.splitlines()) > 3 else texto[:120])
+    # Sin datos, el mismo camino declara el vacío en vez de reventar.
+    reset()
+    with tempfile.TemporaryDirectory() as td:
+        rep = gw.build_chapter5_kit(td)
+        it = {i["id"]: i for i in rep["items"]}["T5.17"]
+        check(it["estado"] == "sin_datos",
+              "y sin puntos cargados lo declara, no lanza un error", it.get("estado"))
+        check(it.get("motivo"), "con su motivo", it.get("motivo"))
+    # Ningún ítem del kit puede terminar en "error": eso es un defecto del
+    # adaptador, no una falta de datos, y no debe pasar inadvertido.
+    check(not [i for i in rep["items"] if i["estado"] == "error"],
+          "ningún ítem falla por error de código",
+          [(i["id"], i["motivo"]) for i in rep["items"] if i["estado"] == "error"])
+
+
 def indice_exportable():
     section("10 — El índice se exporta: CSV para la planilla, Markdown para el texto")
     reset()
@@ -207,6 +241,7 @@ ALL_TESTS = [
     numeracion_estable,
     nada_falta_en_silencio,
     nomenclatura_consistente,
+    exportadores_que_devuelven_dataframe,
     indice_exportable,
     kit_declara_su_procedencia,
 ]
