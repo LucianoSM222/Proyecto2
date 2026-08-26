@@ -27,7 +27,7 @@ from sklearn.neighbors import KNeighborsRegressor
 from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
-from sklearn.model_selection import cross_val_score, cross_val_predict, GroupKFold, LeaveOneGroupOut
+from sklearn.model_selection import cross_val_score, cross_val_predict, cross_validate, GroupKFold, LeaveOneGroupOut
 from sklearn.inspection import permutation_importance
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -5988,6 +5988,43 @@ def correlation_matrix_report(ucs_min=None, ucs_max=None):
             "pairs_flagged": pairs, "threshold": MULTICOLLINEARITY_THRESHOLD}
 
 
+# Tope de muestras de la COMPARACIÓN de modelos. KNN y MLP sobre 400.000
+# registros tardan horas y no aportan nada que 60.000 no muestre; el modelo de
+# producción (train_rf) NO usa este tope, entrena con todo. El submuestreo se
+# hace por POZOS COMPLETOS, nunca por filas sueltas: sacar filas de un pozo
+# rompería la validación agrupada, que es justamente lo que la comparación
+# tiene que preservar para ser metodológicamente comparable. Y se DECLARA en
+# el reporte — un número obtenido sobre una fracción de los datos que no dice
+# que lo es, miente.
+COMPARISON_MAX_N = 60000
+COMPARISON_SEED = 42
+
+
+def _submuestrear_por_pozo(X, y, groups, max_n, seed=COMPARISON_SEED):
+    """
+    Sortea POZOS enteros hasta acercarse a `max_n` registros. Devuelve
+    (X, y, groups, nota) — nota es None si no hizo falta submuestrear.
+    """
+    if len(X) <= max_n:
+        return X, y, groups, None
+    rng = np.random.default_rng(seed)
+    pozos = np.array(sorted(set(groups.tolist())))
+    rng.shuffle(pozos)
+    elegidos, n = [], 0
+    for p in pozos:
+        k = int((groups == p).sum())
+        if n + k > max_n and elegidos:
+            break
+        elegidos.append(p); n += k
+    mask = np.isin(groups, elegidos)
+    nota = (f"SUBMUESTREADO: {int(mask.sum()):,} de {len(X):,} registro(s), "
+            f"{len(elegidos)} de {len(pozos)} pozo(s), sorteados por POZO COMPLETO "
+            f"con semilla {seed} para no romper la validación agrupada. El modelo "
+            "de producción entrena con todos los datos; este tope aplica solo a la "
+            "comparación.").replace(",", ".")
+    return X[mask], y[mask], groups[mask], nota
+
+
 def _make_comparison_model(name):
     if name == "Lineal":
         return make_pipeline(StandardScaler(), LinearRegression())
@@ -6027,15 +6064,20 @@ def model_comparison_report(with_se=True, ucs_min=None, ucs_max=None):
     if n_grupos < 3:
         return {"status": "sin_grupos",
                 "motivo": f"CV agrupada por pozo requiere ≥3 pozos con etiqueta (hay {n_grupos})."}
+    X, y_s, groups_s, nota_sub = _submuestrear_por_pozo(X, y, groups, COMPARISON_MAX_N)
+    y, groups = y_s, groups_s
+    n_grupos = len(set(groups.tolist()))
     k = min(5, n_grupos)
     gkf = GroupKFold(n_splits=k)
     rows = []
     for name in COMPARISON_MODELS:
         try:
             model = _make_comparison_model(name)
-            r2 = cross_val_score(model, X, y, cv=gkf, groups=groups, scoring="r2")
-            rmse = -cross_val_score(model, X, y, cv=gkf, groups=groups,
-                                    scoring="neg_root_mean_squared_error")
+            cv = cross_validate(model, X, y, cv=gkf, groups=groups,
+                                scoring=("r2", "neg_root_mean_squared_error"),
+                                n_jobs=1)
+            r2 = cv["test_r2"]
+            rmse = -cv["test_neg_root_mean_squared_error"]
             rows.append({"modelo": name, "r2_mean": round(float(r2.mean()), 3),
                         "r2_std": round(float(r2.std()), 3),
                         "rmse_mean": round(float(rmse.mean()), 1),
@@ -6044,7 +6086,8 @@ def model_comparison_report(with_se=True, ucs_min=None, ucs_max=None):
             rows.append({"modelo": name, "r2_mean": None, "r2_std": None,
                         "rmse_mean": None, "rmse_std": None, "error": str(e)})
     return {"status": "ok", "with_se": with_se, "n_samples": len(X),
-            "n_grupos": n_grupos, "k_splits": k, "rows": rows}
+            "n_grupos": n_grupos, "k_splits": k, "rows": rows,
+            "nota_submuestreo": nota_sub, "tope_muestras": COMPARISON_MAX_N}
 
 
 def caseron_de_pozo(well) -> Optional[str]:
@@ -7516,18 +7559,25 @@ def _kit_composicion() -> str:
     if not rep or rep.get("error"):
         raise KitSinDatos(rep.get("error") if rep else "Sin conjunto de entrenamiento.")
     return _kit_csv_de_reporte(
-        rep, lambda r: r.get("por_dominio") or r.get("filas") or [],
-        ["Composición del conjunto de entrenamiento por dominio."])
+        rep, lambda r: r.get("funnel") or [],
+        ["Composición del conjunto de entrenamiento: embudo etapa por etapa.",
+         "Cada etapa declara cuántos puntos quedan y cuántos perdió. Un modelo "
+         "que entrena con el 5% de los datos no es el mismo modelo: la etapa que "
+         "más descartó es la que hay que mirar primero.",
+         f"total: {rep.get('n_total')} → final: {rep.get('n_final')}"])
 
 
 def _kit_correlacion() -> str:
     rep = correlation_matrix_report()
     if not rep or rep.get("error"):
         raise KitSinDatos((rep or {}).get("error") or "Sin datos para correlacionar.")
-    m = rep.get("matriz") or rep.get("matrix")
-    if not m:
+    if rep.get("status") != "ok":
+        raise KitSinDatos(rep.get("motivo") or "Sin datos para correlacionar.")
+    m = rep.get("matrix")
+    etiquetas = rep.get("features")
+    if not m or not etiquetas:
         raise KitSinDatos("El reporte de correlación no trae matriz.")
-    df = pd.DataFrame(m, index=rep.get("variables"), columns=rep.get("variables"))
+    df = pd.DataFrame(m, index=etiquetas, columns=etiquetas)
     cab = "\n".join("# " + l for l in [
         "Matriz de correlación entre variables MWD.",
         f"umbral de multicolinealidad declarado: {MULTICOLLINEARITY_THRESHOLD}",
@@ -7542,17 +7592,19 @@ def _kit_comparacion_modelos() -> str:
     for etiqueta, rep in (("con SE", con), ("sin SE", sin)):
         if not rep or rep.get("error"):
             continue
-        for r in (rep.get("modelos") or rep.get("filas") or []):
+        for r in (rep.get("rows") or []):
             filas.append({"conjunto": etiqueta, **r})
     if not filas:
-        raise KitSinDatos((con or {}).get("error")
-                          or "No hay modelo entrenado con el que comparar.")
+        raise KitSinDatos((con or {}).get("motivo") or (con or {}).get("error")
+                          or "No hay conjunto de entrenamiento con el que comparar.")
+    nota_sub = (con or {}).get("nota_submuestreo")
     cab = "\n".join("# " + l for l in [
         f"Comparación de los cinco modelos: {', '.join(COMPARISON_MODELS)}.",
         "MLP entra como CONTROL de complejidad, no como candidato de producción.",
         "Se reporta con SE y sin SE porque SE es función de las demás variables.",
-        f"validación: GroupKFold por pozo.",
-        f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
+        "validación: GroupKFold por pozo."]
+        + ([nota_sub] if nota_sub else [])
+        + [f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
     return cab + "\n" + pd.DataFrame(filas).to_csv(index=False)
 
 
@@ -7566,9 +7618,9 @@ def _kit_justificacion() -> str:
     for nombre, key in (("comparación con SE", "comparacion_con_se"),
                         ("comparación sin SE", "comparacion_sin_se")):
         sub = rep.get(key) or {}
-        for r in (sub.get("modelos") or sub.get("filas") or []):
-            filas.append({"seccion": nombre, "clave": r.get("modelo") or r.get("nombre"),
-                          "valor": r.get("cv_r2") or r.get("r2")})
+        for r in (sub.get("rows") or []):
+            filas.append({"seccion": nombre, "clave": r.get("modelo"),
+                          "valor": r.get("r2_mean")})
     abl = rep.get("ablacion_cota") or {}
     for k, v in abl.items():
         if isinstance(v, (int, float)):
@@ -7749,6 +7801,9 @@ KIT_CAP5: Tuple[Dict, ...] = (
 )
 
 KIT_EXT = {"tabla": ".csv", "csv": ".csv", "dxf": ".dxf"}
+# Tamaño sobre el cual el índice avisa: un archivo más grande que esto no se
+# adjunta a un correo ni se pega en un documento.
+KIT_AVISO_MB = 20.0
 KIT_INDICE_CSV = "INDICE_capitulo5.csv"
 KIT_INDICE_MD = "INDICE_capitulo5.md"
 
@@ -7795,7 +7850,7 @@ def build_chapter5_kit(outdir: str, fmt_figura: str = "auto") -> Dict:
     for it in KIT_CAP5:
         registro = {"id": it["id"], "seccion": it["seccion"], "titulo": it["titulo"],
                     "tipo": it["tipo"], "archivo": None, "estado": "sin_datos",
-                    "motivo": None, "nota": None}
+                    "motivo": None, "nota": None, "tamano_MB": None}
         gen = globals().get(it["generador"])
         if gen is None:
             registro["motivo"] = (f"El generador '{it['generador']}' no existe en "
@@ -7842,6 +7897,17 @@ def build_chapter5_kit(outdir: str, fmt_figura: str = "auto") -> Dict:
         except Exception as e:
             registro["estado"] = "error"
             registro["motivo"] = f"{type(e).__name__}: {e}"
+        if registro["archivo"]:
+            mb = os.path.getsize(os.path.join(outdir, registro["archivo"])) / 1e6
+            registro["tamano_MB"] = round(mb, 2)
+            # Una figura de decenas de MB no se puede mandar por correo ni
+            # pegar en un documento. Se genera igual, pero se avisa.
+            if mb > KIT_AVISO_MB:
+                aviso = (f"{mb:.0f} MB: pesado para adjuntar. Un HTML interactivo "
+                         "embebe toda la geometría de las mallas. Instalar kaleido "
+                         "produce el PNG, mucho más liviano, sin cambiar la figura.")
+                registro["nota"] = (registro["nota"] + " " + aviso
+                                    if registro["nota"] else aviso)
         items.append(registro)
 
     rep = {
@@ -7865,7 +7931,7 @@ def export_kit_index_csv(rep: Dict) -> str:
     """(10.2) Índice del kit como CSV: archivo → sección del capítulo."""
     df = pd.DataFrame([{k: i[k] for k in
                         ("id", "seccion", "titulo", "tipo", "archivo", "estado",
-                         "motivo", "nota")}
+                         "tamano_MB", "motivo", "nota")}
                        for i in rep["items"]])
     cab = "\n".join("# " + l for l in [
         f"Kit del Capítulo 5 — {rep['terminologia']}.",

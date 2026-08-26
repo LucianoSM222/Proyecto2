@@ -3,3 +3,7 @@ __pycache__/
 .geomech_cache/
 .test_geomech_cache/
 test_data/reales/
+
+# Kit del Capítulo 5: salida regenerable con `python3 run_sesion10.py`.
+# La vista 3D en HTML pesa decenas de MB porque embebe la geometría de las mallas.
+resultados/kit_capitulo5/
