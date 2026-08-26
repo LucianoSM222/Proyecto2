@@ -6085,9 +6085,26 @@ def model_comparison_report(with_se=True, ucs_min=None, ucs_max=None):
         except Exception as e:
             rows.append({"modelo": name, "r2_mean": None, "r2_std": None,
                         "rmse_mean": None, "rmse_std": None, "error": str(e)})
+    # El modelo de producción entrena sobre TODOS los registros y con otros
+    # hiperparámetros. Si su R² de CV difiere del que sale acá, la diferencia
+    # es del submuestreo o de la configuración, y el lector tiene que poder
+    # verlo sin ir a buscarlo: se pone al lado, no se elige uno de los dos.
+    r2_prod = (rf_stats or {}).get("cv_r2_mean")
+    mejor = max((r for r in rows if r["r2_mean"] is not None),
+                key=lambda r: r["r2_mean"], default=None)
+    nota_prod = None
+    if r2_prod is not None and mejor is not None:
+        nota_prod = (f"El modelo de producción (train_rf) reporta R² de CV "
+                     f"{r2_prod:+.3f} sobre todos los registros; el mejor de "
+                     f"esta comparación es "
+                     f"{mejor['modelo']} con {mejor['r2_mean']:+.3f}. La diferencia "
+                     "viene del tamaño de muestra y de los hiperparámetros, que no "
+                     "son los mismos: son dos mediciones distintas y se reportan "
+                     "las dos.")
     return {"status": "ok", "with_se": with_se, "n_samples": len(X),
             "n_grupos": n_grupos, "k_splits": k, "rows": rows,
-            "nota_submuestreo": nota_sub, "tope_muestras": COMPARISON_MAX_N}
+            "nota_submuestreo": nota_sub, "tope_muestras": COMPARISON_MAX_N,
+            "r2_produccion": r2_prod, "nota_produccion": nota_prod}
 
 
 def caseron_de_pozo(well) -> Optional[str]:
@@ -7598,12 +7615,14 @@ def _kit_comparacion_modelos() -> str:
         raise KitSinDatos((con or {}).get("motivo") or (con or {}).get("error")
                           or "No hay conjunto de entrenamiento con el que comparar.")
     nota_sub = (con or {}).get("nota_submuestreo")
+    nota_prod = (con or {}).get("nota_produccion")
     cab = "\n".join("# " + l for l in [
         f"Comparación de los cinco modelos: {', '.join(COMPARISON_MODELS)}.",
         "MLP entra como CONTROL de complejidad, no como candidato de producción.",
         "Se reporta con SE y sin SE porque SE es función de las demás variables.",
         "validación: GroupKFold por pozo."]
         + ([nota_sub] if nota_sub else [])
+        + ([nota_prod] if nota_prod else [])
         + [f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
     return cab + "\n" + pd.DataFrame(filas).to_csv(index=False)
 
@@ -7641,14 +7660,32 @@ def _kit_ablacion_cota() -> str:
     rep = cota_ablation_report()
     if not rep or rep.get("error"):
         raise KitSinDatos((rep or {}).get("error") or "Sin datos para la ablación.")
-    filas = [{"clave": k, "valor": v} for k, v in rep.items()
-             if isinstance(v, (int, float, str)) and k != "error"]
-    for k in ("por_caseron", "loco", "dentro"):
-        sub = rep.get(k)
-        if isinstance(sub, dict):
-            for kk, vv in sub.items():
-                if isinstance(vv, (int, float)):
-                    filas.append({"clave": f"{k}.{kk}", "valor": vv})
+    # Los cuatro R² vienen como tupla (valor, motivo_si_falló): se abren para
+    # que la tabla traiga el número Y el motivo cuando no lo hay.
+    filas = []
+    for k in ("dentro_caseron_sin_cota", "dentro_caseron_con_cota",
+              "loco_sin_cota", "loco_con_cota"):
+        v = rep.get(k)
+        if isinstance(v, (list, tuple)) and len(v) == 2:
+            filas.append({"clave": f"R2_{k}", "valor": v[0],
+                          "detalle": v[1] if v[0] is None else ""})
+    r2_ds = (rep.get("dentro_caseron_sin_cota") or (None,))[0]
+    r2_dc = (rep.get("dentro_caseron_con_cota") or (None,))[0]
+    r2_ls = (rep.get("loco_sin_cota") or (None,))[0]
+    r2_lc = (rep.get("loco_con_cota") or (None,))[0]
+    if None not in (r2_ds, r2_dc, r2_ls, r2_lc):
+        filas.append({"clave": "delta_dentro_por_agregar_cota",
+                      "valor": round(r2_dc - r2_ds, 4),
+                      "detalle": "cuánto SUBE el R² dentro del caserón al agregar cota"})
+        filas.append({"clave": "delta_loco_por_agregar_cota",
+                      "valor": round(r2_lc - r2_ls, 4),
+                      "detalle": "cuánto CAE el R² entre caserones al agregar cota"})
+    for k, v in rep.items():
+        if isinstance(v, (int, float, str, bool)) and k not in ("error",):
+            filas.append({"clave": k, "valor": v, "detalle": ""})
+    if rep.get("caserones"):
+        filas.append({"clave": "caserones", "valor": ", ".join(rep["caserones"]),
+                      "detalle": "grupos de la LOCO-CV"})
     if not filas:
         raise KitSinDatos("La ablación no produjo métricas.")
     cab = "\n".join("# " + l for l in [
