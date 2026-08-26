@@ -3559,6 +3559,341 @@ def di_variant_values(well, nombre: str) -> Optional[np.ndarray]:
     return well.di_variantes.get(nombre)
 
 
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  PERFIL DE FAENA — LOS PARÁMETROS SE CONFIGURAN, NO SE ENTIERRAN        ║
+# ║                                                                          ║
+# ║  Pucobre tiene tres faenas con litología distinta, y el burden, la       ║
+# ║  desviación de perforación, el rango operacional de PP y hasta los       ║
+# ║  límites físicos de UCS cambian de una a otra. Para que la plataforma    ║
+# ║  sea replicable, esas decisiones tienen que poder cambiarse DESDE EL     ║
+# ║  PROGRAMA. Un número fijo en el código es un número que obliga a tocar   ║
+# ║  el código para llevar esto a otra mina.                                 ║
+# ║                                                                          ║
+# ║  Cada parámetro declara valor, defecto, límites, unidades y PROCEDENCIA. ║
+# ║  Un número sin procedencia no se puede defender en una revisión.         ║
+# ║                                                                          ║
+# ║  Los PROTEGIDOS son los que CLAUDE.md fija como convención inmutable:    ║
+# ║  se leen y se exportan, nunca se escriben. Misma regla que protege la    ║
+# ║  variante de convención del DI.                                          ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+param_registry: Dict[str, Dict] = {}
+
+
+class ParametroProtegido(Exception):
+    """Se intentó escribir un parámetro de convención. Es un error."""
+
+
+def _param(pid, seccion, etiqueta, defecto, tipo, unidad, procedencia,
+           minimo=None, maximo=None, global_name=None, protegido=False,
+           descripcion=""):
+    return {"id": pid, "seccion": seccion, "etiqueta": etiqueta,
+            "valor": defecto, "defecto": defecto, "tipo": tipo, "unidad": unidad,
+            "min": minimo, "max": maximo, "procedencia": procedencia,
+            "global": global_name, "protegido": protegido,
+            "descripcion": descripcion}
+
+
+def seed_param_registry(force: bool = False):
+    """Siembra el perfil con los valores de Punta del Cobre. Idempotente."""
+    if param_registry and not force:
+        return
+    param_registry.clear()
+    P = [
+        # ── Modelo de bloques ────────────────────────────────────────────────
+        _param("bloques.tamano_m", "Modelo de bloques", "Tamaño de bloque", 2.5,
+               "float", "m", "Burden y espaciamiento de la operación en MPC. "
+               "Un bloque más fino que la malla de perforación promete un "
+               "detalle que el dato no tiene.", 0.5, 25.0, "BLOQUE_M"),
+        _param("bloques.holgura_m", "Modelo de bloques",
+               "Holgura sobre el espacio perforado", 15.0, "float", "m",
+               "Rango 10-20 m fijado por el autor: extiende el dominio lo justo "
+               "para servir de soporte a dilución, estabilidad y fortificación.",
+               0.0, 100.0, "HOLGURA_MODELO_M"),
+        _param("bloques.radio_h_m", "Modelo de bloques",
+               "Radio de búsqueda en planta", 7.5, "float", "m",
+               "Tres bloques. Sube la cobertura a costa de extrapolar más lejos.",
+               1.0, 100.0, "IDW_RADIO_H_M"),
+        _param("bloques.radio_v_m", "Modelo de bloques",
+               "Radio de búsqueda en cota", 2.5, "float", "m",
+               "Un bloque. Menor que el horizontal porque el yacimiento es "
+               "estratiforme.", 0.5, 100.0, "IDW_RADIO_V_M"),
+        _param("bloques.anisotropia_z", "Modelo de bloques",
+               "Penalización de la separación vertical", 3.0, "float", "×",
+               "Un metro de separación en cota cuenta como tres en planta. La "
+               "asimetría ES el modelo geológico: estratiforme.", 1.0, 20.0),
+        _param("bloques.potencia_idw", "Modelo de bloques", "Potencia del IDW",
+               2.0, "float", "—", "Inverso de la distancia al cuadrado, uso "
+               "estándar en interpolación de leyes.", 0.5, 6.0, "IDW_POTENCIA"),
+        _param("bloques.min_muestras", "Modelo de bloques",
+               "Muestras mínimas por bloque", 3, "int", "registros",
+               "Máscara de soporte: bajo esto el bloque queda VACÍO en vez de "
+               "interpolarse desde lejos.", 1, 100, "IDW_MIN_MUESTRAS"),
+        # ── Plano del abanico ────────────────────────────────────────────────
+        _param("abanico.eps_m", "Plano del abanico", "Radio de agrupamiento de picos",
+               2.5, "float", "m", "El burden de la operación: dos picos más "
+               "cerca que esto son candidatos a la misma superficie.",
+               0.5, 25.0, "ABANICO_EPS_M"),
+        _param("abanico.min_picos", "Plano del abanico", "Picos mínimos por grupo",
+               3, "int", "picos", "Bajo tres picos no hay plano que ajustar.",
+               3, 100, "ABANICO_MIN_PICOS"),
+        _param("abanico.planaridad_tiros", "Plano del abanico",
+               "Planaridad máxima de los tiros", 0.15, "float", "—",
+               "Razón entre el tercer y el segundo valor singular del ajuste a "
+               "los trazados: bajo esto, los tiros forman un plano.",
+               0.01, 1.0, "ABANICO_PLANARIDAD_TIROS"),
+        _param("abanico.ang_max_grad", "Plano del abanico",
+               "Ángulo máximo con el plano del abanico", 20.0, "float", "°",
+               "Criterio secundario: solo aplica cuando el grupo de picos es lo "
+               "bastante planar para tener normal utilizable.",
+               0.0, 90.0, "ABANICO_ANG_MAX_GRAD"),
+        _param("abanico.tol_plano_m", "Plano del abanico",
+               "Piso de tolerancia al plano", 0.75, "float", "m",
+               "Piso absoluto. La tolerancia efectiva es la mayor entre este "
+               "piso y el espesor MEDIDO del abanico.",
+               0.0, 20.0, "ABANICO_TOL_PLANO_M"),
+        _param("abanico.factor_dispersion", "Plano del abanico",
+               "Factor sobre el espesor del abanico", 1.0, "float", "×",
+               "Auto-calibración: con otra desviación de perforación el criterio "
+               "se adapta solo, sin necesitar un número nuevo.",
+               0.0, 5.0, "ABANICO_FACTOR_DISPERSION"),
+        # ── Discriminador ────────────────────────────────────────────────────
+        _param("disc.ventana_m", "Discriminador", "Media ventana del evento",
+               0.30, "float", "m", "Tramo alrededor del pico donde se mide la "
+               "firma. 0,30 m son ~15 registros al paso de 2 cm del MWD real.",
+               0.05, 5.0, "DISC_VENTANA_M"),
+        _param("disc.base_m", "Discriminador", "Tramo de referencia previo",
+               1.00, "float", "m", "Roca inmediatamente anterior al evento. No "
+               "es un promedio del pozo: la roca cambia a lo largo del tiro y "
+               "una referencia global diluiría la firma.",
+               0.1, 20.0, "DISC_BASE_M"),
+        _param("disc.caida_rel", "Discriminador", "Caída que cuenta como «cae»",
+               0.10, "float", "fracción", "Mismo umbral que decide que el "
+               "dámper NO cae, que es lo que separa las dos firmas.",
+               0.01, 0.9, "DISC_CAIDA_REL"),
+        _param("disc.subida_vel_rel", "Discriminador",
+               "Subida de velocidad que cuenta como «aumenta»", 0.10, "float",
+               "fracción", "Firma de zona fracturada: la broca entra en vacío y "
+               "el avance se dispara.", 0.01, 0.9, "DISC_SUBIDA_VEL_REL"),
+        _param("disc.var_factor", "Discriminador", "Factor de varianza no esperada",
+               1.5, "float", "×", "El coeficiente de variación dentro del evento "
+               "supera este factor por el de la referencia.",
+               1.0, 10.0, "DISC_VAR_FACTOR"),
+        _param("disc.radio_etiqueta_m", "Discriminador",
+               "Radio de apareo pico-sondaje", 3.0, "float", "m",
+               "Los sondajes de exploración y los tiros de producción son "
+               "perforaciones distintas; más allá de este radio la "
+               "correspondencia deja de ser creíble.",
+               0.5, 100.0, "DISC_RADIO_ETIQUETA_M"),
+        # ── RQD ──────────────────────────────────────────────────────────────
+        _param("rqd.tramo_min_m", "RQD", "Tramo mínimo de Deere", 0.10, "float",
+               "m", "Definición de Deere: tramos continuos de 10 cm o más sin "
+               "discontinuidad. Es la definición, no una elección; cambiarla "
+               "deja de ser RQD.", 0.01, 1.0, "RQD_TRAMO_MIN_M"),
+        _param("rqd.radio_max_m", "RQD", "Radio de propagación del RQD",
+               10.0, "float", "m", "Sobre los datos de MPC la distancia mediana "
+               "de un punto MWD al intervalo de RQD más cercano son 26,1 m: el "
+               "radio decide cuánto dato recibe etiqueta y con qué credibilidad.",
+               1.0, 200.0, "RQD_RADIO_MAX_M"),
+        _param("rqd.min_puntos_intervalo", "RQD",
+               "Puntos MWD mínimos por intervalo", 30, "int", "registros",
+               "Bajo esto el RQD_MWD de un intervalo es ruido de unos pocos "
+               "registros.", 2, 10000, "RQD_MIN_PUNTOS_INTERVALO"),
+        # ── Presión de percusión ─────────────────────────────────────────────
+        _param("pp.min_bar", "Presión de percusión", "PP mínima operacional",
+               90.0, "float", "bar", "Rango operacional declarado en CLAUDE.md "
+               "para MPC. PP es la ÚNICA variable que manipula el operador.",
+               0.0, 500.0, "PP_MIN_OPERACIONAL"),
+        _param("pp.max_bar", "Presión de percusión", "PP máxima operacional",
+               230.0, "float", "bar", "Rango operacional declarado en CLAUDE.md "
+               "para MPC.", 0.0, 500.0, "PP_MAX_OPERACIONAL"),
+        _param("pp.paso_bar", "Presión de percusión", "Paso de los bins de PP",
+               10.0, "float", "bar", "Resolución de las curvas de respuesta.",
+               1.0, 50.0, "PP_PASO_BAR"),
+        _param("pp.min_puntos_bin", "Presión de percusión",
+               "Puntos mínimos por bin", 20, "int", "registros",
+               "Bajo esto la mediana del bin no significa nada.",
+               2, 10000, "PP_MIN_PUNTOS_BIN"),
+        # ── Límites físicos ──────────────────────────────────────────────────
+        _param("rop.min_fisica", "Límites físicos", "ROP mínima con sentido físico",
+               0.05, "float", "m/min", "Bajo esto la energía específica no tiene "
+               "significado físico: SE = (PP+RP+AP)/ROP se dispara. Criterio "
+               "físico y trazable, NO un percentil.",
+               0.001, 1.0, "ROP_MIN_FISICA"),
+        _param("ucs.min_fisico", "Límites físicos", "UCS mínima", 0.0, "float",
+               "MPa", "Límite físico declarado en CLAUDE.md. Sin truncamiento "
+               "silencioso jamás.", 0.0, 1000.0),
+        _param("ucs.max_fisico", "Límites físicos", "UCS máxima", 450.0, "float",
+               "MPa", "Límite físico declarado en CLAUDE.md.", 0.0, 1000.0),
+        # ── Convención inmutable ─────────────────────────────────────────────
+        _param("di.ventana", "DI (convención)", "Ventana del DI", 14, "int",
+               "registros", "CLAUDE.md, convención inmutable: Fernández et al. "
+               "2023, doi:10.1016/j.ijmst.2023.02.004. Para calibrar se crea "
+               "una VARIANTE con nombre propio; la convención no se toca.",
+               protegido=True),
+        _param("di.umbral", "DI (convención)", "Umbral del DI", 1.5, "float", "—",
+               "CLAUDE.md, convención inmutable. Fernández et al. 2023.",
+               protegido=True),
+        _param("di.peso_pp", "DI (convención)", "Peso de PP", 0.35, "float", "—",
+               "CLAUDE.md, convención inmutable. Fernández et al. 2023.",
+               protegido=True),
+        _param("di.peso_dp", "DI (convención)", "Peso de DP", 0.25, "float", "—",
+               "CLAUDE.md, convención inmutable. Fernández et al. 2023.",
+               protegido=True),
+        _param("di.peso_fp", "DI (convención)", "Peso de FP", 0.20, "float", "—",
+               "CLAUDE.md, convención inmutable. Fernández et al. 2023.",
+               protegido=True),
+        _param("di.peso_rp", "DI (convención)", "Peso de RP", 0.20, "float", "—",
+               "CLAUDE.md, convención inmutable. Fernández et al. 2023.",
+               protegido=True),
+    ]
+    for p in P:
+        param_registry[p["id"]] = p
+    # Sembrar el registro sin reponer los globales dejaría el módulo con los
+    # valores de la sesión anterior y el registro diciendo otra cosa: dos
+    # verdades distintas para el mismo parámetro.
+    for p in param_registry.values():
+        if p.get("global"):
+            globals()[p["global"]] = p["valor"]
+    _sincronizar_globales_derivados()
+
+
+def get_param(pid: str):
+    p = param_registry.get(pid)
+    if p is None:
+        raise KeyError(f'No existe el parámetro de perfil "{pid}".')
+    return p["valor"]
+
+
+def _validar_param(p: Dict, valor):
+    if p["tipo"] == "int":
+        if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+            raise TypeError(f'"{p["id"]}" es entero; se recibió {valor!r}.')
+        if float(valor) != int(valor):
+            raise ValueError(f'"{p["id"]}" es entero; se recibió {valor!r}.')
+        valor = int(valor)
+    elif p["tipo"] == "float":
+        if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+            raise TypeError(f'"{p["id"]}" es numérico; se recibió {valor!r}.')
+        valor = float(valor)
+    if p["min"] is not None and valor < p["min"]:
+        raise ValueError(f'"{p["id"]}" no puede bajar de {p["min"]} {p["unidad"]}; '
+                         f"se recibió {valor}.")
+    if p["max"] is not None and valor > p["max"]:
+        raise ValueError(f'"{p["id"]}" no puede superar {p["max"]} {p["unidad"]}; '
+                         f"se recibió {valor}.")
+    return valor
+
+
+def set_param(pid: str, valor):
+    """
+    Escribe un parámetro del perfil. Valida ANTES de tocar nada: un parámetro
+    a medias produce resultados que nadie puede reproducir.
+    """
+    p = param_registry.get(pid)
+    if p is None:
+        raise KeyError(f'No existe el parámetro de perfil "{pid}".')
+    if p.get("protegido"):
+        raise ParametroProtegido(
+            f'"{pid}" es parte de la convención inmutable del proyecto y no se '
+            f"puede escribir. Procedencia: {p['procedencia']}")
+    valor = _validar_param(p, valor)
+    p["valor"] = valor
+    # El valor tiene que llegar al módulo, no quedarse en el registro: las
+    # funciones que lo leen en su cuerpo lo toman de ahí.
+    if p.get("global"):
+        globals()[p["global"]] = valor
+    _sincronizar_globales_derivados()
+    return valor
+
+
+def reset_param(pid: str):
+    p = param_registry.get(pid)
+    if p is None:
+        raise KeyError(f'No existe el parámetro de perfil "{pid}".')
+    if p.get("protegido"):
+        raise ParametroProtegido(f'"{pid}" es de convención: no hay nada que reponer.')
+    p["valor"] = p["defecto"]
+    if p.get("global"):
+        globals()[p["global"]] = p["defecto"]
+    _sincronizar_globales_derivados()
+    return p["valor"]
+
+
+def _sincronizar_globales_derivados():
+    """Globales que no son un parámetro suelto sino una combinación de varios."""
+    global IDW_ANISOTROPIA, UCS_CONFIG, PP_ESTRATOS
+    IDW_ANISOTROPIA = (1.0, 1.0, float(param_registry["bloques.anisotropia_z"]["valor"]))
+    UCS_CONFIG["physical_min"] = float(param_registry["ucs.min_fisico"]["valor"])
+    UCS_CONFIG["physical_max"] = float(param_registry["ucs.max_fisico"]["valor"])
+
+
+def export_site_profile() -> str:
+    """Perfil como JSON: lo que una faena nueva recibe para arrancar."""
+    return json.dumps({
+        "sitio": ACTIVE_SITE,
+        "app_version": APP_VERSION,
+        "generado": time.strftime("%Y-%m-%d %H:%M"),
+        "nota": ("Perfil de faena. Los parámetros protegidos se exportan como "
+                 "referencia pero no se pueden importar: son la convención "
+                 "inmutable del proyecto."),
+        "parametros": {pid: p["valor"] for pid, p in param_registry.items()},
+        "procedencias": {pid: p["procedencia"] for pid, p in param_registry.items()},
+    }, ensure_ascii=False, indent=1)
+
+
+def import_site_profile(texto: str) -> Dict:
+    """
+    Aplica un perfil. Lo que no se puede aplicar NO detiene la importación:
+    se aplica el resto y se declara uno por uno lo rechazado, con su motivo.
+    Un perfil que falla entero por un valor malo obliga a editar JSON a mano.
+    """
+    try:
+        d = json.loads(texto) if isinstance(texto, str) else texto
+    except Exception as e:
+        return {"status": "error", "motivo": f"JSON ilegible: {e}",
+                "n_aplicados": 0, "rechazados": []}
+    params = (d or {}).get("parametros")
+    if not isinstance(params, dict):
+        return {"status": "error",
+                "motivo": "El perfil no trae un objeto 'parametros'.",
+                "n_aplicados": 0, "rechazados": []}
+    aplicados, rechazados = [], []
+    for pid, valor in params.items():
+        try:
+            set_param(pid, valor)
+            aplicados.append(pid)
+        except ParametroProtegido:
+            rechazados.append({"id": pid, "valor": valor,
+                               "motivo": "Parámetro de convención: no se importa."})
+        except Exception as e:
+            rechazados.append({"id": pid, "valor": valor, "motivo": str(e)})
+    return {"status": "ok", "n_aplicados": len(aplicados), "aplicados": aplicados,
+            "rechazados": rechazados,
+            "sitio_del_perfil": (d or {}).get("sitio"),
+            "advertencia": (f"{len(rechazados)} parámetro(s) no se aplicaron y se "
+                            "listan con su motivo." if rechazados else None)}
+
+
+def site_profile_report() -> Dict:
+    """Qué se movió respecto del defecto, para la interfaz y para el anexo."""
+    mod = [{"id": p["id"], "seccion": p["seccion"], "etiqueta": p["etiqueta"],
+            "defecto": p["defecto"], "valor": p["valor"], "unidad": p["unidad"],
+            "procedencia": p["procedencia"]}
+           for p in param_registry.values()
+           if p["valor"] != p["defecto"]]
+    secciones: Dict[str, list] = {}
+    for p in param_registry.values():
+        secciones.setdefault(p["seccion"], []).append(p["id"])
+    return {"sitio": ACTIVE_SITE, "n_parametros": len(param_registry),
+            "n_modificados": len(mod), "modificados": mod,
+            "secciones": {k: sorted(v) for k, v in sorted(secciones.items())},
+            "n_protegidos": sum(1 for p in param_registry.values() if p.get("protegido")),
+            "nota": ("Los parámetros protegidos son la convención inmutable del "
+                     "proyecto: se leen y exportan, nunca se escriben.")}
+
+
 def compute_di():
     cfg = di_config
     for wn, well in wells.items():
@@ -5233,8 +5568,8 @@ def _tramo_stats(pts, campo: str) -> Optional[Tuple[float, float]]:
     return m, float(v.std() / abs(m))
 
 
-def peak_signature(well, largo: float, ventana_m: float = DISC_VENTANA_M,
-                   base_m: float = DISC_BASE_M) -> Optional[Dict]:
+def peak_signature(well, largo: float, ventana_m: Optional[float] = None,
+                   base_m: Optional[float] = None) -> Optional[Dict]:
     """
     (8.1) Firma física del evento centrado en `largo`: cuánto cambia cada
     variable dentro del evento respecto del tramo de roca inmediatamente
@@ -5244,6 +5579,8 @@ def peak_signature(well, largo: float, ventana_m: float = DISC_VENTANA_M,
     —cerca del collar, típicamente—. None es "no evaluable", no "sin firma":
     el llamador lo distingue y lo declara.
     """
+    ventana_m = get_param("disc.ventana_m") if ventana_m is None else ventana_m
+    base_m = get_param("disc.base_m") if base_m is None else base_m
     pts = sorted(well.points, key=lambda p: p.largo)
     ev = [p for p in pts if abs(p.largo - largo) <= ventana_m]
     base = [p for p in pts
@@ -5415,12 +5752,12 @@ def _plano_de(P: np.ndarray) -> Tuple[np.ndarray, np.ndarray, float, float]:
     return c, Vt[2], float(S[2] / max(S[1], 1e-12)), float(S[1] / max(S[0], 1e-12))
 
 
-def marcar_picos_de_abanico(picos: List[Dict], eps_m: float = ABANICO_EPS_M,
-                            min_picos: int = ABANICO_MIN_PICOS,
-                            planaridad_tiros: float = ABANICO_PLANARIDAD_TIROS,
-                            ang_max_grad: float = ABANICO_ANG_MAX_GRAD,
-                            tol_plano_m: float = ABANICO_TOL_PLANO_M,
-                            factor_dispersion: float = ABANICO_FACTOR_DISPERSION) -> Dict:
+def marcar_picos_de_abanico(picos: List[Dict], eps_m: Optional[float] = None,
+                            min_picos: Optional[int] = None,
+                            planaridad_tiros: Optional[float] = None,
+                            ang_max_grad: Optional[float] = None,
+                            tol_plano_m: Optional[float] = None,
+                            factor_dispersion: Optional[float] = None) -> Dict:
     """
     (8.4b) Marca en sitio los picos cuyo agrupamiento se explica por la
     geometría de perforación. Escribe `plano_abanico` y `motivo_abanico` en
@@ -5433,6 +5770,15 @@ def marcar_picos_de_abanico(picos: List[Dict], eps_m: float = ABANICO_EPS_M,
     una estructura transversal real, y un grupo plano entre tiros dispersos es
     justamente lo que buscamos.
     """
+    eps_m = get_param("abanico.eps_m") if eps_m is None else eps_m
+    min_picos = get_param("abanico.min_picos") if min_picos is None else min_picos
+    planaridad_tiros = (get_param("abanico.planaridad_tiros")
+                        if planaridad_tiros is None else planaridad_tiros)
+    ang_max_grad = (get_param("abanico.ang_max_grad")
+                    if ang_max_grad is None else ang_max_grad)
+    tol_plano_m = get_param("abanico.tol_plano_m") if tol_plano_m is None else tol_plano_m
+    factor_dispersion = (get_param("abanico.factor_dispersion")
+                         if factor_dispersion is None else factor_dispersion)
     for p in picos:
         p["plano_abanico"] = False
         p["motivo_abanico"] = None
@@ -5520,12 +5866,12 @@ def marcar_picos_de_abanico(picos: List[Dict], eps_m: float = ABANICO_EPS_M,
 
 
 def discriminate_all(min_gap_m: float = 0.5,
-                     eps_m: float = ABANICO_EPS_M,
-                     min_picos: int = ABANICO_MIN_PICOS,
-                     planaridad_tiros: float = ABANICO_PLANARIDAD_TIROS,
-                     ang_max_grad: float = ABANICO_ANG_MAX_GRAD,
-                     tol_plano_m: float = ABANICO_TOL_PLANO_M,
-                     factor_dispersion: float = ABANICO_FACTOR_DISPERSION) -> Dict:
+                     eps_m: Optional[float] = None,
+                     min_picos: Optional[int] = None,
+                     planaridad_tiros: Optional[float] = None,
+                     ang_max_grad: Optional[float] = None,
+                     tol_plano_m: Optional[float] = None,
+                     factor_dispersion: Optional[float] = None) -> Dict:
     """(8.4) Discriminación sobre todos los pozos cargados, con sus conteos."""
     picos, por_pozo = [], {}
     for wn, w in wells.items():
@@ -5593,13 +5939,14 @@ def _drillhole_discontinuities() -> List[Dict]:
     return out
 
 
-def label_peaks_from_drillholes(radio_m: float = DISC_RADIO_ETIQUETA_M,
+def label_peaks_from_drillholes(radio_m: Optional[float] = None,
                                 min_gap_m: float = 0.5) -> Dict:
     """
     (8.5) Aparea cada pico clasificado con la discontinuidad de sondaje más
     cercana dentro de `radio_m`. Los picos sin etiqueta cercana NO se
     descartan en silencio: se cuentan y se reportan como cobertura.
     """
+    radio_m = get_param("disc.radio_etiqueta_m") if radio_m is None else radio_m
     etiquetas = _drillhole_discontinuities()
     disc = discriminate_all(min_gap_m=min_gap_m)
     if disc["status"] != "ok":
@@ -5704,7 +6051,7 @@ def _matriz_discriminador(pares: List[Dict], radio_m: float,
             "interpretacion": interp}
 
 
-def discriminator_report(radio_m: float = DISC_RADIO_ETIQUETA_M,
+def discriminator_report(radio_m: Optional[float] = None,
                          min_gap_m: float = 0.5) -> Dict:
     """
     (8.6) Matriz de confusión del discriminador contra las etiquetas de
@@ -5716,6 +6063,7 @@ def discriminator_report(radio_m: float = DISC_RADIO_ETIQUETA_M,
     cifras van juntas para que la comparación sea visible; ninguna sustituye
     a la otra en silencio.
     """
+    radio_m = get_param("disc.radio_etiqueta_m") if radio_m is None else radio_m
     lab = label_peaks_from_drillholes(radio_m=radio_m, min_gap_m=min_gap_m)
     if lab["status"] != "ok":
         return {"status": lab["status"], "motivo": lab.get("motivo"),
@@ -5776,7 +6124,7 @@ def discriminator_report(radio_m: float = DISC_RADIO_ETIQUETA_M,
 
 
 def export_discriminator_csv(rep: Optional[Dict] = None,
-                             radio_m: float = DISC_RADIO_ETIQUETA_M) -> str:
+                             radio_m: Optional[float] = None) -> str:
     """(8.7) Picos clasificados con su firma, como CSV."""
     disc = discriminate_all()
     if disc["status"] != "ok":
@@ -5948,7 +6296,7 @@ def _intervalos_rqd_sondaje() -> List[Dict]:
     return out
 
 
-def propagate_drillhole_rqd(radio_m: float = RQD_RADIO_MAX_M) -> Dict:
+def propagate_drillhole_rqd(radio_m: Optional[float] = None) -> Dict:
     """
     (2.1) Asigna a cada punto MWD el RQD del intervalo de sondaje más cercano
     dentro de `radio_m`, junto con el sondaje de origen y la distancia.
@@ -5958,6 +6306,7 @@ def propagate_drillhole_rqd(radio_m: float = RQD_RADIO_MAX_M) -> Dict:
     cercano a cualquier distancia sería exactamente el default silencioso que
     el proyecto prohíbe.
     """
+    radio_m = get_param("rqd.radio_max_m") if radio_m is None else radio_m
     for w in wells.values():
         for p in w.points:
             p.rqd_sondaje = None
@@ -6018,10 +6367,10 @@ def propagate_drillhole_rqd(radio_m: float = RQD_RADIO_MAX_M) -> Dict:
     }
 
 
-def rqd_calibration_pairs(radio_m: float = RQD_RADIO_MAX_M,
+def rqd_calibration_pairs(radio_m: Optional[float] = None,
                           variante: Optional[str] = None,
                           umbral: Optional[float] = None,
-                          min_puntos: int = RQD_MIN_PUNTOS_INTERVALO) -> Dict:
+                          min_puntos: Optional[int] = None) -> Dict:
     """
     (2.2) Pares de calibración: por cada intervalo de sondaje con RQD, el
     RQD_MWD calculado por la regla de Deere sobre los puntos MWD cercanos.
@@ -6036,6 +6385,9 @@ def rqd_calibration_pairs(radio_m: float = RQD_RADIO_MAX_M,
     `variante` elige con qué configuración de DI se calcula el RQD_MWD; por
     defecto, la de convención. El RQD del sondaje no depende de eso.
     """
+    radio_m = get_param("rqd.radio_max_m") if radio_m is None else radio_m
+    min_puntos = (get_param("rqd.min_puntos_intervalo")
+                  if min_puntos is None else min_puntos)
     nombre_var = variante or DI_VARIANTE_CONVENCION
     v = di_variantes.get(nombre_var)
     if v is None:
@@ -6290,16 +6642,16 @@ def _muestras_bloques(fuente: str = "ucs_matriz") -> Dict:
             "lito": lito, "pozo": pozo, "caseron": caseron, "sin_ucs": sin_ucs}
 
 
-def interpolate_block_model(bloque_m: float = BLOQUE_M,
-                            potencia: float = IDW_POTENCIA,
-                            radio_h_m: float = IDW_RADIO_H_M,
-                            radio_v_m: float = IDW_RADIO_V_M,
-                            anisotropia: Tuple[float, float, float] = IDW_ANISOTROPIA,
-                            min_muestras: int = IDW_MIN_MUESTRAS,
+def interpolate_block_model(bloque_m: Optional[float] = None,
+                            potencia: Optional[float] = None,
+                            radio_h_m: Optional[float] = None,
+                            radio_v_m: Optional[float] = None,
+                            anisotropia: Optional[Tuple[float, float, float]] = None,
+                            min_muestras: Optional[int] = None,
                             min_pozos: int = IDW_MIN_POZOS,
                             fuente: str = "ucs_matriz",
                             agrupar_por_caseron: bool = True,
-                            holgura_m: float = HOLGURA_MODELO_M) -> Dict:
+                            holgura_m: Optional[float] = None) -> Dict:
     """
     (9.1) Interpola UCS y DI a un modelo de bloques con IDW anisotrópico y
     máscara de soporte.
@@ -6312,6 +6664,17 @@ def interpolate_block_model(bloque_m: float = BLOQUE_M,
     los hay queda VACÍO y se cuenta — nunca se estira la búsqueda para
     llenarlo.
     """
+    # Los parámetros se resuelven EN CADA LLAMADA contra el perfil de faena.
+    # Fijarlos como valor por defecto de la firma los congelaría al importar el
+    # módulo, y cambiar el perfil desde la aplicación no serviría de nada.
+    bloque_m = get_param("bloques.tamano_m") if bloque_m is None else bloque_m
+    potencia = get_param("bloques.potencia_idw") if potencia is None else potencia
+    radio_h_m = get_param("bloques.radio_h_m") if radio_h_m is None else radio_h_m
+    radio_v_m = get_param("bloques.radio_v_m") if radio_v_m is None else radio_v_m
+    min_muestras = get_param("bloques.min_muestras") if min_muestras is None else min_muestras
+    holgura_m = get_param("bloques.holgura_m") if holgura_m is None else holgura_m
+    if anisotropia is None:
+        anisotropia = (1.0, 1.0, float(get_param("bloques.anisotropia_z")))
     m = _muestras_bloques(fuente)
     P = m["P"]
     if P.shape[0] == 0:
@@ -8782,6 +9145,7 @@ def export_kit_index_md(rep: Dict) -> str:
 # contador de pendientes y el panel de vocabulario lo leen al renderizar.
 seed_attribute_registry()
 seed_di_variants()
+seed_param_registry()
 for _e in validate_attribute_tree():
     log_warn(f"Registro de vocabulario: {_e}")
 
