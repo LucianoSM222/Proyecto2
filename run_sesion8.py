@@ -62,6 +62,24 @@ def main():
         for k, v in disc["conteo"].items():
             print(f"    {k:<16} {v:>8,}  ({100.0*v/n:5.1f}%)".replace(",", "."))
         print(f"  config: {disc['config']}")
+        ab = disc.get("abanico") or {}
+        print(f"\n  PLANO DEL ABANICO — {disc.get('n_plano_abanico', 0):,} pico(s) "
+              f"({100.0*disc.get('n_plano_abanico',0)/n:.1f}%) atribuidos a la "
+              f"geometría de perforación".replace(",", "."))
+        print(f"    criterio: {ab.get('criterio')}")
+        print(f"    config: {ab.get('config')}")
+        grupos = ab.get("grupos") or []
+        print(f"    grupos evaluados: {len(grupos)}  ·  "
+              f"de abanico: {sum(1 for g in grupos if g['es_abanico'])}")
+        print(f"    {'picos':>7}{'pozos':>7}{'abanicos':>10}{'plan.tiros':>12}"
+              f"{'dist_plano':>12}{'ang':>8}{'normal_util':>13}  abanico")
+        for g in sorted(grupos, key=lambda g: -g["n_picos"])[:12]:
+            print(f"    {g['n_picos']:>7}{g['n_pozos']:>7}{g['n_abanicos']:>10}"
+                  f"{g['planaridad_tiros']:>12.3f}{g['dist_al_plano_m']:>12.2f}"
+                  f"{g['angulo_con_abanico_grad']:>8.1f}"
+                  f"{str(g['normal_utilizable']):>13}  "
+                  f"{'SÍ' if g['es_abanico'] else 'no'}")
+        print(f"\n  conteo DESCONTANDO los del abanico: {disc.get('conteo_sin_abanico')}")
         # Motivos de indeterminación más frecuentes: dice QUÉ firma faltó.
         motivos = {}
         for p in disc["picos"]:
@@ -85,6 +103,16 @@ def main():
         for e, row in rep["matriz"].items():
             print(f"      {e:<14} {row}")
         print(f"    {rep['interpretacion']}")
+        sa = rep.get("sin_abanico") or {}
+        if sa.get("status") == "ok":
+            print(f"\n    SIN los picos de abanico — pares={sa['n_pares']} "
+                  f"(descartados {sa['n_pares_descartados_por_abanico']})  "
+                  f"aciertos={sa['aciertos']}/{sa['n_evaluables']}")
+            for e, row in sa["matriz"].items():
+                print(f"      {e:<14} {row}")
+            print(f"    {sa['lectura']}")
+        else:
+            print(f"\n    SIN los picos de abanico: {sa.get('motivo')}")
 
     print(f"\n{'='*72}\n  8 — RQD_MWD (Deere sobre el perfil de DI)\n{'='*72}")
     rq = gw.rqd_mwd_report()

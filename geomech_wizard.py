@@ -29,6 +29,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 from sklearn.model_selection import cross_val_score, cross_val_predict, cross_validate, GroupKFold, LeaveOneGroupOut
 from sklearn.inspection import permutation_importance
+from sklearn.cluster import DBSCAN
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -5156,6 +5157,7 @@ def discriminate_peaks(well, min_gap_m: float = 0.5) -> List[Dict]:
         cls = classify_peak_signature(firma)
         salida.append({
             "pozo": well.well_name, "caseron": getattr(well, "caseron", None),
+            "plan_id": getattr(well, "plan_id", None),
             "largo": round(float(largo), 3), "di": round(float(di_max), 3),
             "este": float(coord[0]), "norte": float(coord[1]), "cota": float(coord[2]),
             "clase": cls["clase"], "evidencia": cls["evidencia"],
@@ -5166,7 +5168,153 @@ def discriminate_peaks(well, min_gap_m: float = 0.5) -> List[Dict]:
     return salida
 
 
-def discriminate_all(min_gap_m: float = 0.5) -> Dict:
+# ─── 8.4b · PICOS QUE SON EL PLANO DEL ABANICO, NO GEOLOGÍA ───────────────────
+# UN ABANICO DE TIROS ES UN PLANO. Si los picos del DI se reparten a lo largo
+# de los tiros de un mismo abanico, cualquier subconjunto suyo sale "plano" por
+# construcción, sin que exista estructura alguna. Con los datos reales de Punta
+# del Cobre esto no es teórico: 19 de 31 grupos planares resultaron ser el
+# abanico, incluidos los tres mayores —590, 533 y 478 picos—, con 0,5°, 0,0° y
+# 0,5° entre su normal y la del abanico.
+#
+# LA AMBIGÜEDAD DE FONDO, que este criterio respeta en vez de esconder: dentro
+# de UN SOLO abanico no se puede distinguir una estructura de su propio plano,
+# porque todo lo que hay en el abanico está en el plano del abanico. La
+# capacidad de discriminar viene de cruzar VARIOS abanicos.
+#
+# Un pico marcado NO SE BORRA. Se marca con su motivo y los reportes entregan
+# las cifras con y sin él, para que la comparación sea visible.
+
+# Radio de agrupamiento: el burden de la operación. Dos picos más cerca que
+# esto son candidatos a pertenecer a la misma superficie.
+ABANICO_EPS_M = 2.5
+ABANICO_MIN_PICOS = 3
+# ¿Son coplanares los TIROS involucrados? Razón entre el tercer y el segundo
+# valor singular del ajuste a sus trazados: bajo esto, el conjunto de tiros es
+# un plano —o sea, un abanico—.
+ABANICO_PLANARIDAD_TIROS = 0.15
+# Distancia máxima de un pico al plano de los tiros para considerarlo
+# CONTENIDO en él. Es el criterio principal, y es robusto: no exige que el
+# grupo de picos sea planar por sí mismo. Un arco de picos casi rectilíneo
+# —lo que produce un abanico angosto— no tiene normal bien definida, pero sí
+# se puede medir si está dentro del plano del abanico o no.
+ABANICO_TOL_PLANO_M = 0.75
+# Ángulo máximo entre la normal del grupo de picos y la normal del plano de
+# los tiros. Criterio SECUNDARIO: solo se aplica cuando el grupo es lo bastante
+# planar como para tener normal bien definida.
+ABANICO_ANG_MAX_GRAD = 20.0
+
+
+def _plano_de(P: np.ndarray) -> Tuple[np.ndarray, np.ndarray, float, float]:
+    """
+    Ajuste de plano por SVD. Devuelve (centro, normal, s3/s2, s2/s1).
+    s3/s2 chico = los puntos caen en un plano. s2/s1 chico = caen en una recta,
+    que en un solo tiro es el tiro mismo y no informa de nada.
+    """
+    c = P.mean(axis=0)
+    _, S, Vt = np.linalg.svd(P - c, full_matrices=False)
+    if S[0] < 1e-12:
+        return c, np.array([0.0, 0.0, 1.0]), 1.0, 1.0
+    return c, Vt[2], float(S[2] / max(S[1], 1e-12)), float(S[1] / max(S[0], 1e-12))
+
+
+def marcar_picos_de_abanico(picos: List[Dict], eps_m: float = ABANICO_EPS_M,
+                            min_picos: int = ABANICO_MIN_PICOS,
+                            planaridad_tiros: float = ABANICO_PLANARIDAD_TIROS,
+                            ang_max_grad: float = ABANICO_ANG_MAX_GRAD,
+                            tol_plano_m: float = ABANICO_TOL_PLANO_M) -> Dict:
+    """
+    (8.4b) Marca en sitio los picos cuyo agrupamiento se explica por la
+    geometría de perforación. Escribe `plano_abanico` y `motivo_abanico` en
+    cada pico y devuelve el resumen por grupo.
+
+    Un grupo se atribuye al abanico solo si se cumplen LAS DOS condiciones:
+    que los tiros involucrados sean coplanares —o sea, que efectivamente
+    formen un abanico— y que el plano de los picos sea ESE mismo plano. Con
+    una sola de las dos no alcanza: tiros coplanares pueden estar cortados por
+    una estructura transversal real, y un grupo plano entre tiros dispersos es
+    justamente lo que buscamos.
+    """
+    for p in picos:
+        p["plano_abanico"] = False
+        p["motivo_abanico"] = None
+    if len(picos) < min_picos:
+        return {"n_marcados": 0, "n_grupos": 0, "grupos": [],
+                "config": {"eps_m": eps_m, "min_picos": min_picos,
+                           "planaridad_tiros": planaridad_tiros,
+                           "ang_max_grad": ang_max_grad,
+                           "tol_plano_m": tol_plano_m}}
+    X = np.array([[p["este"], p["norte"], p["cota"]] for p in picos],
+                 dtype=np.float64)
+    etiquetas = DBSCAN(eps=eps_m, min_samples=2).fit_predict(X)
+    resumen, n_marcados = [], 0
+    for g in sorted(set(etiquetas.tolist())):
+        if g < 0:
+            continue                      # picos aislados: no forman plano
+        idx = np.where(etiquetas == g)[0]
+        if len(idx) < min_picos:
+            continue
+        _, normal, r32, r21 = _plano_de(X[idx])
+        pozos = sorted({picos[i]["pozo"] for i in idx})
+        if len(pozos) < 2:
+            continue    # grupo dentro de un solo tiro: no habla de ninguna superficie
+        planes = sorted({picos[i].get("plan_id") for i in idx if picos[i].get("plan_id")})
+        # Plano de los TIROS, ajustado a sus trazados y no a los picos.
+        trazas = []
+        for wn in pozos:
+            w = wells.get(wn)
+            if not w or not w.points:
+                continue
+            paso = max(1, len(w.points) // 20)
+            trazas.extend((q.este, q.norte, q.cota) for q in w.points[::paso])
+        if len(trazas) < 3:
+            continue
+        centro_ab, normal_ab, r32_ab, _ = _plano_de(np.array(trazas))
+        ang = float(np.degrees(np.arccos(
+            min(1.0, abs(float(np.dot(normal, normal_ab)))))))
+        # ¿Están los picos DENTRO del plano de los tiros? Criterio principal.
+        dist = float(np.abs((X[idx] - centro_ab) @ normal_ab).max())
+        # El grupo solo tiene normal utilizable si es planar y no degenerado en
+        # una recta; si no la tiene, el criterio angular no se aplica.
+        normal_util = (r32 < 0.25) and (r21 >= 0.15)
+        es_abanico = (r32_ab < planaridad_tiros) and (dist <= tol_plano_m) \
+            and (ang <= ang_max_grad if normal_util else True)
+        if es_abanico:
+            motivo = (f"Grupo de {len(idx)} pico(s) en {len(pozos)} tiro(s) "
+                      f"coplanares (planaridad {r32_ab:.3f}); los picos caen a "
+                      f"{dist:.2f} m o menos del plano del abanico"
+                      + (f" y su propio plano forma {ang:.1f}° con él"
+                         if normal_util else " (grupo sin normal utilizable)")
+                      + ". Es la geometría de perforación, no una superficie "
+                        "geológica.")
+            for i in idx:
+                picos[i]["plano_abanico"] = True
+                picos[i]["motivo_abanico"] = motivo
+            n_marcados += len(idx)
+        resumen.append({"n_picos": int(len(idx)), "n_pozos": len(pozos),
+                        "n_abanicos": len(planes),
+                        "planaridad_picos": round(r32, 4),
+                        "planaridad_tiros": round(r32_ab, 4),
+                        "angulo_con_abanico_grad": round(ang, 2),
+                        "normal_utilizable": bool(normal_util),
+                        "dist_al_plano_m": round(dist, 3),
+                        "es_abanico": bool(es_abanico)})
+    return {"n_marcados": n_marcados, "n_grupos": len(resumen), "grupos": resumen,
+            "config": {"eps_m": eps_m, "min_picos": min_picos,
+                       "planaridad_tiros": planaridad_tiros,
+                       "ang_max_grad": ang_max_grad, "tol_plano_m": tol_plano_m},
+            "criterio": ("Un grupo se atribuye al abanico solo si los tiros "
+                         "involucrados son coplanares Y el plano de los picos "
+                         "es ese mismo plano. Dentro de un solo abanico la "
+                         "estructura y el plano del abanico son indistinguibles: "
+                         "discriminar exige cruzar varios abanicos.")}
+
+
+def discriminate_all(min_gap_m: float = 0.5,
+                     eps_m: float = ABANICO_EPS_M,
+                     min_picos: int = ABANICO_MIN_PICOS,
+                     planaridad_tiros: float = ABANICO_PLANARIDAD_TIROS,
+                     ang_max_grad: float = ABANICO_ANG_MAX_GRAD,
+                     tol_plano_m: float = ABANICO_TOL_PLANO_M) -> Dict:
     """(8.4) Discriminación sobre todos los pozos cargados, con sus conteos."""
     picos, por_pozo = [], {}
     for wn, w in wells.items():
@@ -5183,11 +5331,21 @@ def discriminate_all(min_gap_m: float = 0.5) -> Dict:
                 "motivo": ("Ningún pozo tiene picos de DI sobre el umbral "
                            f"{di_threshold:g}: no hay eventos que clasificar."),
                 "conteo": {k: 0 for k in DISC_CLASES}}
+    abanico = marcar_picos_de_abanico(
+        picos, eps_m=eps_m, min_picos=min_picos,
+        planaridad_tiros=planaridad_tiros, ang_max_grad=ang_max_grad,
+        tol_plano_m=tol_plano_m)
     conteo = {k: 0 for k in DISC_CLASES}
+    conteo_sin_ab = {k: 0 for k in DISC_CLASES}
     for p in picos:
         conteo[p["clase"]] += 1
+        if not p["plano_abanico"]:
+            conteo_sin_ab[p["clase"]] += 1
     return {"status": "ok", "picos": picos, "por_pozo": por_pozo,
             "conteo": conteo, "n_picos": len(picos),
+            "n_plano_abanico": abanico["n_marcados"],
+            "conteo_sin_abanico": conteo_sin_ab,
+            "abanico": abanico,
             "config": {"ventana_m": DISC_VENTANA_M, "base_m": DISC_BASE_M,
                        "caida_rel": DISC_CAIDA_REL, "var_factor": DISC_VAR_FACTOR,
                        "di_umbral": di_threshold}}
@@ -5253,6 +5411,7 @@ def label_peaks_from_drillholes(radio_m: float = DISC_RADIO_ETIQUETA_M,
             continue
         pares.append({**{k: pk[k] for k in ("pozo", "largo", "di", "clase",
                                             "evidencia", "motivo")},
+                      "plano_abanico": bool(pk.get("plano_abanico")),
                       "etiqueta": etiquetas[i]["clase"],
                       "sondaje": etiquetas[i]["sondaje"],
                       "procedencia_etiqueta": etiquetas[i]["procedencia"],
@@ -5268,24 +5427,17 @@ def label_peaks_from_drillholes(radio_m: float = DISC_RADIO_ETIQUETA_M,
                 "picos_sin_etiqueta": sin_etq}
     return {"status": "ok", "pares": pares, "radio_m": radio_m,
             "n_picos": disc["n_picos"], "n_etiquetas": len(etiquetas),
-            "picos_sin_etiqueta": sin_etq, "conteo_clases": disc["conteo"]}
+            "picos_sin_etiqueta": sin_etq, "conteo_clases": disc["conteo"],
+            "n_plano_abanico": disc.get("n_plano_abanico", 0)}
 
 
-def discriminator_report(radio_m: float = DISC_RADIO_ETIQUETA_M,
-                         min_gap_m: float = 0.5) -> Dict:
+def _matriz_discriminador(pares: List[Dict], radio_m: float,
+                          picos_sin_etiqueta: int) -> Dict:
     """
-    (8.6) Matriz de confusión del discriminador contra las etiquetas de
-    sondaje, con la cobertura declarada: cuántos picos quedaron sin etiqueta y
-    con qué radio se apareó. Sin pares no hay matriz — se declara y punto.
+    (8.6a) Matriz de confusión y veredicto sobre una lista de pares
+    pico↔etiqueta. Se extrae aparte porque el reporte la calcula DOS veces:
+    con todos los picos y descontando los que son plano de abanico.
     """
-    lab = label_peaks_from_drillholes(radio_m=radio_m, min_gap_m=min_gap_m)
-    if lab["status"] != "ok":
-        return {"status": lab["status"], "motivo": lab.get("motivo"),
-                "matriz": None, "radio_m": radio_m,
-                "cobertura": {"n_picos": lab.get("n_picos"),
-                              "n_etiquetas": lab.get("n_etiquetas"),
-                              "picos_sin_etiqueta": lab.get("picos_sin_etiqueta")}}
-    pares = lab["pares"]
     etq = ("fractura", "contacto")
     matriz = {e: {c: 0 for c in DISC_CLASES} for e in etq}
     for p in pares:
@@ -5303,7 +5455,7 @@ def discriminator_report(radio_m: float = DISC_RADIO_ETIQUETA_M,
     # Veredicto contra el azar. Con dos clases, acertar la mitad no es acertar:
     # es el resultado de tirar una moneda, y decirlo es parte del reporte.
     tasa = aciertos / evaluables if evaluables else None
-    base = 0.5   # dos clases: elegir al azar acierta la mitad
+    base = 0.5
     if evaluables < 30:
         veredicto = (f"NO CONCLUYENTE: solo {evaluables} evento(s) con clase "
                      "definida y etiqueta cercana. Sin muestra no hay veredicto.")
@@ -5324,21 +5476,77 @@ def discriminator_report(radio_m: float = DISC_RADIO_ETIQUETA_M,
         f"{aciertos} de {evaluables} evento(s) con clase definida coinciden con la "
         f"etiqueta de sondaje; {indet} quedaron indeterminados y no cuentan ni a "
         f"favor ni en contra. {veredicto} "
-        + (f"{lab['picos_sin_etiqueta']} pico(s) del MWD no tienen ninguna "
+        + (f"{picos_sin_etiqueta} pico(s) del MWD no tienen ninguna "
            f"discontinuidad de sondaje a menos de {radio_m:g} m: el contraste "
            "mide solo la vecindad de los sondajes, no el caserón entero."
-           if lab["picos_sin_etiqueta"] else
+           if picos_sin_etiqueta else
            "Todos los picos del MWD encontraron etiqueta cercana.")
         + (f" ATENCIÓN: con radio {radio_m:g} m la etiqueta puede provenir de un "
            "volumen de roca distinto del que perforó el tiro; ampliar el radio "
            "sube el número de pares a costa de la credibilidad de cada uno."
            if radio_m > 5.0 else ""))
-    return {"status": "ok", "matriz": matriz, "por_clase": por_clase,
-            "aciertos": aciertos, "n_evaluables": evaluables,
+    return {"matriz": matriz, "por_clase": por_clase, "aciertos": aciertos,
+            "n_evaluables": evaluables,
             "tasa_acierto": round(tasa, 4) if tasa is not None else None,
             "tasa_azar": base, "veredicto": veredicto,
             "n_indeterminados": indet, "n_pares": len(pares),
-            "radio_m": radio_m, "interpretacion": interp,
+            "interpretacion": interp}
+
+
+def discriminator_report(radio_m: float = DISC_RADIO_ETIQUETA_M,
+                         min_gap_m: float = 0.5) -> Dict:
+    """
+    (8.6) Matriz de confusión del discriminador contra las etiquetas de
+    sondaje, con la cobertura declarada: cuántos picos quedaron sin etiqueta y
+    con qué radio se apareó. Sin pares no hay matriz — se declara y punto.
+
+    Se entrega DOS veces: con todos los picos, y descontando los que el
+    criterio del abanico atribuye a la geometría de perforación. Las dos
+    cifras van juntas para que la comparación sea visible; ninguna sustituye
+    a la otra en silencio.
+    """
+    lab = label_peaks_from_drillholes(radio_m=radio_m, min_gap_m=min_gap_m)
+    if lab["status"] != "ok":
+        return {"status": lab["status"], "motivo": lab.get("motivo"),
+                "matriz": None, "radio_m": radio_m,
+                "n_plano_abanico": lab.get("n_plano_abanico", 0),
+                "sin_abanico": {"status": lab["status"],
+                                "motivo": lab.get("motivo"), "n_pares": 0},
+                "cobertura": {"n_picos": lab.get("n_picos"),
+                              "n_etiquetas": lab.get("n_etiquetas"),
+                              "picos_sin_etiqueta": lab.get("picos_sin_etiqueta")}}
+    pares = lab["pares"]
+    completo = _matriz_discriminador(pares, radio_m, lab["picos_sin_etiqueta"])
+
+    limpios = [p for p in pares if not p.get("plano_abanico")]
+    descartados = len(pares) - len(limpios)
+    if limpios:
+        sin_ab = _matriz_discriminador(limpios, radio_m, lab["picos_sin_etiqueta"])
+        sin_ab["status"] = "ok"
+        sin_ab["n_pares_descartados_por_abanico"] = descartados
+        d = ((sin_ab["tasa_acierto"] or 0) - (completo["tasa_acierto"] or 0)) \
+            if completo["tasa_acierto"] is not None and sin_ab["tasa_acierto"] is not None \
+            else None
+        sin_ab["delta_tasa_acierto"] = round(d, 4) if d is not None else None
+        sin_ab["lectura"] = (
+            f"Descontando {descartados} par(es) cuyo pico se atribuye al plano del "
+            f"abanico, la tasa de acierto pasa de "
+            f"{(completo['tasa_acierto'] or 0)*100:.1f}% a "
+            f"{(sin_ab['tasa_acierto'] or 0)*100:.1f}%."
+            + (" El filtro NO mejora el contraste: los picos de abanico no eran "
+               "lo que confundía al discriminador."
+               if d is not None and d <= 0.02 else
+               " El filtro mejora el contraste: parte del error venía de picos "
+               "que son geometría de perforación." if d is not None else ""))
+    else:
+        sin_ab = {"status": "sin_datos", "n_pares": 0,
+                  "n_pares_descartados_por_abanico": descartados,
+                  "motivo": ("Todos los pares apareados tienen su pico atribuido "
+                             "al plano del abanico: sin ellos no queda contraste.")}
+    return {"status": "ok", **completo,
+            "radio_m": radio_m,
+            "n_plano_abanico": lab.get("n_plano_abanico", 0),
+            "sin_abanico": sin_ab,
             "cobertura": {"n_picos": lab["n_picos"], "n_etiquetas": lab["n_etiquetas"],
                           "picos_sin_etiqueta": lab["picos_sin_etiqueta"]},
             "procedencias": sorted({p["procedencia_etiqueta"] for p in pares})}
