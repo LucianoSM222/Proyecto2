@@ -1489,6 +1489,10 @@ class Well:
     # Viven acá, en el pozo, y no en p.di: el DI de la convención es uno solo
     # y ninguna variante lo pisa.
     di_variantes: Dict[str, np.ndarray] = field(default_factory=dict)
+    # Error de coherencia con el que se asignó el collar, en %. None cuando el
+    # match fue estricto. Viaja con el pozo para que una posición aproximada
+    # nunca se confunda con una exacta.
+    asignacion_err_pct: Optional[float] = None
     # Caserón al que pertenece el pozo. Es la agrupación correcta para
     # LOCO-CV: una litología cruza varios caserones, un pozo no. Si queda
     # None, caseron_de_pozo() lo deriva del prefijo del plan_id.
@@ -2341,20 +2345,34 @@ def _plan_prefix_sim(pid_a, pid_b):
         else: break
     return s
 
-def match_and_place_wells(dq_results, mw_by_hole):
+def match_and_place_wells(dq_results, mw_by_hole,
+                          asignar_por_tolerancia: bool = False,
+                          tolerancia_err_pct: float = 0.0):
     """
-    Matching robusto MW↔DQ con multi-DQ hermanos + colocación espacial.
+    Matching MW↔DQ con multi-DQ hermanos + colocación espacial.
 
     Para cada pozo MWD elige el DQ×hole cuyo collar/final CUMPLE la coherencia
     de largo (|largo_max − dist(collar,final)|/largo_max < COHERENCE_TOL),
     probando candidatos en orden: match exacto de plan_id primero, luego DQ
-    hermanos ordenados por similitud de prefijo de plan_id. Si ningún candidato
-    cumple, el pozo queda origin="ambiguous" en posición ficticia (para
-    reasignar a mano). Puebla el dict global `wells` e interpola las coordenadas
-    de cada punto por su parámetro t (largo/largo_max). Devuelve un dict con los
-    contadores {matched, fallback, ambiguous, no_dq}.
+    hermanos ordenados por similitud de prefijo de plan_id.
 
-    Aislada de on_xml para poder testear el matching sin la capa Dash.
+    UN POZO SIN POSICIÓN NO ES UN POZO. Antes, los que no encontraban DQ
+    coherente se colocaban en el centro global, y ahí quedaban los 16 pozos
+    apilados sobre la misma vertical que se veían como traslape en la vista 3D.
+    Ahora se DESCARTAN y se declaran uno por uno.
+
+    Para el caso intermedio —hay candidatos, pero ninguno dentro de la
+    coherencia estricta— existe `asignar_por_tolerancia`: una sola decisión
+    tomada al cargar, con su tolerancia, y la asignación se hace tomando el
+    candidato de MENOR error entre los que caen dentro de ella.
+
+    COLOCACIÓN: cada punto va a su profundidad REALMENTE medida sobre la
+    dirección del tiro, no estirado sobre el largo del tiro por un parámetro
+    normalizado. Cuando el MWD deja de registrar antes del fondo —20 pozos de
+    los datos reales, hasta 1,65 m sobre tiros de 35 m— estirar desplaza cada
+    punto casi un bloque entero.
+
+    Devuelve los contadores, incluida la lista `descartados` con su motivo.
     """
     # Índice por hole_id de todos los DQ (fallback por hole)
     all_holes = {}
@@ -2362,7 +2380,10 @@ def match_and_place_wells(dq_results, mw_by_hole):
         for hid, tiro in dq["tiros"].items():
             all_holes.setdefault(hid, []).append((pid, tiro))
 
-    counts = {"matched": 0, "fallback": 0, "ambiguous": 0, "no_dq": 0}
+    counts = {"matched": 0, "fallback": 0, "ambiguous": 0, "no_dq": 0,
+              "tolerancia": 0, "descartados_sin_posicion": 0,
+              "descartados_sin_registro": 0, "descartados": []}
+    largo_min = get_param("carga.largo_min_m")
     for key, mw_list in mw_by_hole.items():
         best = max(mw_list, key=lambda m: m["largo_max"])
         pid = best["plan_id"]; hid = best["hole_id"]; largo_max = best["largo_max"]
@@ -2390,18 +2411,49 @@ def match_and_place_wells(dq_results, mw_by_hole):
             "err_pct": round(_coherence_err(largo_max, tiro["collar"], tiro["final_pt"]) * 100, 2),
         } for pid_dq, tiro in candidates]
 
+        # ── Registro despreciable: no es un pozo, se descarta antes de nada ──
+        pts_previos = best["puntos"]
+        if not pts_previos or largo_max < largo_min:
+            counts["descartados_sin_registro"] += 1
+            counts["descartados"].append({
+                "pozo": key, "motivo": (
+                    f"Registro de {largo_max:.2f} m, bajo el mínimo de "
+                    f"{largo_min:g} m del perfil de faena. Un pozo con este "
+                    "registro se dibuja como el collar y una medición suelta, y "
+                    "no aporta metraje al modelo.")})
+            log_warn(f'MW "{key}": {largo_max:.2f} m de registro, bajo el mínimo '
+                     f'de {largo_min:g} m. Descartado.')
+            continue
+
         # ── Elegir el primer candidato que cumpla la coherencia de largo ──
         collar = final_pt = None; origin = "no_dq"
-        chosen_pid = None; discarded = []
+        chosen_pid = None; discarded = []; err_asignacion = None
         for pid_dq, tiro in candidates:
             err = _coherence_err(largo_max, tiro["collar"], tiro["final_pt"])
             if err < COHERENCE_TOL:
                 collar, final_pt = tiro["collar"], tiro["final_pt"]
                 chosen_pid = pid_dq
+                err_asignacion = err * 100.0
                 break
             discarded.append((pid_dq, err))
 
-        if chosen_pid is not None:
+        # ── Ninguno estricto: asignación por tolerancia, de MENOR a mayor error ──
+        if chosen_pid is None and candidates and asignar_por_tolerancia:
+            dentro = [(p, e) for p, e in discarded if e * 100.0 <= tolerancia_err_pct]
+            if dentro:
+                mejor_pid, mejor_err = min(dentro, key=lambda x: x[1])
+                tiro = next(t for p, t in candidates if p == mejor_pid)
+                collar, final_pt = tiro["collar"], tiro["final_pt"]
+                origin = "tolerancia"; counts["tolerancia"] += 1
+                err_asignacion = mejor_err * 100.0
+                log_warn(f'MW "{key}": ningún DQ cumple la coherencia estricta; '
+                         f'asignado "{_plan_short(mejor_pid)}" por tolerancia '
+                         f'(error {mejor_err*100:.1f}% ≤ {tolerancia_err_pct:g}%). '
+                         "La posición es aproximada y queda declarada como tal.")
+
+        if origin == "tolerancia":
+            pass
+        elif chosen_pid is not None:
             if chosen_pid == pid:
                 origin = "matched"; counts["matched"] += 1
             else:
@@ -2409,20 +2461,37 @@ def match_and_place_wells(dq_results, mw_by_hole):
                 log_warn(f'MW "{key}" plan="{pid}" hole={hid}: usado DQ hermano '
                          f'"{chosen_pid}" (coherencia OK).')
         elif candidates:
-            # Había candidatos por hole_id pero NINGUNO cumple coherencia:
-            # pozo ambiguo → posición ficticia + registro de descartados.
-            origin = "ambiguous"; counts["ambiguous"] += 1
-            det = ", ".join(f'{_plan_short(p)} (err {e*100:.1f}%)' for p, e in discarded)
-            log_warn(f'MW "{key}" plan="{pid}" hole={hid}: AMBIGUO, ningún DQ '
-                     f'cumple coherencia <{COHERENCE_TOL*100:.0f}%. Descartados: {det}. '
-                     f'Posición ficticia; reasignar manualmente en el árbol de capas.')
+            # Había candidatos por hole_id pero NINGUNO cumple coherencia ni
+            # entra en la tolerancia: sin posición creíble no se carga.
+            counts["ambiguous"] += 1
+            counts["descartados_sin_posicion"] += 1
+            # Solo los mejores candidatos: listar los 55 de un hole_id repetido
+            # llena el reporte de ruido y esconde el dato que importa, que es
+            # cuán cerca estuvo el mejor de pasar.
+            mejores = sorted(discarded, key=lambda x: x[1])[:5]
+            det = ", ".join(f'{_plan_short(p)} (err {e*100:.1f}%)' for p, e in mejores)
+            if len(discarded) > len(mejores):
+                det += f" y {len(discarded) - len(mejores)} más"
+            counts["descartados"].append({
+                "pozo": key, "motivo": (
+                    f"Ningún DQ cumple la coherencia de largo (<{COHERENCE_TOL*100:.0f}%)"
+                    + (f" ni la tolerancia de {tolerancia_err_pct:g}%"
+                       if asignar_por_tolerancia else "")
+                    + f". Candidatos: {det}.")})
+            log_warn(f'MW "{key}" plan="{pid}" hole={hid}: sin DQ coherente. '
+                     f'Descartados: {det}. Pozo NO cargado.')
+            continue
         else:
             counts["no_dq"] += 1
-            log_warn(f'MW "{key}": sin DQ. Posición ficticia.')
+            counts["descartados_sin_posicion"] += 1
+            counts["descartados"].append({
+                "pozo": key, "motivo": ("Sin ningún DQ que le dé collar. Un pozo "
+                                        "sin posición no se puede cruzar contra "
+                                        "ninguna malla ni interpolar a bloques.")})
+            log_warn(f'MW "{key}": sin DQ. Pozo NO cargado.')
+            continue
 
         pts = best["puntos"]
-        if not pts:
-            log_warn(f'MW "{key}": 0 puntos, omitido.'); continue
         # (P1-T1.1) Guardián por coordenadas sobre el collar real. Solo aplica a
         # pozos con posición verdadera: los de posición ficticia (sin DQ) heredan
         # el centro global y su distancia no informa nada sobre su procedencia.
@@ -2433,22 +2502,33 @@ def match_and_place_wells(dq_results, mw_by_hole):
                 counts["fuera_sitio"] = counts.get("fuera_sitio", 0) + 1
                 log_warn(verdict["mensaje"] + " Pozo NO cargado.")
                 continue
-        if collar and final_pt:
-            if global_center is None:
-                set_center(collar["norte"], collar["este"], collar["cota"])
-            for p in pts:
-                p.este  = collar["este"]  + p.t*(final_pt["este"]  - collar["este"])
-                p.norte = collar["norte"] + p.t*(final_pt["norte"] - collar["norte"])
-                p.cota  = collar["cota"]  + p.t*(final_pt["cota"]  - collar["cota"])
-        else:
-            cx = global_center["este"] if global_center else 0
-            cy = global_center["norte"] if global_center else 0
-            cz = global_center["cota"] if global_center else 0
-            for p in pts:
-                p.este = cx; p.norte = cy; p.cota = cz - p.largo
-        wells[key] = Well(well_name=key, plan_id=pid, hole_id=hid or "",
-                          points=pts, collar=collar, final_pt=final_pt, origin=origin,
-                          dq_candidates=cand_info)
+        if global_center is None:
+            set_center(collar["norte"], collar["este"], collar["cota"])
+        # Cada punto a su profundidad REALMENTE medida sobre la dirección del
+        # tiro. Con `t` normalizado, un registro que no llega al fondo se
+        # estiraba sobre todo el largo del tiro.
+        vx = final_pt["este"] - collar["este"]
+        vy = final_pt["norte"] - collar["norte"]
+        vz = final_pt["cota"] - collar["cota"]
+        L = math.sqrt(vx * vx + vy * vy + vz * vz)
+        if L <= 1e-9:
+            counts["descartados_sin_posicion"] += 1
+            counts["descartados"].append({
+                "pozo": key, "motivo": ("El DQ da collar y fondo en el mismo punto: "
+                                        "el tiro no tiene dirección.")})
+            log_warn(f'MW "{key}": collar y fondo coinciden en el DQ. Pozo NO cargado.')
+            continue
+        ux, uy, uz = vx / L, vy / L, vz / L
+        for p in pts:
+            p.este = collar["este"] + p.largo * ux
+            p.norte = collar["norte"] + p.largo * uy
+            p.cota = collar["cota"] + p.largo * uz
+        w = Well(well_name=key, plan_id=pid, hole_id=hid or "",
+                 points=pts, collar=collar, final_pt=final_pt, origin=origin,
+                 dq_candidates=cand_info)
+        w.asignacion_err_pct = (round(err_asignacion, 3)
+                                if err_asignacion is not None else None)
+        wells[key] = w
     return counts
 
 # ─── PARSERS ──────────────────────────────────────────────────────────────────
@@ -3601,6 +3681,23 @@ def seed_param_registry(force: bool = False):
         return
     param_registry.clear()
     P = [
+        # ── Carga de pozos ───────────────────────────────────────────────────
+        _param("carga.largo_min_m", "Carga de pozos",
+               "Registro mínimo para cargar un pozo", 1.0, "float", "m",
+               "Bajo esto el pozo se dibuja como el collar y una medición "
+               "suelta y no aporta metraje. Medido en MPC: cuatro pozos con "
+               "menos de 1,5 m, uno con 3 muestras y 7 cm.",
+               0.0, 100.0),
+        _param("carga.asignar_por_tolerancia", "Carga de pozos",
+               "Asignar collar aproximado cuando no hay match exacto", 0, "int",
+               "0/1", "Decisión que se toma UNA vez al cargar. Con 1, los pozos "
+               "sin DQ coherente reciben el candidato de menor error que caiga "
+               "dentro de la tolerancia; con 0 se descartan.", 0, 1),
+        _param("carga.tolerancia_err_pct", "Carga de pozos",
+               "Tolerancia de error para el collar aproximado", 15.0, "float",
+               "%", "Error de coherencia de largo máximo admitido al asignar un "
+               "collar aproximado. La asignación va de menor a mayor error.",
+               0.0, 100.0),
         # ── Modelo de bloques ────────────────────────────────────────────────
         _param("bloques.tamano_m", "Modelo de bloques", "Tamaño de bloque", 2.5,
                "float", "m", "Burden y espaciamiento de la operación en MPC. "
@@ -11026,14 +11123,25 @@ def on_xml(contents_list, filenames, ref):
         except Exception as e:
             errs.append(f"{fname}: {e}")
     dq_results, dq_rep = merge_dq_siblings(dq_list)
-    counts = match_and_place_wells(dq_results, mw_by_hole)
+    # La decisión sobre collares aproximados se toma UNA vez, en el perfil de
+    # faena, y vale para toda la carga: no se pregunta pozo por pozo.
+    counts = match_and_place_wells(
+        dq_results, mw_by_hole,
+        asignar_por_tolerancia=bool(get_param("carga.asignar_por_tolerancia")),
+        tolerancia_err_pct=float(get_param("carga.tolerancia_err_pct")))
     if wells:
         wz_state['step1']['xml_loaded'] = True
     parts = [f"✅ {len(mw_by_hole)} pozos MWD"]
     if counts["matched"]:   parts.append(f"{counts['matched']} matcheados")
     if counts["fallback"]:  parts.append(f"{counts['fallback']} por hermano ⚠")
-    if counts["ambiguous"]: parts.append(f"{counts['ambiguous']} ambiguos ⚠ (reasignar)")
-    if counts["no_dq"]:     parts.append(f"{counts['no_dq']} sin DQ ⚠")
+    if counts.get("tolerancia"):
+        parts.append(f"{counts['tolerancia']} por tolerancia ⚠ (posición aproximada)")
+    n_desc = (counts.get("descartados_sin_posicion", 0)
+              + counts.get("descartados_sin_registro", 0))
+    if n_desc:
+        parts.append(f"{n_desc} descartados ⚠ "
+                     f"({counts.get('descartados_sin_posicion', 0)} sin posición, "
+                     f"{counts.get('descartados_sin_registro', 0)} sin registro útil)")
     if counts.get("fuera_sitio"):
         parts.append(f"🚫 {counts['fuera_sitio']} FUERA DEL SITIO {active_site()['id']} "
                      f"(no cargados — ver advertencias)")
