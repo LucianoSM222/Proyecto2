@@ -441,10 +441,19 @@ def t15_blocking():
     check("excluir explícitamente" in msg,
           "el mensaje ofrece la vía de exclusión explícita", msg)
 
-    # train_rf debe fallar ruidosamente, no entrenar a medias.
+    # (Auditoría) EL CONTRATO CAMBIÓ, por decisión del autor: una litología sin
+    # banda ya no ABORTA el entrenamiento, ADVIERTE. La convención del proyecto
+    # dice "se declara y bloquea O ADVIERTE", así que advertir está dentro de la
+    # regla, y qué tan sucio está el dato lo decide quien calibra.
+    #
+    # Lo que NO se negocia es que la declaración viaje pegada al resultado. Un
+    # entrenamiento que corre sin decir qué litologías dejó fuera sería el
+    # default silencioso que el proyecto prohíbe.
     r = gw.train_rf(0, 450)
-    check("error" in r and "No se puede entrenar" in r["error"],
-          "train_rf falla ruidosamente en vez de entrenar", r)
+    check("No se puede entrenar" not in str(r.get("error") or ""),
+          "las litologías sin banda ya no abortan el entrenamiento", r.get("error"))
+    check(gw.training_block_message(gw.training_blockers()),
+          "pero el aviso se sigue construyendo y nombra a las tres")
 
     # Exclusión explícita: exige justificación.
     try:

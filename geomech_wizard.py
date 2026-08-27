@@ -1471,6 +1471,12 @@ class MWDPoint:
     # Verificación de consistencia banda-laboratorio vs intervalo ML (T3):
     # "compatible" / "incompatible" / "ambiguo" / None (no evaluable).
     band_check: Optional[str] = None
+    # Qué modelo produjo ucs_ml: "relacion" o "ml". Sin esto, correr los dos
+    # competidores deja dos mapas de UCS indistinguibles entre sí.
+    ucs_modelo: Optional[str] = None
+    # Dónde cae la predicción respecto de la banda de su unidad:
+    # "dentro" / "sobre" / "bajo" / "sin_banda". INFORMA, no corrige.
+    banda_check: Optional[str] = None
     # Seteo real del equipo para el punto (T9): presión de percusión y avance
     # registrados en el CSV/Excel de seteo, si están disponibles.
     seteo_pp: Optional[float] = None; seteo_pa: Optional[float] = None
@@ -4653,9 +4659,17 @@ def train_rf(ucs_min=None, ucs_max=None):
     # que el rango físico parte en 0): se distingue None explícitamente.
     ucs_min = ucs_range["ucs_min"] if ucs_min is None else ucs_min
     ucs_max = ucs_range["ucs_max"] if ucs_max is None else ucs_max
-    bloqueo = training_block_message()
-    if bloqueo:
-        return {"error": bloqueo, "blockers": training_blockers()}
+    # (Auditoría) Una litología sin banda ya NO aborta el entrenamiento. La
+    # convención del proyecto es "se declara y BLOQUEA O ADVIERTE": advertir
+    # está dentro de la regla, y qué tan sucio está el dato lo decide quien
+    # calibra, no la herramienta. Lo que no se negocia es que la declaración
+    # VIAJE PEGADA al resultado: queda en rf_stats y sale en todo lo que se
+    # exporta, para que nadie lea el número sin ver su procedencia.
+    aviso_bloqueo = training_block_message()
+    bloqueadores = training_blockers() if aviso_bloqueo else []
+    if aviso_bloqueo:
+        log_warn(aviso_bloqueo.replace("No se puede entrenar:",
+                                       "Se entrena SIN estas litologías:"))
     X, y, groups, n_excl, funnel = _training_funnel(ucs_min, ucs_max)
     if len(X) < 10:
         # No basta con decir "insuficientes": el embudo sabe DÓNDE se
@@ -4723,6 +4737,10 @@ def train_rf(ucs_min=None, ucs_max=None):
                            f"({type(e).__name__}: {e}).")
     stats = {
         "n_train": len(X), "n_excl_disc": n_excl, "funnel": funnel,
+        # Las litologías que quedaron fuera por no tener banda. Viajan en las
+        # estadísticas del modelo, no en un aviso que se pierde de la pantalla.
+        "sin_banda_ucs": bloqueadores,
+        "sin_banda_aviso": aviso_bloqueo,
         # (A.6) El contador de ambiguos por Conflicto de traslape es parte del
         # reporte de composición del entrenamiento: sin él, los puntos que las
         # reglas descartaron desaparecerían de la vista.
@@ -8036,6 +8054,339 @@ def variable_justification_report():
     }
 
 
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  TRES FORMAS DE ESTIMAR UCS, UNA SOLA VARA                               ║
+# ║                                                                          ║
+# ║  El R² sobre PUNTOS no significa nada acá: con la etiqueta constante por ║
+# ║  litología, predecir la media del dominio da R² = 1,000000 exacto (la    ║
+# ║  varianza intra-dominio medida sobre 361.947 filas reales es 7e-22).     ║
+# ║  Eso no se discute; está demostrado.                                     ║
+# ║                                                                          ║
+# ║  Lo que estaba mal no era el objetivo sino la MÉTRICA. La pregunta que   ║
+# ║  la memoria hace de verdad es: dada la respuesta de perforación de una   ║
+# ║  roca que el modelo NUNCA VIO, ¿cuál es su UCS? Eso se contesta dejando  ║
+# ║  UNA LITOLOGÍA FUERA y anotando el error EN MPa. Con esa vara la         ║
+# ║  etiqueta constante deja de ser el problema, porque no se mide variación ║
+# ║  dentro del dominio sino transferencia a un dominio nuevo.               ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+# Predictoras del ML. SE queda FUERA: es exactamente (PP+RP+AP)/ROP —error de
+# reconstrucción 3,5e-07 sobre datos reales, correlación 1,000000— y sus cuatro
+# componentes ya están en la lista. El guardián de multicolinealidad no lo
+# detecta porque la dependencia es un cociente y no una relación lineal (el
+# máximo |r| observado entre predictoras es 0,57).
+ML_FEATURES_SIN_SE = ["vel", "pp", "pa", "pd", "pr", "pf"]
+MOTIVO_SIN_SE = ("SE = (PP+RP+AP)/ROP, con error de reconstrucción 3,5e-07 y "
+                 "correlación 1,000000 sobre los datos reales: sus cuatro "
+                 "componentes ya son predictoras y SE no aporta información "
+                 "nueva al modelo. Sigue siendo el eje de la relación directa "
+                 "y una variable de lectura en el visor.")
+UCS_MIN_LITOLOGIAS_VARA = 3
+
+
+def _anclas_por_litologia() -> Dict[str, float]:
+    """Litología → ancla de UCS. Solo las que tienen banda documentada."""
+    out = {}
+    for d, info in domains.items():
+        u = info.get("ucs_lab")
+        if u is None:
+            continue
+        lito = parse_dominio(d)[0] or d.split("::")[0].split("~")[0]
+        if lito:
+            out.setdefault(lito, float(u))
+    return out
+
+
+def _litologias_sin_ancla() -> List[Dict]:
+    """Litologías con puntos pero sin banda. Se DECLARAN, no bloquean."""
+    con = _anclas_por_litologia()
+    cuenta = collections.Counter()
+    for p in all_points():
+        if p.lito and p.lito not in con:
+            cuenta[p.lito] += 1
+    return [{"litologia": k, "puntos": v} for k, v in sorted(cuenta.items())]
+
+
+def _puntos_de_litologia(lito: str) -> List:
+    return [p for p in all_points()
+            if p.lito == lito and p.entrenable
+            and p.se is not None and np.isfinite(p.se)
+            and (p.di is None or p.di <= di_threshold)]
+
+
+def _se_mediana_por_estrato(lito: str) -> Optional[float]:
+    """
+    SE representativa de una litología, controlando por PP.
+
+    La mediana se toma DENTRO de cada estrato de percusión y después se
+    promedian los estratos: PP es la única variable que manipula el operador,
+    y una mediana global mezclaría la decisión del operador con la roca.
+    """
+    pts = _puntos_de_litologia(lito)
+    if not pts:
+        return None
+    medianas = []
+    for lo, hi in PP_ESTRATOS:
+        v = [p.se for p in pts if p.pp is not None and lo <= p.pp < hi]
+        if len(v) >= 30:
+            medianas.append(float(np.median(v)))
+    if not medianas:
+        v = [p.se for p in pts]
+        return float(np.median(v)) if len(v) >= 30 else None
+    return float(np.mean(medianas))
+
+
+def _ajustar_curva_se_ucs(pares: List[Tuple[float, float]]) -> Optional[Dict]:
+    """
+    Curva SE → UCS desde puntos de calibración (SE_mediana, UCS_ancla).
+
+    Con dos anclas solo puede ser una recta; con tres o más se prueba también
+    la potencial, que es la forma habitual de las correlaciones de dureza
+    contra resistencia. Se elige la de menor error sobre los propios puntos de
+    calibración y se DECLARA cuál se usó.
+    """
+    if len(pares) < 2:
+        return None
+    x = np.array([a for a, _ in pares], dtype=float)
+    y = np.array([b for _, b in pares], dtype=float)
+    cand = []
+    a, b = np.polyfit(x, y, 1)
+    cand.append({"forma": "lineal", "coef": (float(a), float(b)),
+                 "err": float(np.mean(np.abs(a * x + b - y)))})
+    if len(pares) >= 3 and (x > 0).all() and (y > 0).all():
+        la, lb = np.polyfit(np.log(x), np.log(y), 1)
+        pred = np.exp(lb) * x ** la
+        cand.append({"forma": "potencial", "coef": (float(np.exp(lb)), float(la)),
+                     "err": float(np.mean(np.abs(pred - y)))})
+    return min(cand, key=lambda c: c["err"])
+
+
+def _aplicar_curva(curva: Dict, se: float) -> float:
+    if curva["forma"] == "lineal":
+        a, b = curva["coef"]
+        return a * se + b
+    k, n = curva["coef"]
+    return k * (max(se, 1e-9) ** n)
+
+
+def leave_one_lithology_out(metodo: str = "relacion") -> Dict:
+    """
+    La vara común: se deja UNA litología fuera, se ajusta con las demás y se
+    predice su ancla. El error va EN MPa, que es comparable entre métodos y
+    entendible sin explicar qué es un R².
+
+    `metodo`: "linea_base" | "relacion" | "ml".
+    """
+    anclas = _anclas_por_litologia()
+    usables = {k: v for k, v in anclas.items() if _se_mediana_por_estrato(k) is not None}
+    if len(usables) < UCS_MIN_LITOLOGIAS_VARA:
+        return {"status": "sin_vara",
+                "motivo": (f"Dejar una litología fuera necesita al menos "
+                           f"{UCS_MIN_LITOLOGIAS_VARA} litologías con ancla y con "
+                           f"puntos MWD; hay {len(usables)}. Con dos, sacar una "
+                           "deja una sola y el resultado no se puede interpretar."),
+                "n_litologias": len(usables)}
+    pliegues = []
+    for fuera in sorted(usables):
+        entrena = {k: v for k, v in usables.items() if k != fuera}
+        se_fuera = _se_mediana_por_estrato(fuera)
+        real = usables[fuera]
+        pred, motivo = None, None
+        if metodo == "linea_base":
+            pred = float(np.mean(list(entrena.values())))
+        elif metodo == "relacion":
+            curva = _ajustar_curva_se_ucs(
+                [(_se_mediana_por_estrato(k), v) for k, v in entrena.items()])
+            pred = _aplicar_curva(curva, se_fuera) if curva else None
+            motivo = None if curva else "no se pudo ajustar la curva"
+        elif metodo == "ml":
+            pred, motivo = _ml_predice_litologia_fuera(fuera, entrena)
+        else:
+            return {"status": "error", "motivo": f'Método desconocido: "{metodo}".'}
+        if pred is not None:
+            pred = float(np.clip(pred, UCS_CONFIG["physical_min"],
+                                 UCS_CONFIG["physical_max"]))
+        pliegues.append({"litologia": fuera, "ucs_real": round(real, 1),
+                         "ucs_predicho": None if pred is None else round(pred, 1),
+                         "error_mpa": None if pred is None else round(abs(pred - real), 1),
+                         "motivo": motivo})
+    errs = [p["error_mpa"] for p in pliegues if p["error_mpa"] is not None]
+    if not errs:
+        return {"status": "sin_datos", "metodo": metodo, "pliegues": pliegues,
+                "motivo": "Ningún pliegue produjo predicción.",
+                "n_litologias": len(usables)}
+    return {"status": "ok", "metodo": metodo,
+            "mae_mpa": round(float(np.mean(errs)), 1),
+            "rmse_mpa": round(float(np.sqrt(np.mean(np.square(errs)))), 1),
+            "n_litologias": len(usables), "pliegues": pliegues,
+            "anclas": {k: round(v, 1) for k, v in sorted(usables.items())}}
+
+
+def _ml_predice_litologia_fuera(fuera: str, entrena: Dict[str, float]):
+    """Entrena con las demás litologías y predice la mediana de la excluida."""
+    X, y = [], []
+    for lito in entrena:
+        for p in _puntos_de_litologia(lito):
+            fila = [getattr(p, k) for k in ML_FEATURES_SIN_SE]
+            if any(v is None or not np.isfinite(v) for v in fila):
+                continue
+            X.append(fila); y.append(entrena[lito])
+    Xf = []
+    for p in _puntos_de_litologia(fuera):
+        fila = [getattr(p, k) for k in ML_FEATURES_SIN_SE]
+        if not any(v is None or not np.isfinite(v) for v in fila):
+            Xf.append(fila)
+    if len(X) < 50 or not Xf:
+        return None, (f"muestra insuficiente para el ML "
+                      f"(entrena {len(X)}, evalúa {len(Xf)})")
+    X = np.asarray(X, float); y = np.asarray(y, float); Xf = np.asarray(Xf, float)
+    # Submuestreo DECLARADO: con 300.000 filas por pliegue el bosque tarda
+    # minutos y el resultado no mejora. Se sortea con semilla fija para que dos
+    # corridas den lo mismo, y el tope es el parámetro del perfil.
+    nota = None
+    rng = np.random.default_rng(COMPARISON_SEED)
+    if len(X) > COMPARISON_MAX_N:
+        idx = rng.choice(len(X), COMPARISON_MAX_N, replace=False)
+        nota = f"entrenado sobre {COMPARISON_MAX_N:,} de {len(X):,} filas".replace(",", ".")
+        X, y = X[idx], y[idx]
+    if len(Xf) > COMPARISON_MAX_N:
+        Xf = Xf[rng.choice(len(Xf), COMPARISON_MAX_N, replace=False)]
+    m = RandomForestRegressor(n_estimators=120, max_depth=10, n_jobs=-1,
+                              random_state=COMPARISON_SEED)
+    m.fit(X, y)
+    return float(np.median(m.predict(Xf))), nota
+
+
+def compare_ucs_methods() -> Dict:
+    """
+    Los tres competidores bajo la misma vara. La línea base ignora el MWD y es
+    el PISO: si ni la relación ni el ML la superan, el MWD no aporta capacidad
+    predictiva de UCS, y eso también es un resultado que la memoria reporta.
+    """
+    salida = []
+    for met, preds in (("linea_base", []), ("relacion", ["se"]),
+                       ("ml", list(ML_FEATURES_SIN_SE))):
+        r = leave_one_lithology_out(met)
+        fila = {"metodo": met, "predictoras": preds, "status": r["status"]}
+        if r["status"] == "ok":
+            fila.update(mae_mpa=r["mae_mpa"], rmse_mpa=r["rmse_mpa"],
+                        pliegues=r["pliegues"])
+        else:
+            fila["motivo"] = r.get("motivo")
+        if met == "ml":
+            fila["motivo_sin_se"] = MOTIVO_SIN_SE
+        salida.append(fila)
+    con_num = [m for m in salida if m.get("mae_mpa") is not None]
+    if not con_num:
+        return {"status": "sin_datos", "metodos": salida,
+                "motivo": (salida[0].get("motivo")
+                           or "Ningún método pudo evaluarse.")}
+    ganador = min(con_num, key=lambda m: m["mae_mpa"])
+    anclas = _anclas_por_litologia()
+    lb = next((m for m in con_num if m["metodo"] == "linea_base"), None)
+    supera = ([m["metodo"] for m in con_num
+               if m["metodo"] != "linea_base" and m["mae_mpa"] < lb["mae_mpa"]]
+              if lb else [])
+    return {"status": "ok", "metodos": salida, "ganador": ganador["metodo"],
+            "n_anclas": len(anclas),
+            "superan_linea_base": supera,
+            "sin_ancla": _litologias_sin_ancla(),
+            "advertencia_n": (
+                f"Decidido con {len(anclas)} ancla(s) de litología, es decir "
+                f"{len(anclas)} pliegue(s). Con tan pocas unidades el ganador "
+                "puede ser azar: se reporta con el N a la vista y NO zanja la "
+                "comparación."),
+            "vara": ("Dejar una litología fuera: se ajusta con las demás y se "
+                     "predice el ancla de la excluida. Error en MPa.")}
+
+
+# ─── Predicción por punto ────────────────────────────────────────────────────
+ucs_modelo_vigente: Optional[str] = None
+ucs_modelo_meta: Dict = {}
+
+
+def ucs_model_summary() -> str:
+    """Con qué modelo se calculó la UCS vigente. Viaja a toda exportación."""
+    if ucs_modelo_vigente is None:
+        return "UCS: sin modelo aplicado todavía."
+    m = ucs_modelo_meta
+    base = f"UCS por «{ucs_modelo_vigente}»"
+    if m.get("n_anclas") is not None:
+        base += f" · calibrado con {m['n_anclas']} ancla(s) de litología"
+    if m.get("forma"):
+        base += f" · curva {m['forma']}"
+    if m.get("mae_mpa") is not None:
+        base += f" · error dejando-una-fuera {m['mae_mpa']:g} MPa"
+    return base
+
+
+def _marcar_banda(p) -> None:
+    """
+    Marca dónde cae la predicción respecto de la banda de su unidad.
+
+    INFORMA, NO CORRIGE. Acotar a la banda impediría que el modelo diga "más
+    duro que el rango documentado de su unidad" —que es justamente el hallazgo
+    que uno querría ver— y rompería el caso de los tiros piloto, donde todavía
+    no se conoce la litología. El único acote es el físico, 0–450 MPa.
+    """
+    if p.ucs_ml is None:
+        p.banda_check = None
+        return
+    attr = attr_registry.get(p.lito) if p.lito else None
+    lo = getattr(attr, "ucs_min", None) if attr else None
+    hi = getattr(attr, "ucs_max", None) if attr else None
+    if lo is None or hi is None:
+        p.banda_check = "sin_banda"
+        return
+    p.banda_check = ("bajo" if p.ucs_ml < lo
+                     else "sobre" if p.ucs_ml > hi else "dentro")
+
+
+def predict_ucs_relacion() -> Dict:
+    """
+    Aplica la curva SE→UCS punto a punto: cada medición recibe SU valor, no la
+    constante de su dominio. Un punto sin litología también lo recibe —es el
+    caso de los tiros piloto— y queda marcado "sin_banda".
+    """
+    global ucs_modelo_vigente, ucs_modelo_meta
+    anclas = _anclas_por_litologia()
+    pares = [(_se_mediana_por_estrato(k), v) for k, v in anclas.items()]
+    pares = [(a, b) for a, b in pares if a is not None]
+    if len(pares) < 2:
+        return {"status": "sin_datos",
+                "motivo": (f"La curva SE↔UCS necesita al menos dos litologías con "
+                           f"ancla y con puntos MWD; hay {len(pares)}. Asignar "
+                           "bandas en el registro de vocabulario las suma.")}
+    curva = _ajustar_curva_se_ucs(pares)
+    if curva is None:
+        return {"status": "error", "motivo": "No se pudo ajustar la curva."}
+    lo_f, hi_f = UCS_CONFIG["physical_min"], UCS_CONFIG["physical_max"]
+    n = 0
+    for p in all_points():
+        if p.se is None or not np.isfinite(p.se):
+            p.ucs_ml = None; p.banda_check = None; p.ucs_modelo = None
+            continue
+        p.ucs_ml = round(float(np.clip(_aplicar_curva(curva, p.se), lo_f, hi_f)), 1)
+        p.ucs_ml_p10 = p.ucs_ml_p90 = None
+        p.ucs_modelo = "relacion"
+        _marcar_banda(p)
+        n += 1
+    vara = leave_one_lithology_out("relacion")
+    ucs_modelo_vigente = "relacion"
+    ucs_modelo_meta = {"n_anclas": len(pares), "forma": curva["forma"],
+                       "mae_mpa": vara.get("mae_mpa")}
+    return {"status": "ok", "n_puntos": n, "curva": curva,
+            "n_anclas": len(pares), "vara": vara,
+            "sin_ancla": _litologias_sin_ancla(),
+            "procedencia": (
+                f"UCS por relación directa SE↔UCS, curva {curva['forma']}, "
+                f"calibrada con {len(pares)} ancla(s) de litología"
+                + (f"; error dejando-una-fuera {vara['mae_mpa']:g} MPa"
+                   if vara.get("mae_mpa") is not None
+                   else "; sin vara: se necesitan tres litologías con ancla")
+                + ". Sin acote a la banda de la unidad: solo a 0–450 MPa.")}
+
+
 def predict_all_wells():
     if rf_model is None: return
     pts = list(all_points())
@@ -8067,6 +8418,8 @@ def predict_all_wells():
         p.ucs_ml     = round(med, 1)
         p.ucs_ml_p10 = round(lo_c, 1)
         p.ucs_ml_p90 = round(hi_c, 1)
+        p.ucs_modelo = "ml"
+        _marcar_banda(p)
         p.ucs_ml_prelim = False
     if n_recortados:
         log_warn(f"Intervalo de predicción: {n_recortados} punto(s) con extremos "
@@ -8453,6 +8806,7 @@ def _point_to_dict(p):
         "ucs_ml_prelim":p.ucs_ml_prelim,
         "ucs_ml_p10":p.ucs_ml_p10,"ucs_ml_p90":p.ucs_ml_p90,
         "di":p.di,"grupo":p.grupo,
+        "ucs_modelo":p.ucs_modelo,"banda_check":p.banda_check,
         "lito_inferida":p.lito_inferida,"estructura_inferida":p.estructura_inferida,
         "grupo_confianza":p.grupo_confianza,"band_check":p.band_check,
         "seteo_pp":p.seteo_pp,"seteo_pa":p.seteo_pa,
@@ -8471,7 +8825,7 @@ def _point_from_dict(d):
     )
     for attr in ("dominio","lito","estructura","ucs_ml","ucs_matriz","ucs_ml_prelim",
                  "ucs_ml_p10","ucs_ml_p90","di","grupo","lito_inferida",
-                 "estructura_inferida","grupo_confianza","band_check","seteo_pp","seteo_pa",
+                 "estructura_inferida","grupo_confianza","band_check","ucs_modelo","banda_check","seteo_pp","seteo_pa",
                  "atributos","alteracion","ambiguo","ambiguo_motivo"):
         if attr in d: setattr(p, attr, d[attr])
     # (P3-3.4) Compatibilidad: un .gwz anterior al renombre trae la clave
@@ -9002,9 +9356,15 @@ COLOR_FIELDS = {
     "lito":("Litología DXF",None,None,True),"grupo":("Dominio agrupado",None,None,True),
     "lito_inferida":("Litología inferida",None,None,True),
     "band_check":("Consistencia de banda",None,None,True),
+    # Dónde cae la UCS predicha respecto de la banda de su unidad. Es
+    # INFORMACIÓN: un sector entero marcado "sobre" es un hallazgo, no un
+    # error de acote — la predicción nunca se recorta a la banda.
+    "banda_check":("UCS vs banda de la unidad",None,None,True),
 }
 
 # Colores fijos para la consistencia de banda (categórico con semántica).
+BANDA_COLORS = {"dentro":"#2ECC71", "sobre":"#E74C3C", "bajo":"#3B8BD4",
+                "sin_banda":"#7F8C8D", "—":"#7F8C8D"}
 BAND_COLORS = {"compatible":"#2ECC71", "incompatible":"#E74C3C",
                "ambiguo":"#F1C40F", "—":"#7F8C8D"}
 
@@ -9149,6 +9509,8 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
         if color_by == "band_check":
             # Colores semánticos fijos (verde/rojo/amarillo/gris), no la paleta.
             cat_map = {c: BAND_COLORS.get(c, "#7F8C8D") for c in all_cats}
+        elif color_by == "banda_check":
+            cat_map = {c: BANDA_COLORS.get(c, "#7F8C8D") for c in all_cats}
         else:
             cat_map = {c: PALETTE[i%len(PALETTE)] for i,c in enumerate(all_cats)}
     for idx, (name, layer) in enumerate(layers.items()):
@@ -9274,6 +9636,11 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
                      .replace(",", "."))
     if n_sondajes_dibujados:
         titulo_conteo += f" · {n_sondajes_dibujados} sondaje(s)"
+    # Coloreando por UCS, el visor DECLARA de qué modelo salió ese mapa: si no,
+    # correr la relación directa y el ML deja dos mapas indistinguibles a la
+    # vista, y el que mira no sabe cuál está leyendo.
+    if color_by in ("ucs_ml", "ucs_matriz", "banda_check"):
+        titulo_conteo += f" · {ucs_model_summary()}"
     fig.update_layout(paper_bgcolor="#0d0d1a",
         title=dict(text=titulo_conteo, font=dict(size=11, color="#888"),
                    x=0.01, xanchor="left", y=0.99, yanchor="top"),
