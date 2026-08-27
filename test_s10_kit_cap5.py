@@ -19,7 +19,7 @@ El índice mapea cada archivo a la sección del capítulo donde va, que es lo
 que evita tener que reconstruir a mano dónde iba cada figura.
 """
 
-import os, sys, tempfile
+import os, sys, tempfile, zipfile, io
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -234,6 +234,63 @@ def kit_declara_su_procedencia():
               "y con qué terminología", rep.get("terminologia"))
 
 
+def el_zip_es_el_mismo_kit():
+    """
+    EL DEFECTO QUE ESTE TEST EXISTE PARA IMPEDIR: había DOS generadores de kit.
+    `build_chapter5_kit`, con sus 22 ítems declarados y cada falla nombrada, y
+    `_build_kit_zip` —el que corre desde el botón de la interfaz— que producía
+    seis archivos sueltos con siete `except Exception: pass`. Con ese, un CSV
+    que reventaba simplemente no aparecía en el ZIP y nadie se enteraba: es
+    exactamente el default silencioso que el proyecto prohíbe, y encima el
+    usuario recibía un kit distinto del documentado.
+    """
+    section("10 — El ZIP del botón es el kit declarado, no un segundo kit paralelo")
+    reset()
+    _pozo("W1", E0)
+    _pozo("W2", E0 + 12.0, ucs=180.0, lito="Kpcli")
+    data = gw._build_kit_zip()
+    check(isinstance(data, bytes) and len(data) > 0, "el ZIP se arma", len(data or b""))
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        nombres = zf.namelist()
+        check(gw.KIT_INDICE_CSV in nombres,
+              "y trae el índice: lo que no se pudo generar viene nombrado con su "
+              "motivo, en vez de faltar callado", nombres[:8])
+        check(gw.KIT_INDICE_MD in nombres, "con su versión en Markdown", nombres[:8])
+        # Todo archivo que el índice declara generado tiene que estar DENTRO.
+        cab = zf.read(gw.KIT_INDICE_CSV).decode("utf-8")
+        filas = [l for l in cab.splitlines() if not l.startswith("#")]
+        check(len(filas) - 1 == len(gw.KIT_CAP5),
+              "el índice del ZIP lista los 22 ítems declarados",
+              (len(filas) - 1, len(gw.KIT_CAP5)))
+        faltan = [n for n in _archivos_ok(cab) if n not in nombres]
+        check(not faltan, "y cada archivo que el índice da por generado está en "
+                          "el ZIP", faltan)
+
+
+def _archivos_ok(csv_texto):
+    """Archivos que el índice declara en estado ok."""
+    import csv as _csv
+    filas = [l for l in csv_texto.splitlines() if not l.startswith("#")]
+    out = []
+    for r in _csv.DictReader(filas):
+        if r.get("estado") == "ok" and r.get("archivo"):
+            out.append(r["archivo"])
+    return out
+
+
+def el_zip_sin_datos_no_revienta_ni_miente():
+    section("10 — Sin datos, el ZIP se entrega igual y dice qué falta")
+    reset()   # ni un pozo
+    data = gw._build_kit_zip()
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        nombres = zf.namelist()
+        check(gw.KIT_INDICE_CSV in nombres, "el índice viene igual", nombres)
+        texto = zf.read(gw.KIT_INDICE_MD).decode("utf-8")
+        check("no se pudieron generar" in texto or "no se generaron" in texto
+              or "motivo" in texto.lower(),
+              "y explica que faltan ítems, con su motivo", texto[:400])
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 ALL_TESTS = [
     indice_declarado_y_completo,
@@ -244,6 +301,8 @@ ALL_TESTS = [
     exportadores_que_devuelven_dataframe,
     indice_exportable,
     kit_declara_su_procedencia,
+    el_zip_es_el_mismo_kit,
+    el_zip_sin_datos_no_revienta_ni_miente,
 ]
 
 

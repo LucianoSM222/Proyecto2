@@ -718,10 +718,6 @@ def validate_attribute_tree() -> List[str]:
     return errs
 
 
-def attrs_by_role(rol: str) -> List[Attribute]:
-    return [a for a in attr_registry.values() if a.rol == rol]
-
-
 # ─── T1.3 / A.2 · REGISTRO DE ALIAS (CONJUNTO POR ROL) ───────────────────────
 # Un alias apunta a exactamente UN ATRIBUTO POR ROL, y resuelve a un
 # diccionario {rol: atributo_id}. Dos atributos del MISMO rol en un mismo alias
@@ -851,10 +847,6 @@ def register_alias(texto_crudo: str, atributos, origen: str = "manual",
     alias_registry[key] = al
     pending_aliases.pop(key, None)
     return al
-
-
-def unregister_alias(texto_crudo: str):
-    alias_registry.pop(_norm_txt(texto_crudo), None)
 
 
 def resolve_alias(texto_crudo: str) -> Dict[str, str]:
@@ -2724,12 +2716,24 @@ def parse_dq(path, fname):
     tmat = np.zeros((4,4))
     tmn = root.find(f".//{IR}TMatrix")
     if tmn is not None:
+        # La TMatrix es lo que lleva el pozo de coordenadas locales a UTM. Un
+        # error acá no se puede tragar: la matriz queda en ceros y TODO el pozo
+        # aterriza en el origen, a cientos de kilómetros de la mina, con el
+        # collar y los 1.700 puntos apilados en (0,0,0). Se declara y se corta.
         for i, col in enumerate(tmn.findall(f"{IR}Col")[:4]):
-            try:
-                for j, ax in enumerate(["x","y","z","w"]):
-                    n = col.find(f"{IR}{ax}")
-                    tmat[j,i] = float(n.text) if n is not None and n.text else 0.0
-            except: pass
+            for j, ax in enumerate(["x","y","z","w"]):
+                n = col.find(f"{IR}{ax}")
+                if n is None or not (n.text or "").strip():
+                    raise RuntimeError(
+                        f"TMatrix incompleta en {fname}: falta el componente "
+                        f"'{ax}' de la columna {i}. Sin la matriz de transformación "
+                        "el pozo no tiene posición en UTM.")
+                try:
+                    tmat[j,i] = float(n.text)
+                except ValueError:
+                    raise RuntimeError(
+                        f"TMatrix ilegible en {fname}: el componente '{ax}' de la "
+                        f"columna {i} dice «{n.text.strip()}», que no es un número.")
     def lu(lx, ly, lz):
         return {
             "norte": tmat[0,0]*lx + tmat[0,1]*ly + tmat[0,2]*lz + tmat[0,3],
@@ -4535,12 +4539,18 @@ def train_rf(ucs_min=None, ucs_max=None):
         m2.fit(X[:n_tr], y[:n_tr])
         rmse_te = float(np.sqrt(np.mean((y[n_tr:] - m2.predict(X[n_tr:]))**2)))
     feat_imp = {}
+    feat_imp_motivo = None
     try:
         n_samp = min(len(X), 300)
         idx = np.random.choice(len(X), n_samp, replace=False)
         perm = permutation_importance(model, X[idx], y[idx], n_repeats=10, random_state=42, n_jobs=-1)
         feat_imp = {ML_LABELS[i]: round(float(perm.importances_mean[i]), 4) for i in range(len(ML_FEATURES))}
-    except: pass
+    except Exception as e:
+        # Sin esto, la importancia de variables quedaba vacía y la pantalla la
+        # mostraba como "no hay nada que destacar" en vez de "no se pudo
+        # calcular": son cosas distintas y se deciden distinto.
+        feat_imp_motivo = (f"La importancia por permutación no se pudo calcular "
+                           f"({type(e).__name__}: {e}).")
     stats = {
         "n_train": len(X), "n_excl_disc": n_excl, "funnel": funnel,
         # (A.6) El contador de ambiguos por Conflicto de traslape es parte del
@@ -4558,6 +4568,7 @@ def train_rf(ucs_min=None, ucs_max=None):
         "rmse_test": round(rmse_te, 1) if rmse_te else None,
         "overfit": round(rmse_te-rmse_tr, 1) if rmse_te else None,
         "feat_imp": feat_imp,
+        "feat_imp_motivo": feat_imp_motivo,
     }
     rf_stats = stats
     return stats
@@ -7805,6 +7816,9 @@ def variable_justification_report():
     return {
         "correlacion": correlation_matrix_report(),
         "importancia": (rf_stats or {}).get("feat_imp"),
+        # Una importancia vacía porque el cálculo falló no es lo mismo que una
+        # importancia vacía porque no hay modelo. El motivo distingue las dos.
+        "importancia_motivo": (rf_stats or {}).get("feat_imp_motivo"),
         "comparacion_con_se": model_comparison_report(with_se=True),
         "comparacion_sin_se": model_comparison_report(with_se=False),
         "ablacion_cota": cota_ablation_report(),
@@ -7917,15 +7931,6 @@ def spearman_rho(x, y):
     denom = np.sqrt(np.sum(rx**2) * np.sum(ry**2))
     if denom == 0: return None
     return float(np.sum(rx * ry) / denom)
-
-def run_cross_ml(ucs_min=None, ucs_max=None):
-    classify_all_wells_cached()
-    build_domain_index()
-    stats = train_rf(ucs_min, ucs_max)
-    if "error" not in stats:
-        predict_all_wells()
-        wz_state['step4']['model_trained'] = True
-    return stats
 
 def recompute_filters(cut_m=None):
     """
@@ -8739,83 +8744,28 @@ kit_task_state = {
 }
 
 def _build_kit_zip():
-    """Genera el contenido del ZIP Cap.5 y lo retorna como bytes."""
-    buf = _io.BytesIO()
-    with _zipfile.ZipFile(buf, "w", _zipfile.ZIP_DEFLATED) as zf:
+    """
+    Contenido del ZIP del Capítulo 5, como bytes.
 
-        # 1. CSVs
-        try:
-            zf.writestr("predicciones.csv", export_predictions_csv().to_csv(index=False))
-        except Exception: pass
-        try:
-            zf.writestr("dominios.csv", export_domain_csv().to_csv(index=False))
-        except Exception: pass
-        try:
-            df_val = export_validation_csv()
-            if not df_val.empty:
-                zf.writestr("validacion_mallas.csv", df_val.to_csv(index=False))
-        except Exception: pass
-        # 2. Figuras HTML standalone
-        def _html(fig):
-            return fig.to_html(full_html=True, include_plotlyjs="cdn")
+    Delega en `build_chapter5_kit`, que es el kit DECLARADO: 22 ítems, cada uno
+    con su identificador estable, su sección del capítulo y —cuando no se pudo
+    generar— su motivo escrito en el índice.
 
-        # Visor 3D coloreado por dominio
-        try:
-            fig3d = build_3d_figure(color_by="grupo")
-            zf.writestr("visor_3d_dominios.html", _html(fig3d))
-        except Exception: pass
-
-        # Histograma de offsets (validación de mallas)
-        try:
-            if mesh_validation_results:
-                fig_off = go.Figure()
-                for r in mesh_validation_results:
-                    if r.get("offsets"):
-                        fig_off.add_trace(go.Histogram(x=r["offsets"], name=r["malla"],
-                                                        nbinsx=20, opacity=0.7))
-                fig_off.add_vline(x=0, line_dash="dash", line_color="#888")
-                fig_off.update_layout(barmode="overlay", template="plotly_dark",
-                                      xaxis_title="Offset [m]", yaxis_title="N pares")
-                zf.writestr("offset_histogram.html", _html(fig_off))
-        except Exception: pass
-
-        # Perfil DI + sensibilidad del pozo con más datos
-        best_well = max(wells.values(), key=lambda w: len(w.points)) if wells else None
-        if best_well:
-            try:
-                fig_di = build_di_figure(best_well)
-                zf.writestr("di_perfil.html", _html(fig_di))
-            except Exception: pass
-            try:
-                sens_result = di_sensitivity_analysis(best_well)
-                fig_sens = build_di_sensitivity_figure(sens_result)
-                zf.writestr("di_sensibilidad.html", _html(fig_sens))
-            except Exception: pass
-
-        # 3. Resumen
-        lines = ["MWD GeoMech Wizard — Resumen Cap. 5", "="*50]
-        # (P3-3.7) Los parámetros DI vigentes se declaran SIEMPRE, no solo
-        # cuando difieren del default: alteran DI, UCS matriz y agrupación de
-        # dominios aguas abajo, y el kit debe decir con cuáles se generó.
-        lines.append(di_config_summary())
-        lines.append(f"Emboquillado: corte < {inicio_cut_m:g} m")
-        lines.append(f"Pozos: {len(wells)}")
-        lines.append(f"Puntos MWD: {sum(len(w.points) for w in wells.values())}")
-        all_pts = list(all_points())
-        n_class = sum(1 for p in all_pts if p.lito)
-        pct_class = round(100.0*n_class/len(all_pts), 1) if all_pts else 0
-        lines.append(f"Clasificados: {n_class} ({pct_class}%)")
-        if rf_stats:
-            lines.append(f"RF R²: {rf_stats.get('r2_train','-')} (entrena) | "
-                         f"CV GroupKFold: {rf_stats.get('cv_r2_mean','-')}")
-            lines.append(f"MAE entrena: {rf_stats.get('mae_train','-')} MPa")
-        lines.append(f"Dominios: {len(domains)}")
-        lines.append(f"Grupos geomecánicos: {len(domain_groups)}")
-        if mesh_validation_results:
-            verdicts = [r['veredicto'] for r in mesh_validation_results]
-            lines.append(f"Validación mallas: {', '.join(verdicts)}")
-        zf.writestr("resumen.txt", "\n".join(lines))
-    return buf.getvalue()
+    Antes esta función era un segundo generador en paralelo: seis archivos
+    sueltos armados con siete `except Exception: pass`. Un CSV que reventaba
+    desaparecía del ZIP sin dejar rastro, que es el default silencioso que el
+    proyecto prohíbe, y el usuario del botón recibía un kit distinto del que la
+    memoria documenta. Ahora hay un solo kit y el ZIP es su empaque.
+    """
+    with tempfile.TemporaryDirectory() as td:
+        rep = build_chapter5_kit(td)
+        buf = _io.BytesIO()
+        with _zipfile.ZipFile(buf, "w", _zipfile.ZIP_DEFLATED) as zf:
+            for nombre in sorted(os.listdir(td)):
+                ruta = os.path.join(td, nombre)
+                if os.path.isfile(ruta):
+                    zf.write(ruta, arcname=nombre)
+        return buf.getvalue()
 
 def run_kit_task():
     with task_lock:
