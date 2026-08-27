@@ -1996,8 +1996,9 @@ def trace_interp(trace, depth: float) -> Tuple[float, float, float]:
     return trace[-1][1:]
 
 
-def sample_trace(trace, step: float = DRILLHOLE_TRACE_STEP_M):
+def sample_trace(trace, step: float = None):
     """Muestrea la traza a resolución `step` [m], para el cruce con mallas."""
+    step = DRILLHOLE_TRACE_STEP_M if step is None else step
     if not trace: return []
     d0, d1 = trace[0][0], trace[-1][0]
     if d1 <= d0: return [trace[0]]
@@ -3643,7 +3644,106 @@ def seed_param_registry(force: bool = False):
                "%", "Error de coherencia de largo máximo admitido al asignar un "
                "collar aproximado. La asignación va de menor a mayor error.",
                0.0, 100.0),
+        # ── Carga de datos ───────────────────────────────────────────────────
+        _param("carga.aviso_desplazamiento_dq", "Carga de datos",
+               "Aviso por desplazamiento entre DQ del mismo tiro", 5.0, "float",
+               "m", "Dos DQ del mismo tiro con collares a más de esta distancia "
+               "no son la misma perforación replanificada. En PCS_1043 la "
+               "mediana de los que difieren es 1,3 m, con 34 casos sobre 20 m. "
+               "Otra faena replanifica con otra holgura.", 0.1, 100.0,
+               "DQ_MERGE_WARN_M"),
+        _param("carga.presupuesto_parseo", "Carga de datos",
+               "Presupuesto de parseo por lote", 12.0, "float", "s",
+               "Corta el parseo de un lote grande para que la interfaz no se "
+               "quede colgada. Depende de la máquina que corra la plataforma, "
+               "no del yacimiento.", 1.0, 600.0, "PARSE_BUDGET_S"),
+        # ── Sondajes ─────────────────────────────────────────────────────────
+        _param("sondajes.radio_cercania", "Sondajes",
+               "Radio para considerar un sondaje cercano", 25.0, "float", "m",
+               "El enunciado no fija un valor. Depende de la densidad de "
+               "sondajes de la faena: con malla más apretada, 25 m mete "
+               "sondajes de otro sector.", 1.0, 500.0,
+               "DRILLHOLE_NEAR_DISTANCE_M"),
+        _param("sondajes.paso_desurvey", "Sondajes",
+               "Paso de muestreo de la traza", 1.0, "float", "m",
+               "Resolución con que se recorre la traza del sondaje para cruzarla "
+               "contra las mallas. Más fino detecta contactos más delgados y "
+               "cuesta más tiempo.", 0.05, 10.0, "DRILLHOLE_TRACE_STEP_M"),
+        # ── Validación de mallas ─────────────────────────────────────────────
+        _param("mallas.borde", "Validación de mallas",
+               "Margen de borde de malla", 2.0, "float", "m",
+               "«A uno o dos metros de un borde» (C.4). Un punto más cerca del "
+               "borde que esto se trata como fronterizo.", 0.0, 50.0,
+               "BORDE_MALLA_M"),
+        _param("mallas.offset_maximo", "Validación de mallas",
+               "Offset máximo entre cruce y pico de DI", 10.0, "float", "m",
+               "Apareos con offset mayor se descartan: a esa distancia el pico "
+               "de DI y el cruce de malla ya no son el mismo evento.", 0.5,
+               100.0, "VAL_MAX_OFFSET_M"),
+        _param("mallas.pozos_minimos", "Validación de mallas",
+               "Pozos mínimos para validar una malla", 3, "int", "pozos",
+               "Con menos pozos, un offset sistemático no se distingue de la "
+               "dispersión de un caso suelto.", 1, 100, "VAL_MIN_WELLS"),
+        # ── Modelo de aprendizaje ────────────────────────────────────────────
+        _param("ml.etiquetas_minimas", "Modelo de aprendizaje",
+               "Litologías distintas mínimas para entrenar", 2, "int",
+               "etiquetas", "Guardia contra entrenamiento degenerado: un R²=1,0 "
+               "con una sola etiqueta es síntoma, no éxito. Una faena "
+               "monolitológica tiene que subirlo o asumir que no hay modelo.",
+               1, 50, "MIN_DISTINCT_LABELS"),
+        _param("ml.muestras_por_etiqueta", "Modelo de aprendizaje",
+               "Muestras mínimas por etiqueta", 5, "int", "puntos",
+               "Clases de un puñado de muestras las memoriza el modelo en vez "
+               "de aprenderlas.", 1, 10000, "MIN_SAMPLES_PER_LABEL"),
+        _param("ml.umbral_colinealidad", "Modelo de aprendizaje",
+               "Umbral de colinealidad entre predictoras", 0.85, "float", "|r|",
+               "Por encima de esto dos predictoras dicen lo mismo y la "
+               "importancia se reparte arbitrariamente entre ellas. Se declara, "
+               "no se elimina la variable en silencio.", 0.0, 1.0,
+               "MULTICOLLINEARITY_THRESHOLD"),
+        _param("ml.submuestreo_comparacion", "Modelo de aprendizaje",
+               "Submuestreo para comparar modelos", 60000, "int", "puntos",
+               "Comparar cinco modelos sobre 400.000 registros toma horas. El "
+               "submuestreo es por POZOS enteros —la agrupación de la CV hay "
+               "que preservarla— y se declara en el reporte.", 1000, 5000000,
+               "COMPARISON_MAX_N"),
+        _param("ml.semilla", "Modelo de aprendizaje",
+               "Semilla del submuestreo", 42, "int", "—",
+               "Fija para que dos corridas den lo mismo. Cambiarla es una forma "
+               "legítima de ver cuánto del resultado es la muestra.",
+               0, 2**31 - 1, "COMPARISON_SEED"),
+        # ── Calibración del DI contra RQD ────────────────────────────────────
+        _param("calibracion.n_muestras", "Calibración DI↔RQD",
+               "Muestras del símplex de pesos", 400, "int", "combinaciones",
+               "La métrica es una correlación de RANGOS, no diferenciable: se "
+               "muestrea el símplex por Dirichlet en vez de optimizar por "
+               "gradiente. Es el equivalente al movvar con que Fernández busca "
+               "sus pesos.", 20, 100000, "CAL_N_MUESTRAS"),
+        _param("calibracion.sondajes_minimos", "Calibración DI↔RQD",
+               "Sondajes mínimos para calibrar", 2, "int", "sondajes",
+               "Con un solo sondaje no hay validación posible: los pesos se "
+               "ajustan al único testigo que hay. En MPC la restricción que "
+               "manda es justamente esta.", 1, 100, "CAL_MIN_SONDAJES"),
+        _param("calibracion.semilla", "Calibración DI↔RQD",
+               "Semilla del muestreo de pesos", 42, "int", "—",
+               "Reproducibilidad de la búsqueda de pesos.", 0, 2**31 - 1,
+               "CAL_SEMILLA"),
+        _param("calibracion.puntos_minimos", "Calibración DI↔RQD",
+               "Puntos MWD mínimos por tramo comparable", 100, "int", "puntos",
+               "Debajo de esto el DI del tramo es ruido y no vale compararlo "
+               "contra el RQD del testigo.", 5, 100000, "DI_RQD_MIN_PUNTOS"),
+        # ── Visor ────────────────────────────────────────────────────────────
+        _param("visor.puntos_maximos", "Visor 3D",
+               "Puntos máximos dibujados", 5000, "int", "puntos",
+               "Se recorta la VISTA, nunca la población que usan los cálculos. "
+               "Depende de la máquina, no del yacimiento.", 100, 500000,
+               "MAX_VIZ_POINTS"),
         # ── Modelo de bloques ────────────────────────────────────────────────
+        _param("bloques.pozos_minimos", "Modelo de bloques",
+               "Pozos distintos mínimos por bloque", 1, "int", "pozos",
+               "El soporte se cuenta por POZOS, no por registros: mil puntos de "
+               "un solo tiro alineado no son soporte tridimensional.", 1, 50,
+               "IDW_MIN_POZOS"),
         _param("bloques.tamano_m", "Modelo de bloques", "Tamaño de bloque", 2.5,
                "float", "m", "Burden y espaciamiento de la operación en MPC. "
                "Un bloque más fino que la malla de perforación promete un "
@@ -3778,6 +3878,30 @@ def seed_param_registry(force: bool = False):
                "en vez de la roca, y obligaría a sacar SE de las predictoras. "
                "Las dos cosas son inaceptables.",
                opciones=["auto", "central", "media", "mediana", "rango_medio"]),
+        _param("ucs.factor_probeta_unica", "UCS", "Ensanche por probeta única",
+               1.35, "float", "×",
+               "Un ancla sin desviación estándar sugiere una sola probeta: se "
+               "acepta el valor, pero el intervalo tiene que reflejar que no hay "
+               "dispersión medida. Cuánto ensanchar depende de cómo ensaya la "
+               "faena.", 1.0, 5.0, "SINGLE_SPECIMEN_PI_FACTOR"),
+        _param("ucs.cv_alto", "UCS", "Coeficiente de variación considerado alto",
+               0.35, "float", "—",
+               "Sobre este CV la banda es intrínsecamente ancha, no menos "
+               "confiable, y el intervalo debe reflejarlo en vez de fingir la "
+               "misma precisión. Las unidades con banda en MPC están en "
+               "0,10-0,21.", 0.0, 3.0, "HIGH_CV_THRESHOLD"),
+        _param("ucs.factor_cv_alto", "UCS", "Ensanche por CV alto", 1.30, "float",
+               "×", "Ensanche del intervalo cuando el CV supera el umbral "
+               "anterior.", 1.0, 5.0, "HIGH_CV_PI_FACTOR"),
+        # Los cortes 90-130-170-230 son los de la operación de MPC: PP es la
+        # ÚNICA variable que manipula el operador, y cada faena la mueve en sus
+        # propios escalones. Texto "a-b,c-d" porque es una lista de tramos y el
+        # registro maneja escalares; se parsea en _sincronizar_globales_derivados.
+        _param("pp.estratos", "Percusión (PP)", "Estratos de percusión",
+               "90-130,130-170,170-230", "texto", "bar",
+               "Tramos de PP dentro de los que se compara SE contra UCS: sin "
+               "estratificar, la variable que el operador manipula se confunde "
+               "con la roca. Formato «a-b,c-d», en bar.", global_name="_PP_ESTRATOS_TXT"),
         _param("ucs.min_fisico", "Límites físicos", "UCS mínima", 0.0, "float",
                "MPa", "Límite físico declarado en CLAUDE.md. Sin truncamiento "
                "silencioso jamás.", 0.0, 1000.0),
@@ -3823,10 +3947,20 @@ def get_param(pid: str):
     return p["valor"]
 
 
+# Parámetros de texto con formato propio. Se comprueban dentro de
+# _validar_param, es decir ANTES de que set_param escriba en el registro.
+_VALIDADORES_TEXTO = {}
+
+
 def _validar_param(p: Dict, valor):
     if p["tipo"] == "texto":
         if not isinstance(valor, str):
             raise TypeError(f'"{p["id"]}" es texto; se recibió {valor!r}.')
+        # Un texto con formato propio se valida ACÁ, antes de que set_param
+        # escriba nada: si el formato se comprobara al sincronizar, un valor
+        # ilegible ya habría quedado en el registro y en el módulo.
+        if p["id"] in _VALIDADORES_TEXTO:
+            _VALIDADORES_TEXTO[p["id"]](valor)
         return valor
     if p["tipo"] == "opcion":
         if valor not in (p.get("opciones") or []):
@@ -3893,6 +4027,7 @@ def _sincronizar_globales_derivados():
     IDW_ANISOTROPIA = (1.0, 1.0, float(param_registry["bloques.anisotropia_z"]["valor"]))
     UCS_CONFIG["physical_min"] = float(param_registry["ucs.min_fisico"]["valor"])
     UCS_CONFIG["physical_max"] = float(param_registry["ucs.max_fisico"]["valor"])
+    PP_ESTRATOS = _parsear_estratos_pp(param_registry["pp.estratos"]["valor"])
 
 
 def export_site_profile() -> str:
@@ -3958,6 +4093,38 @@ def site_profile_report() -> Dict:
             "n_protegidos": sum(1 for p in param_registry.values() if p.get("protegido")),
             "nota": ("Los parámetros protegidos son la convención inmutable del "
                      "proyecto: se leen y exportan, nunca se escriben.")}
+
+
+def aplicar_perfil_desde_panel(valores: Dict) -> Dict:
+    """
+    Escribe un lote de parámetros desde la pantalla del perfil de faena.
+
+    Un valor rechazado NO detiene a los demás: se aplica el resto y se declara
+    uno por uno lo que no entró, con su motivo. Un panel que se cae entero por
+    un campo malo obliga a adivinar cuál era.
+
+    Un campo VACÍO (None o "") deja el valor vigente: vaciar una casilla de la
+    pantalla no es lo mismo que pedir que el parámetro no valga nada, y
+    tratarlo como cero sería un default silencioso de los que el proyecto
+    prohíbe.
+    """
+    aplicados, rechazados, sin_cambio = [], [], []
+    for pid, valor in (valores or {}).items():
+        if valor is None or (isinstance(valor, str) and not valor.strip()):
+            sin_cambio.append(pid); continue
+        p = param_registry.get(pid)
+        if p is not None and p["valor"] == valor:
+            sin_cambio.append(pid); continue
+        try:
+            set_param(pid, valor)
+            aplicados.append(pid)
+        except ParametroProtegido as e:
+            rechazados.append({"id": pid, "valor": valor, "motivo": str(e)})
+        except Exception as e:
+            rechazados.append({"id": pid, "valor": valor,
+                               "motivo": f"{type(e).__name__}: {e}"})
+    return {"n_aplicados": len(aplicados), "aplicados": aplicados,
+            "rechazados": rechazados, "n_sin_cambio": len(sin_cambio)}
 
 
 def compute_di():
@@ -4144,12 +4311,13 @@ def di_peaks(well, min_gap_m=0.5, variante: Optional[str] = None):
     grupos.append(grupo)
     return [max(g, key=lambda c: c[2]) for g in grupos]
 
-def _pair_crossings_peaks(well, layer, max_offset_m=VAL_MAX_OFFSET_M):
+def _pair_crossings_peaks(well, layer, max_offset_m=None):
     """
     (T4c) Aparea cada cruce pozo↔malla con el pico DI más cercano del mismo
     pozo. Offset firmado = largo_pico − largo_cruce (positivo = el pico está
     MÁS PROFUNDO que la malla). Se descartan apareos con |offset| > max_offset_m.
     """
+    max_offset_m = VAL_MAX_OFFSET_M if max_offset_m is None else max_offset_m
     crossings = well_mesh_crossings(well, layer)
     peaks = di_peaks(well)
     pares = []
@@ -4180,8 +4348,8 @@ def _fit_plane_svd(points):
     degen = len(P) < 3 or S[-2] < 1e-9 or (S[-2] / max(S[0], 1e-12)) < 1e-4
     return c, n / nrm, degen
 
-def validate_mesh_positions(kinds=("estructura",), max_offset_m=VAL_MAX_OFFSET_M,
-                            min_wells=VAL_MIN_WELLS, progress_cb=None):
+def validate_mesh_positions(kinds=("estructura",), max_offset_m=None,
+                            min_wells=None, progress_cb=None):
     """
     (T4d/e) Validación multipozo de la posición de cada malla DXF de los tipos
     `kinds`. Por malla: cruces y picos por pozo, apareo cruce↔pico, y con ≥
@@ -4201,6 +4369,8 @@ def validate_mesh_positions(kinds=("estructura",), max_offset_m=VAL_MAX_OFFSET_M
     Pozos con posición ficticia (origin no_dq/ambiguous) se excluyen: su
     geometría no aporta evidencia de posición.
     """
+    max_offset_m = VAL_MAX_OFFSET_M if max_offset_m is None else max_offset_m
+    min_wells = VAL_MIN_WELLS if min_wells is None else min_wells
     target = [(n, l) for n, l in layers.items() if l.kind in kinds]
     resultados = []
     total = max(len(target) * max(len(wells), 1), 1)
@@ -5158,7 +5328,44 @@ def _coherencia_desde(porcion: Dict[str, Dict]) -> Dict:
             "se_mediana_por_dominio": {d["dominio"]: d["se_mediana"] for d in doms}}
 
 
-PP_ESTRATOS = ((90, 130), (130, 170), (170, 230))     # PP: 90 a 230 bar
+# Estratos de PP. Los cortes 90-130-170-230 son los de la operación de MPC, no
+# una propiedad de la percusión: viven en el perfil de faena («pp.estratos») y
+# _sincronizar_globales_derivados() los reconstruye desde ahí.
+_PP_ESTRATOS_TXT = "90-130,130-170,170-230"
+PP_ESTRATOS = ((90.0, 130.0), (130.0, 170.0), (170.0, 230.0))
+
+
+def _parsear_estratos_pp(txt: str) -> Tuple[Tuple[float, float], ...]:
+    """
+    «90-130,130-170» → ((90.0,130.0),(130.0,170.0)). Un texto que no se entiende
+    se rechaza: quedarse con cero estratos apagaría la comparación SE↔UCS por
+    estrato de PP sin decir una palabra.
+    """
+    tramos = []
+    for i, bruto in enumerate((txt or "").split(",")):
+        t = bruto.strip()
+        if not t:
+            continue
+        partes = t.split("-")
+        if len(partes) != 2:
+            raise ValueError(
+                f'Estrato de PP nº{i+1}: «{t}» no tiene la forma «a-b» (en bar).')
+        try:
+            a, b = float(partes[0]), float(partes[1])
+        except ValueError:
+            raise ValueError(
+                f'Estrato de PP nº{i+1}: «{t}» no trae dos números.')
+        if b <= a:
+            raise ValueError(
+                f'Estrato de PP nº{i+1}: «{t}» no es un tramo creciente.')
+        tramos.append((a, b))
+    if not tramos:
+        raise ValueError(
+            f'«{txt}» no define ningún estrato de PP. Formato: «90-130,130-170».')
+    return tuple(tramos)
+
+
+_VALIDADORES_TEXTO["pp.estratos"] = _parsear_estratos_pp
 
 
 def se_ucs_coherence_report() -> Dict:
@@ -6765,8 +6972,8 @@ def calibrate_di_weights(radio_m: Optional[float] = None,
                          params: Tuple[str, ...] = CAL_PARAMS,
                          window: Optional[int] = None,
                          umbral: Optional[float] = None,
-                         n_muestras: int = CAL_N_MUESTRAS,
-                         seed: int = CAL_SEMILLA,
+                         n_muestras: Optional[int] = None,
+                         seed: Optional[int] = None,
                          nombre_variante: str = "calibrada_RQD",
                          registrar: bool = True) -> Dict:
     """
@@ -6778,6 +6985,8 @@ def calibrate_di_weights(radio_m: Optional[float] = None,
     radio_m = get_param("rqd.radio_max_m") if radio_m is None else radio_m
     min_puntos = (get_param("rqd.min_puntos_intervalo")
                   if min_puntos is None else min_puntos)
+    n_muestras = CAL_N_MUESTRAS if n_muestras is None else int(n_muestras)
+    seed = CAL_SEMILLA if seed is None else int(seed)
     conv = di_variantes.get(DI_VARIANTE_CONVENCION) or {}
     window = int(conv.get("window", 14)) if window is None else int(window)
     umbral = float(conv.get("threshold", 1.5)) if umbral is None else float(umbral)
@@ -7152,7 +7361,7 @@ def interpolate_block_model(bloque_m: Optional[float] = None,
                             radio_v_m: Optional[float] = None,
                             anisotropia: Optional[Tuple[float, float, float]] = None,
                             min_muestras: Optional[int] = None,
-                            min_pozos: int = IDW_MIN_POZOS,
+                            min_pozos: Optional[int] = None,
                             fuente: str = "ucs_matriz",
                             agrupar_por_caseron: bool = True,
                             holgura_m: Optional[float] = None) -> Dict:
@@ -7176,6 +7385,7 @@ def interpolate_block_model(bloque_m: Optional[float] = None,
     radio_h_m = get_param("bloques.radio_h_m") if radio_h_m is None else radio_h_m
     radio_v_m = get_param("bloques.radio_v_m") if radio_v_m is None else radio_v_m
     min_muestras = get_param("bloques.min_muestras") if min_muestras is None else min_muestras
+    min_pozos = get_param("bloques.pozos_minimos") if min_pozos is None else min_pozos
     holgura_m = get_param("bloques.holgura_m") if holgura_m is None else holgura_m
     if anisotropia is None:
         anisotropia = (1.0, 1.0, float(get_param("bloques.anisotropia_z")))
@@ -7582,11 +7792,12 @@ COMPARISON_MAX_N = 60000
 COMPARISON_SEED = 42
 
 
-def _submuestrear_por_pozo(X, y, groups, max_n, seed=COMPARISON_SEED):
+def _submuestrear_por_pozo(X, y, groups, max_n, seed=None):
     """
     Sortea POZOS enteros hasta acercarse a `max_n` registros. Devuelve
     (X, y, groups, nota) — nota es None si no hizo falta submuestrear.
     """
+    seed = COMPARISON_SEED if seed is None else int(seed)
     if len(X) <= max_n:
         return X, y, groups, None
     rng = np.random.default_rng(seed)
@@ -9693,6 +9904,10 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
         # principal igual que el badge de vocabulario.
         html.Div(id="drillhole-badge", className="d-flex align-items-center",
                  style={"marginRight":"10px"}),
+        # (PF-UI) Acceso al perfil de faena desde la barra: es lo que otra mina
+        # ajusta primero, y estaba solo disponible llamando set_param() a mano.
+        html.Div(id="perfil-badge", className="d-flex align-items-center",
+                 style={"marginRight":"10px"}),
         html.Div([html.Label("Color:", style={"fontSize":"11px","color":"#aaa","marginRight":"4px"}),
                   dcc.Dropdown(id="color-by",
                     options=[{"label":v[0],"value":k} for k,v in COLOR_FIELDS.items()],
@@ -9811,6 +10026,16 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
         dbc.ModalBody(id="varjust-modal-body", style={"maxHeight": "75vh", "overflowY": "auto"}),
         dbc.ModalFooter(dbc.Button("Cerrar", id="close-varjust", size="sm", color="secondary")),
     ], id="varjust-modal", size="xl", is_open=False, scrollable=True),
+    # (PF-UI) Perfil de faena: los parámetros de operación, editables desde la
+    # pantalla. Sin esto el registro existía pero solo se alcanzaba llamando
+    # set_param() a mano, que para quien usa la plataforma es lo mismo que
+    # tenerlos clavados en el código.
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("Perfil de faena — parámetros de operación")),
+        dbc.ModalBody(id="perfil-modal-body", style={"maxHeight": "75vh", "overflowY": "auto"}),
+        dbc.ModalFooter(dbc.Button("Cerrar", id="close-perfil", size="sm", color="secondary")),
+    ], id="perfil-modal", size="xl", is_open=False, scrollable=True),
+    dcc.Download(id="dl-perfil"),
 ])
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -9997,6 +10222,125 @@ def _attr_alta_form():
         ], className="mt-2"),
         html.Div(id="nuevo-attr-msg", className="mt-1"),
     ]
+
+
+def _perfil_campo(p: Dict):
+    """Una fila del panel del perfil: etiqueta, campo, defecto y procedencia."""
+    pid = p["id"]
+    comun = {"id": {"type": "perfil-param", "param": pid},
+             "size": "sm", "style": {"fontSize": "10px"}}
+    if p["tipo"] == "opcion":
+        campo = dcc.Dropdown(id={"type": "perfil-param", "param": pid},
+                             options=[{"label": o, "value": o}
+                                      for o in (p["opciones"] or [])],
+                             value=p["valor"], clearable=False,
+                             style={"fontSize": "10px"})
+    elif p["tipo"] == "texto":
+        campo = dbc.Input(type="text", value=p["valor"],
+                          debounce=True, **comun)
+    else:
+        campo = dbc.Input(type="number", value=p["valor"], debounce=True,
+                          min=p["min"], max=p["max"],
+                          step=1 if p["tipo"] == "int" else "any", **comun)
+    rango = ""
+    if p["min"] is not None or p["max"] is not None:
+        rango = f" · rango {p['min']}–{p['max']}"
+    movido = p["valor"] != p["defecto"]
+    return html.Div([
+        dbc.Row([
+            dbc.Col(html.Small([
+                html.B(p["etiqueta"]),
+                html.Span(f"  [{p['unidad']}]", style={"color": "#888"}),
+                html.Span("  ● movido del defecto" if movido else "",
+                          style={"color": "#F39C12"}),
+            ], style={"fontSize": "10px"}), width=6),
+            dbc.Col(campo, width=3),
+            dbc.Col(html.Small(f"defecto {p['defecto']}{rango}",
+                               style={"fontSize": "9px", "color": "#666"}), width=3),
+        ], className="g-1 align-items-center"),
+        # La procedencia va SIEMPRE a la vista: un número sin de dónde salió es
+        # lo mismo que un número inventado, y quien reciba este perfil en otra
+        # faena necesita saber qué está cambiando.
+        html.Small(p["procedencia"],
+                   style={"fontSize": "9px", "color": "#7F8C8D",
+                          "display": "block", "marginLeft": "8px",
+                          "marginBottom": "6px"}),
+    ])
+
+
+def _perfil_protegido(p: Dict):
+    """Un parámetro de convención: se muestra, no se edita."""
+    return html.Div([
+        html.Small([html.Span("🔒 ", style={"color": "#E74C3C"}),
+                    html.B(p["etiqueta"]),
+                    html.Span(f" = {p['valor']} {p['unidad']}",
+                              style={"color": "#2ECC71"})],
+                   style={"fontSize": "10px"}),
+        html.Small(p["procedencia"],
+                   style={"fontSize": "9px", "color": "#7F8C8D",
+                          "display": "block", "marginLeft": "18px",
+                          "marginBottom": "6px"}),
+    ])
+
+
+def _perfil_panel_body():
+    """
+    (PF-UI) Pantalla del perfil de faena.
+
+    El registro existía desde antes, pero solo se alcanzaba llamando
+    `set_param()` a mano. Para quien abre la plataforma, un parámetro que solo
+    se cambia escribiendo código está tan clavado como si estuviera en el
+    archivo: esta pantalla es lo que hace cierto el requisito de que las
+    decisiones de faena se configuren DESDE EL PROGRAMA.
+
+    Los seis parámetros de convención aparecen, con candado y con su
+    procedencia. Esconderlos daría a entender que no existen; mostrarlos
+    editables sería mentir sobre lo que se puede tocar.
+    """
+    rep = site_profile_report()
+    secciones: Dict[str, list] = {}
+    for p in param_registry.values():
+        secciones.setdefault(p["seccion"], []).append(p)
+
+    bloques = []
+    for sec in sorted(secciones):
+        ps = sorted(secciones[sec], key=lambda x: x["etiqueta"])
+        filas = [_perfil_protegido(p) if p.get("protegido") else _perfil_campo(p)
+                 for p in ps]
+        bloques.append(html.Div([
+            html.Div(sec, style={"fontSize": "11px", "fontWeight": "bold",
+                                 "color": "#3B8BD4", "marginTop": "10px",
+                                 "borderBottom": "1px solid #333",
+                                 "paddingBottom": "3px", "marginBottom": "6px"}),
+            *filas,
+        ]))
+
+    cabecera = html.Div([
+        html.Small([
+            f"Sitio activo: ", html.B(rep["sitio"]),
+            f" · {rep['n_parametros']} parámetros · ",
+            html.Span(f"{rep['n_modificados']} movido(s) del defecto",
+                      style={"color": "#F39C12" if rep["n_modificados"] else "#888"}),
+            f" · {rep['n_protegidos']} de convención (solo lectura)",
+        ], style={"fontSize": "10px"}),
+        html.Small(rep["nota"], style={"fontSize": "9px", "color": "#7F8C8D",
+                                       "display": "block", "marginTop": "3px"}),
+    ], style={"marginBottom": "8px"})
+
+    acciones = dbc.Row([
+        dbc.Col(dbc.Button("Aplicar cambios", id="btn-perfil-aplicar", size="sm",
+                           color="primary"), width="auto"),
+        dbc.Col(dbc.Button("Reponer defectos", id="btn-perfil-reset", size="sm",
+                           color="secondary", outline=True), width="auto"),
+        dbc.Col(dbc.Button("Exportar perfil (JSON)", id="btn-perfil-export",
+                           size="sm", color="info", outline=True), width="auto"),
+        dbc.Col(dcc.Upload(dbc.Button("Importar perfil", size="sm", color="info",
+                                      outline=True),
+                           id="up-perfil", multiple=False), width="auto"),
+    ], className="g-2", style={"marginBottom": "8px"})
+
+    return html.Div([cabecera, acciones, html.Div(bloques),
+                     html.Div(id="perfil-msg", style={"marginTop": "8px"})])
 
 
 def _vocab_panel_body():
@@ -10230,6 +10574,97 @@ def _vocab_panel_body():
 @app.callback(Output("vocab-badge", "children"), Input("refresh", "data"))
 def render_vocab_badge(_):
     return _vocab_badge_children()
+
+
+@app.callback(Output("perfil-badge", "children"), Input("refresh", "data"))
+def render_perfil_badge(_):
+    n_mod = sum(1 for p in param_registry.values() if p["valor"] != p["defecto"])
+    etiqueta = (f"⚙ perfil {ACTIVE_SITE}" if not n_mod
+                else f"⚙ perfil {ACTIVE_SITE} · {n_mod} movido(s)")
+    return dbc.Button(dbc.Badge(etiqueta,
+                                color="warning" if n_mod else "secondary",
+                                style={"fontSize": "10px"}),
+                      id="btn-open-perfil", color="link", size="sm",
+                      style={"padding": "0", "textDecoration": "none"})
+
+
+@app.callback(Output("perfil-modal", "is_open"), Output("perfil-modal-body", "children"),
+              Input("btn-open-perfil", "n_clicks"), Input("close-perfil", "n_clicks"),
+              State("perfil-modal", "is_open"), prevent_initial_call=True)
+def toggle_perfil_modal(open_c, close_c, is_open):
+    trig = callback_context.triggered_id
+    if trig == "btn-open-perfil":
+        return True, _perfil_panel_body()
+    if trig == "close-perfil":
+        return False, no_update
+    return no_update, no_update
+
+
+@app.callback(Output("perfil-modal-body", "children", allow_duplicate=True),
+              Output("refresh", "data", allow_duplicate=True),
+              Output("toast", "children", allow_duplicate=True),
+              Output("toast", "is_open", allow_duplicate=True),
+              Input("btn-perfil-aplicar", "n_clicks"),
+              Input("btn-perfil-reset", "n_clicks"),
+              State({"type": "perfil-param", "param": ALL}, "value"),
+              State({"type": "perfil-param", "param": ALL}, "id"),
+              State("refresh", "data"), prevent_initial_call=True)
+def on_perfil_aplicar(n_ap, n_rst, valores, ids, ref):
+    trig = callback_context.triggered_id
+    if trig == "btn-perfil-reset":
+        # Reponer NO toca los protegidos: no hay nada que reponer en una
+        # convención, y reset_param los rechaza por eso mismo.
+        n = 0
+        for p in list(param_registry.values()):
+            if not p.get("protegido") and p["valor"] != p["defecto"]:
+                reset_param(p["id"]); n += 1
+        msg = (f"↺ Perfil repuesto: {n} parámetro(s) volvieron a su defecto de "
+               f"{ACTIVE_SITE}." if n else "El perfil ya estaba en sus defectos.")
+        return _perfil_panel_body(), (ref or 0) + 1, msg, True
+
+    lote = {i["param"]: v for i, v in zip(ids or [], valores or [])}
+    rep = aplicar_perfil_desde_panel(lote)
+    partes = [f"✅ {rep['n_aplicados']} parámetro(s) aplicado(s)."]
+    if rep["rechazados"]:
+        detalle = " · ".join(f"{r['id']}: {r['motivo']}" for r in rep["rechazados"][:3])
+        resto = ("" if len(rep["rechazados"]) <= 3
+                 else f" (+{len(rep['rechazados']) - 3} más)")
+        partes.append(f"🚫 {len(rep['rechazados'])} rechazado(s) — {detalle}{resto}")
+    return _perfil_panel_body(), (ref or 0) + 1, " ".join(partes), True
+
+
+@app.callback(Output("dl-perfil", "data"),
+              Input("btn-perfil-export", "n_clicks"), prevent_initial_call=True)
+def on_perfil_export(n):
+    if not n: return no_update
+    stamp = time.strftime("%Y%m%d_%H%M")
+    return dict(content=export_site_profile(),
+                filename=f"perfil_faena_{ACTIVE_SITE}_{stamp}.json")
+
+
+@app.callback(Output("perfil-modal-body", "children", allow_duplicate=True),
+              Output("refresh", "data", allow_duplicate=True),
+              Output("toast", "children", allow_duplicate=True),
+              Output("toast", "is_open", allow_duplicate=True),
+              Input("up-perfil", "contents"), State("refresh", "data"),
+              prevent_initial_call=True)
+def on_perfil_import(contents, ref):
+    if not contents:
+        return no_update, no_update, no_update, no_update
+    try:
+        _, b64 = contents.split(",", 1)
+        texto = base64.b64decode(b64).decode("utf-8")
+    except Exception as e:
+        return no_update, no_update, f"🚫 Archivo de perfil ilegible: {e}", True
+    rep = import_site_profile(texto)
+    if rep.get("status") == "error":
+        return no_update, no_update, f"🚫 {rep['motivo']}", True
+    msg = f"✅ Perfil importado: {rep['n_aplicados']} parámetro(s)."
+    if rep.get("rechazados"):
+        msg += (f" 🚫 {len(rep['rechazados'])} no se aplicaron — "
+                + " · ".join(f"{r['id']}: {r['motivo']}"
+                             for r in rep["rechazados"][:3]))
+    return _perfil_panel_body(), (ref or 0) + 1, msg, True
 
 
 @app.callback(Output("varjust-modal", "is_open"), Output("varjust-modal-body", "children"),
