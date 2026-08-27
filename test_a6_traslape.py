@@ -383,47 +383,6 @@ def contador_en_reporte():
           "el reporte incluye los motivos de exclusión", st.get("overlap_motivos"))
 
 
-def banda_excel_sigue_evaluando():
-    """
-    Desde que el dominio se expresa en atributos canónicos, un punto lleva
-    p.lito = "Bht" aunque su capa se llame "Bht_Fk". La verificación de banda
-    (T3) empareja contra el Excel geomecánico por texto: sin resolución por
-    alias dejaría de evaluar EN SILENCIO al asignar vocabulario a una capa.
-    """
-    section("Regresión — la banda del Excel sigue evaluando con vocabulario asignado")
-    reset()
-    gw.index_geomech_bands([{
-        "caseron": "MPC_1", "litologia": "Brecha Hidrotermal",
-        "ucs_lo": 120.0, "ucs_mid": 150.0, "ucs_hi": 180.0,
-        "rmr_raw": None, "rqd_lo": None, "rqd_mid": None, "rqd_hi": None,
-        "gsi_raw": None,
-    }])
-    lay = mk_layer("Bht_Fk", BOX_GRANDE, {"litologia": "Bht", "alteracion": "Fk"})
-    lay.caseron = "MPC_1"
-
-    check(gw.lookup_band("MPC_1", "Bht") is not None,
-          "el id canónico Bht empareja con la fila «Brecha Hidrotermal» del Excel",
-          gw.lookup_band("MPC_1", "Bht"))
-    check(gw._resolve_caseron("Bht") == "MPC_1",
-          "el caserón se resuelve desde una capa llamada Bht_Fk",
-          gw._resolve_caseron("Bht"))
-
-    p = clasificar([DENTRO])[0]
-    p.ucs_ml, p.ucs_ml_p10, p.ucs_ml_p90 = 150.0, 140.0, 160.0
-    gw.band_consistency()
-    check(p.band_check == "compatible",
-          "la verificación de banda SIGUE evaluando (no cae a None en silencio)",
-          p.band_check)
-
-    # Y un intervalo fuera de la banda se declara incompatible, no ambiguo.
-    p.ucs_ml, p.ucs_ml_p10, p.ucs_ml_p90 = 300.0, 290.0, 310.0
-    gw.band_consistency()
-    check(p.band_check == "incompatible",
-          "un intervalo fuera de la banda se declara incompatible", p.band_check)
-    gw.index_geomech_bands([])
-    reset()
-
-
 def guardian_sigue_vivo():
     section("A.7 — El guardián de sitio sigue activo para las cajas de test")
     reset()
@@ -447,7 +406,6 @@ def test_a6_traslape():
     caso6_equivalencia_empaquetado()
     caso7_fuera_de_todo()
     contador_en_reporte()
-    banda_excel_sigue_evaluando()
     guardian_sigue_vivo()
     assert not FAILURES, f"{len(FAILURES)} comprobación(es) fallida(s): " + "; ".join(FAILURES)
 
@@ -462,7 +420,6 @@ if __name__ == "__main__":
     caso6_equivalencia_empaquetado()
     caso7_fuera_de_todo()
     contador_en_reporte()
-    banda_excel_sigue_evaluando()
     guardian_sigue_vivo()
 
     print(f"\n{'='*72}")

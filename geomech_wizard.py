@@ -1436,15 +1436,16 @@ def make_dominio(lito: Optional[str], alteracion: Optional[str],
 class Layer:
     name: str; kind: str; triangles: np.ndarray
     bbox_min: np.ndarray; bbox_max: np.ndarray
-    ucs_lab: Optional[float] = None; folder: str = "Litología"
+    folder: str = "Litología"
     # Etiquetado caserón×litología (T2): el caserón se asigna por dropdown en
-    # el árbol de capas; lito_alias permite matchear la litología del Excel
-    # cuando el nombre de la capa DXF no coincide literal. ucs_lo/hi/mid son la
-    # banda de laboratorio autocompletada desde geomech_bands (el usuario puede
-    # sobrescribir ucs_lab manualmente sin perder la banda).
+    # el árbol de capas; lito_alias permite matchear la litología cuando el
+    # nombre de la capa DXF no coincide literal con el atributo canónico.
+    #
+    # (Simplificación) La capa YA NO lleva UCS. La banda de UCS es propiedad
+    # del ATRIBUTO y el registro de atributos es su única fuente: tener además
+    # un ucs_lab por capa y una banda autocompletada desde un Excel eran tres
+    # verdades para el mismo número, y cuál ganaba dependía del orden de carga.
     caseron: Optional[str] = None; lito_alias: Optional[str] = None
-    ucs_lo: Optional[float] = None; ucs_hi: Optional[float] = None
-    ucs_mid: Optional[float] = None
     # (P1-T1.2 / A.2) Vínculo al registro de vocabulario canónico. Una capa
     # puede aportar VARIOS atributos de roles distintos: Bht_Fk.dxf trae
     # litología y alteración compuestas en un solo nombre, y debe producir el
@@ -1558,13 +1559,11 @@ clean_filters: List[Dict] = []
 # hardcodeado de 2.0 m, aunque el usuario hubiera fijado otro valor. Ahora se
 # recuerda aquí, y recompute_filters() lo reaplica en vez de un literal.
 inicio_cut_m: float = 2.0
-excel_data: List[Dict] = []
 # Bandas geomecánicas de laboratorio (T2): registros por caserón×litología.
 #   by_pair    : {(caseron_norm, lito_norm): band}
 #   by_lito    : {lito_norm: [band, ...]}          (misma litología, varios caserones)
 #   by_caseron : {caseron_norm: [band, ...]}       (mismo caserón, varias litologías)
 #   records    : lista completa de bandas parseadas
-geomech_bands: Dict[str, Dict] = {"by_pair": {}, "by_lito": {}, "by_caseron": {}, "records": []}
 # Resultados de la validación multipozo de posición de mallas (T4): lista de
 # dicts por malla de estructura, poblada por run_validation_task en el hilo de
 # fondo y renderizada por _mesh_validation_card en el Paso 5.
@@ -1606,7 +1605,6 @@ def di_config_summary() -> str:
     return linea
 group_interval_m: float = 2.0
 ucs_range = dict(ucs_min=UCS_CONFIG["default_min"], ucs_max=UCS_CONFIG["default_max"])
-cal_factors = {k: 1.0 for k in ("vel","pp","pa","pd","pr","pf","se")}
 global_center: Optional[Dict[str, float]] = None
 
 wz_state = {
@@ -2976,54 +2974,9 @@ def guess_kind(fname):
         return "alteracion"
     return "litologia"
 
-def parse_excel(path):
-    try:
-        df = pd.read_excel(path, header=0)
-        df.columns = [str(c).strip().lower() for c in df.columns]
-    except Exception as e:
-        raise RuntimeError(f"Excel ilegible: {e}")
-    col_map = {
-        "caseron":["caseron","caserón","sector"],"perfil":["perfil","nivel","galeria"],
-        "tiro":["tiro","hole","id","nro","numero"],
-        "vel":["vel","rop","velocidad"],"pp":["pp","percusion","percusión"],
-        "pr":["pr","rp","rotacion","rotación"],"pa":["pa","ap","avance"],
-        "pd":["pd","dp","damper"],"pf":["pf","fp","flujo"],
-        "ucs_excel":["ucs","resistencia","mpa","ucs_prom"],
-        "seteo_pp":["seteo pp","set pp","pp set","seteo_pp","sp","spp"],
-        "seteo_pa":["seteo pa","set pa","pa set","seteo_pa","sa","spa"],
-    }
-    def find_col(cands):
-        for c in cands:
-            hits = [col for col in df.columns if c in col]
-            if hits: return hits[0]
-        return None
-    mapping = {k: find_col(v) for k,v in col_map.items()}
-    rows = []
-    for _, row in df.iterrows():
-        r = {}
-        for k, col in mapping.items():
-            if col and col in df.columns:
-                v = row[col]
-                if k in ("caseron","perfil","tiro"):
-                    r[k] = str(v).strip() if pd.notna(v) else None
-                else:
-                    try: r[k] = float(v) if pd.notna(v) else None
-                    except: r[k] = None
-            else: r[k] = None
-        if r.get("tiro") is None: continue
-        ucs = r.get("ucs_excel")
-        if ucs is not None and (ucs < UCS_CONFIG["physical_min"] or ucs > UCS_CONFIG["physical_max"]):
-            log_warn(f'Excel: UCS={ucs} MPa fuera físico, tiro {r.get("tiro")} omitido.')
-            continue
-        # seteo fields pass-through (already float|None from mapping above)
-        rows.append(r)
-    return rows
-
 # ─── EXCEL GEOMECÁNICO caserón×litología (T2) ─────────────────────────────────
 # Columnas por índice (fila de encabezados = índice 2, datos desde índice 3):
 #   2=Caserón · 3=Nivel · 23=Litología · 24=UCS[MPa] · 25=RMR · 26=RQD · 27=GSI
-GEO_COL = {"caseron":2, "nivel":3, "litologia":23, "ucs":24, "rmr":25, "rqd":26, "gsi":27}
-GEO_SHEET = "BUDGET_S_2026_V02"
 GEO_HEADER_ROW = 2   # 0-indexado; datos desde GEO_HEADER_ROW+1
 
 def _norm_txt(s):
@@ -3032,96 +2985,6 @@ def _norm_txt(s):
     s = str(s).strip().lower()
     trans = str.maketrans("áàäâãéèëêíìïîóòöôõúùüûñ", "aaaaaeeeeiiiiooooouuuun")
     return " ".join(s.translate(trans).split())
-
-def _parse_band(raw):
-    """
-    Parsea un rango geomecánico tolerante a 'lo - hi', 'lo a hi' o valor único.
-    Devuelve (lo, mid, hi) o None si no hay número. UCS/RMR/RQD/GSI son no
-    negativos, así que se ignoran signos (un '-' es separador, no negativo).
-    """
-    if raw is None: return None
-    s = str(raw).strip()
-    if not s or s.lower() in ("nan", "none", "-", "—", "s/i", "sin dato"):
-        return None
-    nums = re.findall(r"\d+(?:[.,]\d+)?", s)
-    if not nums: return None
-    vals = [float(n.replace(",", ".")) for n in nums]
-    lo, hi = (vals[0], vals[0]) if len(vals) == 1 else (min(vals[0], vals[1]), max(vals[0], vals[1]))
-    return lo, (lo + hi) / 2.0, hi
-
-def parse_geomech_excel(path, sheet=GEO_SHEET):
-    """
-    Parsea el Excel geomecánico caserón×litología. Devuelve una lista de
-    registros {caseron, litologia, ucs_lo, ucs_mid, ucs_hi, rmr_raw,
-    rqd_lo, rqd_mid, rqd_hi, gsi_raw}. Salta filas sin litología.
-    Lee por índice de columna (header=None) para no depender de los nombres.
-    """
-    try:
-        xls = pd.ExcelFile(path)
-        sh = sheet if sheet in xls.sheet_names else xls.sheet_names[0]
-        df = pd.read_excel(path, sheet_name=sh, header=None)
-    except Exception as e:
-        raise RuntimeError(f"Excel geomecánico ilegible: {e}")
-
-    def cell(row, key):
-        j = GEO_COL[key]
-        if j >= df.shape[1]: return None
-        v = row.iloc[j]
-        return v if pd.notna(v) else None
-
-    records = []
-    for i in range(GEO_HEADER_ROW + 1, df.shape[0]):
-        row = df.iloc[i]
-        lito = cell(row, "litologia")
-        caseron = cell(row, "caseron")
-        if lito is None or not str(lito).strip():
-            continue  # fila sin litología → se salta
-        ucs_b = _parse_band(cell(row, "ucs"))
-        rqd_b = _parse_band(cell(row, "rqd"))
-        rec = {
-            "caseron": str(caseron).strip() if caseron is not None else "",
-            "litologia": str(lito).strip(),
-            "ucs_lo":  ucs_b[0] if ucs_b else None,
-            "ucs_mid": ucs_b[1] if ucs_b else None,
-            "ucs_hi":  ucs_b[2] if ucs_b else None,
-            "rmr_raw": None if cell(row, "rmr") is None else str(cell(row, "rmr")).strip(),
-            "rqd_lo":  rqd_b[0] if rqd_b else None,
-            "rqd_mid": rqd_b[1] if rqd_b else None,
-            "rqd_hi":  rqd_b[2] if rqd_b else None,
-            "gsi_raw": None if cell(row, "gsi") is None else str(cell(row, "gsi")).strip(),
-        }
-        records.append(rec)
-    index_geomech_bands(records)
-    return records
-
-def index_geomech_bands(records):
-    """Reconstruye los índices globales geomech_bands a partir de los registros."""
-    geomech_bands["by_pair"].clear()
-    geomech_bands["by_lito"].clear()
-    geomech_bands["by_caseron"].clear()
-    geomech_bands["records"] = list(records)
-    for rec in records:
-        cn, ln = _norm_txt(rec["caseron"]), _norm_txt(rec["litologia"])
-        geomech_bands["by_pair"][(cn, ln)] = rec
-        geomech_bands["by_lito"].setdefault(ln, []).append(rec)
-        if cn:
-            geomech_bands["by_caseron"].setdefault(cn, []).append(rec)
-
-def excel_caserones():
-    """Lista ordenada de caserones presentes en el Excel geomecánico."""
-    seen = []
-    for rec in geomech_bands["records"]:
-        c = rec["caseron"]
-        if c and c not in seen: seen.append(c)
-    return sorted(seen)
-
-def excel_litologias():
-    """Lista ordenada de litologías presentes en el Excel geomecánico."""
-    seen = []
-    for rec in geomech_bands["records"]:
-        l = rec["litologia"]
-        if l and l not in seen: seen.append(l)
-    return sorted(seen)
 
 def lito_identities(lito) -> set:
     """
@@ -3146,43 +3009,6 @@ def lito_identities(lito) -> set:
                 out.add(_norm_txt(al.texto_crudo))
     return {t for t in out if t}
 
-
-def lookup_band(caseron, litologia):
-    """
-    Banda de una caserón×litología. Requiere caserón (decisión D1: la unidad de
-    etiquetado es la intersección, no la litología global). Devuelve el record
-    o None. Matching por texto normalizado (sin acentos/mayúsculas) y por
-    cualquier alias canónico de la litología.
-    """
-    if not caseron or not litologia: return None
-    cn = _norm_txt(caseron)
-    directo = geomech_bands["by_pair"].get((cn, _norm_txt(litologia)))
-    if directo is not None: return directo
-    for ident in lito_identities(litologia):
-        rec = geomech_bands["by_pair"].get((cn, ident))
-        if rec is not None: return rec
-    return None
-
-def bands_for_caseron(caseron):
-    """Todas las bandas (por litología) de un caserón dado."""
-    if not caseron: return []
-    return geomech_bands["by_caseron"].get(_norm_txt(caseron), [])
-
-def apply_layer_band(layer):
-    """
-    Autocompleta la banda [ucs_lo, ucs_hi] y ucs_mid de una Layer si tiene
-    caserón asignado y su nombre (o lito_alias) matchea una litología del Excel.
-    Solo fija ucs_lab = ucs_mid si el usuario no lo había puesto a mano
-    (comportamiento manual intacto). Devuelve True si autocompletó.
-    """
-    lito = layer.lito_alias or layer.name
-    band = lookup_band(layer.caseron, lito)
-    if band is None or band.get("ucs_mid") is None:
-        return False
-    layer.ucs_lo, layer.ucs_mid, layer.ucs_hi = band["ucs_lo"], band["ucs_mid"], band["ucs_hi"]
-    if layer.ucs_lab is None:
-        layer.ucs_lab = round(float(band["ucs_mid"]), 1)
-    return True
 
 # ─── MOTOR GEOMECÁNICO ────────────────────────────────────────────────────────
 def _moller_trumbore_batch(origins, direction, tris, eps=1e-7):
@@ -3479,52 +3305,6 @@ def aplicar_ucs_por_se() -> Dict:
                              "proyectada." if sin_banda else None),
     }
 
-
-def apply_calibration():
-    cf = cal_factors
-    for p in all_points():
-        for k in ("vel","pp","pa","pd","pr","pf"):
-            setattr(p, k, getattr(p, f"raw_{k}") * cf[k])
-        p.se = (p.pp + p.pr + p.pa) / (p.vel + EPS) * cf.get("se", 1.0)
-
-def derive_cal_factors_from_excel():
-    var_map = {"vel":"vel","pp":"pp","pr":"pr","pa":"pa","pd":"pd","pf":"pf"}
-    esums = {k:0.0 for k in var_map}; rsums = {k:0.0 for k in var_map}; counts = {k:0 for k in var_map}
-    for ex in excel_data:
-        wkey = next((k for k in wells if str(ex.get("perfil","")) in k and str(ex.get("tiro","")) in k), None)
-        if not wkey: continue
-        pts = wells[wkey].points
-        if not pts: continue
-        for k in var_map:
-            v_excel = ex.get(k)
-            if v_excel is None or not np.isfinite(v_excel): continue
-            raw_vals = [getattr(p, f"raw_{k}") for p in pts if np.isfinite(getattr(p, f"raw_{k}", 0))]
-            if not raw_vals: continue
-            rmean = np.mean(raw_vals)
-            if rmean == 0: continue
-            esums[k] += v_excel; rsums[k] += rmean; counts[k] += 1
-    return {k: round(esums[k]/rsums[k], 4) for k in var_map if counts[k] > 0 and rsums[k] > 0}
-
-def apply_seteo_from_excel():
-    """
-    Propaga los campos seteo_pp / seteo_pa de los registros excel_data a los
-    MWDPoint del pozo correspondiente. El valor de seteo es constante por tiro
-    (el operador lo fija antes de perforar), así que se asigna igualmente a
-    todos los puntos del pozo. Sólo actúa si la fila excel tiene al menos uno
-    de los dos campos no None.
-    """
-    for ex in excel_data:
-        spp = ex.get("seteo_pp")
-        spa = ex.get("seteo_pa")
-        if spp is None and spa is None:
-            continue
-        wkey = next((k for k in wells
-                     if str(ex.get("perfil","")) in k and str(ex.get("tiro","")) in k), None)
-        if wkey is None:
-            continue
-        for p in wells[wkey].points:
-            if spp is not None: p.seteo_pp = spp
-            if spa is not None: p.seteo_pa = spa
 
 def apply_inicio_filter(cut_m):
     """(P3-3.8) Recuerda el corte vigente en `inicio_cut_m`, para que
@@ -7095,6 +6875,69 @@ def calibrate_di_weights(radio_m: Optional[float] = None,
     }
 
 
+def di_quality_indicator(variante: Optional[str] = None,
+                         radio_m: Optional[float] = None) -> Dict:
+    """
+    (8.11) ¿Qué tan bien describe el DI al macizo?
+
+    EL ENCUADRE, del autor: lo único verídico es el TESTIGO. El RQD de sondaje
+    no es un instrumento de validación independiente que se pueda contrastar
+    por caserón contra un promedio de Excel — es el patrón que AJUSTA los
+    pesos para que el MWD calcule RQD con precisión, y es ese cálculo
+    extrapolado el que después vale en todo el caserón.
+
+    Así que el indicador no pregunta "¿coinciden dos fuentes?" sino "¿cuánto
+    se aparta el RQD que calcula el MWD del que midió el testigo?", en puntos
+    de RQD, sobre los pares que existan. Es la vara honesta: si el error
+    medio son 12 puntos de RQD, eso es lo que el modelo puede prometer.
+    """
+    pares = rqd_calibration_pairs(radio_m=radio_m, variante=variante)
+    if pares.get("status") != "ok":
+        return {"status": pares.get("status"), "motivo": pares.get("motivo"),
+                "variante": pares.get("variante")}
+    a = np.array([p["rqd_mwd"] for p in pares["pares"]], dtype=np.float64)
+    b = np.array([p["rqd_sondaje"] for p in pares["pares"]], dtype=np.float64)
+    err = a - b
+    rho = spearman_rho(a.tolist(), b.tolist())
+    mae = float(np.abs(err).mean())
+    rmse = float(np.sqrt((err ** 2).mean()))
+    sesgo = float(err.mean())
+    n = int(a.size)
+    if n < 10:
+        veredicto = (f"NO CONCLUYENTE: {n} par(es). Hacen falta más sondajes con "
+                     "RQD para poder decir nada del error.")
+    elif mae <= 10.0 and rho is not None and rho >= 0.4:
+        veredicto = (f"DESCRIBE BIEN: el RQD calculado desde el MWD se aparta "
+                     f"{mae:.1f} puntos en promedio del que midió el testigo, y "
+                     f"los ordena igual (rho {rho:+.2f}).")
+    elif rho is not None and rho >= 0.4:
+        veredicto = (f"ORDENA BIEN, MIDE MAL: rho {rho:+.2f} —el DI reconoce "
+                     f"dónde la roca está peor— pero se aparta {mae:.1f} puntos "
+                     "de RQD en promedio. Sirve para ranquear sectores, no para "
+                     "entregar un RQD.")
+    else:
+        veredicto = (f"NO DESCRIBE: error medio {mae:.1f} puntos de RQD y rho "
+                     f"{rho if rho is None else f'{rho:+.2f}'}. Con los pesos "
+                     "vigentes el DI no reproduce el RQD del testigo.")
+    return {
+        "status": "ok", "variante": pares["variante"], "n_pares": n,
+        "n_sondajes": pares["n_sondajes"], "radio_m": pares["radio_m"],
+        "rho": round(rho, 4) if rho is not None else None,
+        "mae_rqd": round(mae, 2), "rmse_rqd": round(rmse, 2),
+        "sesgo_rqd": round(sesgo, 2),
+        "distancia_m": pares.get("distancia_m"),
+        "veredicto": veredicto,
+        "encuadre": ("El testigo es el patrón, no un contraste independiente: "
+                     "ajusta los pesos para que el MWD calcule RQD, y ese "
+                     "cálculo extrapolado es el que vale en el resto del "
+                     "caserón. El indicador mide el apartamiento en puntos de "
+                     "RQD, que es lo que el modelo puede prometer."),
+        "sesgo_lectura": (f"El MWD calcula {abs(sesgo):.1f} puntos de RQD "
+                          + ("por encima" if sesgo > 0 else "por debajo")
+                          + " del testigo en promedio."),
+    }
+
+
 def export_rqd_mwd_csv(rep: Optional[Dict] = None) -> str:
     """(8.10) RQD_MWD por pozo y por caserón como CSV."""
     rep = rep if rep is not None else rqd_mwd_report()
@@ -7968,7 +7811,6 @@ def predict_all_wells():
             else:
                 p.ucs_matriz = last_stable
     # Verificación de consistencia banda↔intervalo (si hay bandas cargadas).
-    band_consistency()
 
 # ─── VERIFICACIÓN DE BANDA (consistencia laboratorio ↔ intervalo ML) (T3) ─────
 def _resolve_caseron(lito):
@@ -7994,99 +7836,12 @@ def _resolve_caseron(lito):
         return next(iter(caserones))
     return None  # 0 → sin caserón asignado; ≥2 → ambiguo, no resoluble
 
-def band_consistency():
-    """
-    Para cada punto con litología (DXF o inferida) y caserón resoluble, compara
-    su intervalo [p10, p90] contra la banda [ucs_lo, ucs_hi] de laboratorio de
-    esa caserón×litología. Guarda p.band_check ∈ {compatible, incompatible,
-    ambiguo} o None si no evaluable. No lanza excepciones por punto.
-    """
-    if not geomech_bands["records"]:
-        for p in all_points(): p.band_check = None
-        return
-    for p in all_points():
-        p.band_check = None
-        try:
-            lito = p.lito or p.lito_inferida
-            if not lito or p.ucs_ml is None:
-                continue
-            caseron = _resolve_caseron(lito)
-            band = lookup_band(caseron, lito)
-            if band is None or band.get("ucs_lo") is None or band.get("ucs_hi") is None:
-                continue
-            lo, hi = band["ucs_lo"], band["ucs_hi"]
-            med = p.ucs_ml
-            p10 = p.ucs_ml_p10 if p.ucs_ml_p10 is not None else med
-            p90 = p.ucs_ml_p90 if p.ucs_ml_p90 is not None else med
-            intersecta = not (p90 < lo or p10 > hi)
-            dentro = lo <= med <= hi
-            # ¿La mediana cae en ≥2 bandas de litologías del mismo caserón?
-            n_contienen = sum(1 for b in bands_for_caseron(caseron)
-                              if b.get("ucs_lo") is not None and b.get("ucs_hi") is not None
-                              and b["ucs_lo"] <= med <= b["ucs_hi"])
-            if not intersecta:
-                p.band_check = "incompatible"
-            elif dentro and n_contienen < 2:
-                p.band_check = "compatible"
-            else:
-                p.band_check = "ambiguo"
-        except Exception:
-            p.band_check = None
-
 # ─── VALIDACIÓN INDEPENDIENTE DI ↔ RQD (T5) ────────────────────────────────────
 # El RQD del Excel geomecánico proviene de mapeo/sondajes: es INDEPENDIENTE del
 # MWD. Hipótesis: el DI medio por caserón anticorrelaciona con el RQD (más
 # discontinuidades detectadas por MWD → roca más fracturada → menor RQD). Es la
 # única validación externa del DI disponible en la mina.
 DI_RQD_MIN_PUNTOS = 100
-
-def di_vs_rqd_by_caseron(min_puntos=DI_RQD_MIN_PUNTOS):
-    """
-    (T5a) DI medio por caserón vs su RQD de laboratorio. Un caserón es
-    evaluable si tiene al menos una Layer DXF con ese caserón asignado cuya
-    banda caserón×litología incluya RQD (rqd_mid), y el conjunto de puntos MWD
-    dentro de esas mallas (excluyendo entrenable=False, es decir el
-    emboquillado) suma >= min_puntos.
-
-    Si un caserón tiene MÁS DE UNA Layer asignada (varias litologías dentro
-    del mismo caserón), se agrupan los puntos de todas ellas y el rqd_mid
-    reportado es el promedio de las bandas de esas litologías ponderado por
-    su cantidad de puntos (cada banda del Excel es en rigor caserón×litología,
-    no puramente caserón; esta agregación es la aproximación al nivel caserón
-    que pide la tarea).
-
-    Devuelve lista de {caseron, di_medio, di_std, rqd_mid, n_puntos}.
-    """
-    by_cas = {}
-    for layer in layers.values():
-        if not layer.caseron: continue
-        lito = layer.lito_alias or layer.name
-        band = lookup_band(layer.caseron, lito)
-        if band is None or band.get("rqd_mid") is None: continue
-        by_cas.setdefault(layer.caseron, []).append((layer, band))
-
-    resultados = []
-    for caseron, layer_bands in by_cas.items():
-        di_vals = []
-        rqd_weighted_sum, n_total = 0.0, 0
-        for layer, band in layer_bands:
-            pts = [p for p in all_points()
-                   if p.lito == layer.name and p.entrenable
-                   and p.di is not None and np.isfinite(p.di)]
-            if not pts: continue
-            di_vals.extend(p.di for p in pts)
-            rqd_weighted_sum += band["rqd_mid"] * len(pts)
-            n_total += len(pts)
-        if n_total < min_puntos: continue
-        di_arr = np.array(di_vals, dtype=np.float64)
-        resultados.append({
-            "caseron": caseron,
-            "di_medio": round(float(di_arr.mean()), 4),
-            "di_std": round(float(di_arr.std()), 4),
-            "rqd_mid": round(rqd_weighted_sum / n_total, 2),
-            "n_puntos": n_total,
-        })
-    return sorted(resultados, key=lambda r: r["caseron"])
 
 def spearman_rho(x, y):
     """
@@ -8115,47 +7870,6 @@ def spearman_rho(x, y):
     if denom == 0: return None
     return float(np.sum(rx * ry) / denom)
 
-def di_rqd_correlation(min_puntos=DI_RQD_MIN_PUNTOS):
-    """
-    (T5b) rho de Spearman entre di_medio y rqd_mid sobre los caserones
-    evaluables de di_vs_rqd_by_caseron(). Con menos de 4 caserones se considera
-    insuficiente para una correlación confiable: se omite rho (None) y se
-    devuelve la advertencia. Devuelve {rho, n, data, warning}.
-    """
-    data = di_vs_rqd_by_caseron(min_puntos)
-    n = len(data)
-    if n < 4:
-        return {"rho": None, "n": n, "data": data,
-                "warning": "insuficientes caserones para correlación confiable"}
-    rho = spearman_rho([d["di_medio"] for d in data], [d["rqd_mid"] for d in data])
-    return {"rho": rho, "n": n, "data": data, "warning": None}
-
-def build_di_rqd_figure(data):
-    """(T5c) Scatter DI medio vs RQD por caserón; tamaño del marcador ~ n_puntos."""
-    fig = go.Figure()
-    if not data: return fig
-    xs = [d["rqd_mid"] for d in data]
-    ys = [d["di_medio"] for d in data]
-    texts = [d["caseron"] for d in data]
-    max_n = max(d["n_puntos"] for d in data) or 1
-    sizes = [8 + 22 * (d["n_puntos"] / max_n) for d in data]
-    hover = [f"{d['caseron']}<br>DI medio={d['di_medio']:.3f} ± {d['di_std']:.3f}"
-             f"<br>RQD={d['rqd_mid']:.1f}<br>n={d['n_puntos']}" for d in data]
-    fig.add_trace(go.Scatter(
-        x=xs, y=ys, mode="markers+text", text=texts, textposition="top center",
-        textfont=dict(size=9, color="#aaa"),
-        marker=dict(size=sizes, color="#3B8BD4", opacity=0.75,
-                    line=dict(width=1, color="#0d0d1a")),
-        hovertext=hover, hoverinfo="text",
-    ))
-    fig.update_layout(template="plotly_dark", paper_bgcolor="#0d0d1a", plot_bgcolor="#0d0d1a",
-                      height=280, margin=dict(l=45, r=15, t=15, b=40),
-                      xaxis_title="RQD medio [%]", yaxis_title="DI medio")
-    return fig
-
-def export_di_rqd_csv():
-    return pd.DataFrame(di_vs_rqd_by_caseron())
-
 def run_cross_ml(ucs_min=None, ucs_max=None):
     classify_all_wells_cached()
     build_domain_index()
@@ -8164,31 +7878,6 @@ def run_cross_ml(ucs_min=None, ucs_max=None):
         predict_all_wells()
         wz_state['step4']['model_trained'] = True
     return stats
-
-def train_prelim_from_excel():
-    global prelim_model
-    X, y = [], []
-    for ex in excel_data:
-        ucs = ex.get("ucs_excel")
-        if ucs is None or not np.isfinite(ucs): continue
-        vel,pp,pr,pa,pd,pf = [ex.get(k) for k in ("vel","pp","pr","pa","pd","pf")]
-        if any(v is None or not np.isfinite(v) for v in (vel,pp,pr,pa,pd,pf)): continue
-        se = (pp+pr+pa)/(vel+EPS)
-        X.append([vel,pp,pa,pd,pr,pf,se]); y.append(ucs)
-    if len(X) < 5: return {"error": f"Solo {len(X)} tiros válidos"}
-    X, y = np.array(X), np.array(y)
-    m = RandomForestRegressor(n_estimators=100, max_depth=6, n_jobs=-1, random_state=42)
-    m.fit(X, y); prelim_model = m
-    preds = m.predict(X)
-    rmse = float(np.sqrt(np.mean((y-preds)**2)))
-    r2 = float(1-np.sum((y-preds)**2)/(np.sum((y-y.mean())**2) or 1))
-    pts = list(all_points())
-    if pts:
-        Xall = np.array([[getattr(p,k) for k in ML_FEATURES] for p in pts])
-        pall = m.predict(Xall)
-        for p, v in zip(pts, pall):
-            p.ucs_ml = round(float(v),1); p.ucs_ml_prelim = True
-    return {"n_train": len(X), "r2": round(r2,3), "rmse": round(rmse,1)}
 
 def recompute_filters(cut_m=None):
     """
@@ -8299,7 +7988,6 @@ def predict_unclassified(tol_ucs=20.0, tol_di=0.15, interval_m=2.0):
                     assigned += 1
     wz_state['step5']['predicted'] = True
     # Reevaluar consistencia de banda incluyendo litologías inferidas.
-    band_consistency()
     return {"assigned":assigned,"total":total,"no_model":no_model}
 
 def _segments_by_domain(group_id, min_len=5):
@@ -8460,12 +8148,6 @@ def _export_descriptor(kind: str) -> Optional[Dict]:
         return {"kind": kind, "n": len(df), "unidad": "pares cruce↔pico",
                 "filename": export_filename("validacion_mallas", "csv"),
                 "desc": "Validación multipozo de posición de mallas (T4)."}
-    if kind == "di_rqd":
-        df = export_di_rqd_csv()
-        if df.empty: return None
-        return {"kind": kind, "n": len(df), "unidad": "caserones",
-                "filename": export_filename("di_vs_rqd", "csv"),
-                "desc": "Correlación DI↔RQD por caserón (T5), validación externa del DI."}
     if kind == "proyecto":
         if not wells: return None
         n = len(wells)
@@ -8596,9 +8278,8 @@ def save_project(path):
         "layers_meta": {
             ln: {
                 "name": lay.name, "kind": lay.kind, "folder": lay.folder,
-                "ucs_lab": lay.ucs_lab, "caseron": lay.caseron,
+                "caseron": lay.caseron,
                 "lito_alias": lay.lito_alias,
-                "ucs_lo": lay.ucs_lo, "ucs_hi": lay.ucs_hi, "ucs_mid": lay.ucs_mid,
                 "atributos": dict(lay.atributos), "nivel": lay.nivel,
                 "bbox_min": lay.bbox_min.tolist(), "bbox_max": lay.bbox_max.tolist(),
             }
@@ -8616,14 +8297,11 @@ def save_project(path):
         "domain_groups": domain_groups,
         "clean_filters": clean_filters,
         "inicio_cut_m": inicio_cut_m,
-        "cal_factors": cal_factors,
         "di_config": di_config,
         "di_threshold": di_threshold,
         "group_interval_m": group_interval_m,
         "ucs_range": ucs_range,
         "global_center": global_center,
-        "geomech_records": geomech_bands["records"],
-        "excel_data": excel_data,
         "parse_warnings": parse_warnings,
         "wz_state": wz_state,
         # (P2-T2.6) Sondajes + selección (auto o manual) + reparto espacial.
@@ -8655,9 +8333,7 @@ def load_project(path):
     # Limpiar estado global
     wells.clear(); layers.clear(); domains.clear()
     domain_groups.clear(); clean_filters.clear()
-    excel_data.clear(); parse_warnings.clear()
-    geomech_bands["by_pair"].clear(); geomech_bands["by_lito"].clear()
-    geomech_bands["by_caseron"].clear(); geomech_bands["records"].clear()
+    parse_warnings.clear()
     drillholes.clear(); spatial_bands.clear()
 
     # Restaurar pozos
@@ -8674,10 +8350,8 @@ def load_project(path):
         tris = npz_data[npz_key] if npz_key in npz_data else np.zeros((0,3,3))
         lay = Layer(
             name=lm["name"], kind=lm["kind"], triangles=tris,
-            bbox_min=np.array(lm["bbox_min"]), bbox_max=np.array(lm["bbox_max"]),
-            ucs_lab=lm.get("ucs_lab"), folder=lm.get("folder","Litología"),
+            bbox_min=np.array(lm["bbox_min"]), bbox_max=np.array(lm["bbox_max"]), folder=lm.get("folder","Litología"),
             caseron=lm.get("caseron"), lito_alias=lm.get("lito_alias"),
-            ucs_lo=lm.get("ucs_lo"), ucs_hi=lm.get("ucs_hi"), ucs_mid=lm.get("ucs_mid"),
             atributos=dict(lm.get("atributos") or ({"litologia": lm["atributo_id"]}
                             if lm.get("atributo_id") else {})),
             nivel=lm.get("nivel"),
@@ -8689,17 +8363,13 @@ def load_project(path):
     domain_groups.extend(proj.get("domain_groups", []))
     clean_filters.extend(proj.get("clean_filters", []))
     inicio_cut_m = proj.get("inicio_cut_m", inicio_cut_m)
-    cal_factors.update(proj.get("cal_factors", {}))
     di_config.update(proj.get("di_config", {}))
     di_threshold = proj.get("di_threshold", di_threshold)
     group_interval_m = proj.get("group_interval_m", group_interval_m)
     ucs_range.update(proj.get("ucs_range", {}))
     global_center = proj.get("global_center")
-    excel_data.extend(proj.get("excel_data", []))
     parse_warnings.extend(proj.get("parse_warnings", []))
     wz_state.update(proj.get("wz_state", {}))
-    if proj.get("geomech_records"):
-        index_geomech_bands(proj["geomech_records"])
     # (P2-T2.6) Restaurar sondajes: la selección manual del usuario debe
     # sobrevivir a guardar/cargar el proyecto.
     for hid, dd in proj.get("drillholes", {}).items():
@@ -8866,12 +8536,6 @@ def _build_kit_zip():
             if not df_val.empty:
                 zf.writestr("validacion_mallas.csv", df_val.to_csv(index=False))
         except Exception: pass
-        try:
-            df_rqd = export_di_rqd_csv()
-            if not df_rqd.empty:
-                zf.writestr("di_rqd.csv", df_rqd.to_csv(index=False))
-        except Exception: pass
-
         # 2. Figuras HTML standalone
         def _html(fig):
             return fig.to_html(full_html=True, include_plotlyjs="cdn")
@@ -8880,13 +8544,6 @@ def _build_kit_zip():
         try:
             fig3d = build_3d_figure(color_by="grupo")
             zf.writestr("visor_3d_dominios.html", _html(fig3d))
-        except Exception: pass
-
-        # DI ↔ RQD scatter
-        try:
-            data_rqd = di_vs_rqd_by_caseron()
-            if data_rqd:
-                zf.writestr("di_vs_rqd.html", _html(build_di_rqd_figure(data_rqd)))
         except Exception: pass
 
         # Histograma de offsets (validación de mallas)
@@ -9121,7 +8778,11 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
         ii = list(range(0, len(tris)*3, 3))
         jj = list(range(1, len(tris)*3, 3))
         kk = list(range(2, len(tris)*3, 3))
-        ucs_txt = f"UCS={layer.ucs_lab} MPa" if layer.ucs_lab else "sin UCS"
+        # La UCS de una malla es la de su ATRIBUTO: la capa ya no la lleva.
+        _lito = layer_role_ids(layer).get("litologia")
+        _a = attr_registry.get(_lito or "")
+        _u = _a.ucs_ancla(modo=get_param("ucs.estadistica_ml")) if _a else None
+        ucs_txt = f"UCS={_u:g} MPa ({_lito})" if _u is not None else "sin banda de UCS"
         col = PALETTE[idx % len(PALETTE)]
         fig.add_trace(go.Mesh3d(x=x,y=y,z=z,i=ii,j=jj,k=kk,opacity=0.28,name=name,color=col,
             hoverinfo="name+text",text=[f"{name} | {ucs_txt}"]*len(ii),
@@ -9422,12 +9083,20 @@ def _kit_fig_di_sensibilidad():
     return build_di_sensitivity_figure(di_sensitivity_analysis(w))
 
 
-def _kit_fig_di_rqd():
-    data = di_vs_rqd_by_caseron()
-    if not data:
-        raise KitSinDatos("Ningún caserón reúne RQD de laboratorio y puntos MWD "
-                          "suficientes para el contraste independiente.")
-    return build_di_rqd_figure(data)
+def _kit_indicador_di() -> str:
+    """(Kit) Indicador de cuán bien el DI describe el macizo."""
+    ind = di_quality_indicator()
+    if ind.get("status") != "ok":
+        raise KitSinDatos(ind.get("motivo") or "Sin pares testigo↔MWD.")
+    filas = [{"clave": k, "valor": ind[k]} for k in
+             ("variante", "n_pares", "n_sondajes", "radio_m", "rho",
+              "mae_rqd", "rmse_rqd", "sesgo_rqd")]
+    filas.append({"clave": "veredicto", "valor": ind["veredicto"]})
+    cab = "\n".join("# " + l for l in [
+        "¿Qué tan bien describe el DI al macizo?",
+        ind["encuadre"], ind["sesgo_lectura"],
+        f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
+    return cab + "\n" + pd.DataFrame(filas).to_csv(index=False)
 
 
 def _kit_csv_o_motivo(fn, motivo_vacio: str, encabezado: str = ""):
@@ -9489,11 +9158,8 @@ KIT_CAP5: Tuple[Dict, ...] = (
      "titulo": "Sensibilidad de la ventana del DI",
      "tipo": "figura", "generador": "_kit_fig_di_sensibilidad"},
     {"id": "T5.4", "seccion": "5.3 Índice de discontinuidad",
-     "titulo": "Validación independiente DI contra RQD de laboratorio",
-     "tipo": "tabla", "generador": "export_di_rqd_csv"},
-    {"id": "F5.4", "seccion": "5.3 Índice de discontinuidad",
-     "titulo": "DI medio contra RQD por caserón",
-     "tipo": "figura", "generador": "_kit_fig_di_rqd"},
+     "titulo": "Qué tan bien describe el DI al macizo",
+     "tipo": "tabla", "generador": "_kit_indicador_di"},
     {"id": "T5.5", "seccion": "5.4 Modelo de caracterización",
      "titulo": "Matriz de correlación entre variables MWD",
      "tipo": "tabla", "generador": "_kit_correlacion"},
@@ -9548,9 +9214,6 @@ KIT_INDICE_MD = "INDICE_capitulo5.md"
 # Exportadores que ya devuelven CSV y cuyo "vacío" hay que interpretar.
 _KIT_CSV_DIRECTOS = {
     "export_vocabulary_csv": "El registro de vocabulario está vacío.",
-    "export_di_rqd_csv": ("Ningún caserón reúne RQD de laboratorio del Excel "
-                          "geomecánico y puntos MWD suficientes: sin las dos "
-                          "fuentes no hay contraste independiente que hacer."),
     "export_validation_csv": ("No se corrió la validación multipozo de posición "
                               "de mallas: sin resultados no hay detalle por pozo."),
     "export_concordance_csv": "Sin contraste disponible no hay concordancia.",
@@ -9566,8 +9229,6 @@ _KIT_CSV_DIRECTOS = {
 # Encuadre para los exportadores que devuelven el DataFrame crudo y por lo
 # tanto no traen encabezado propio.
 _KIT_ENCABEZADOS = {
-    "export_di_rqd_csv": ("Validación INDEPENDIENTE del DI: el RQD del Excel "
-                          "geomecánico proviene de mapeo y sondajes, no del MWD."),
     "export_validation_csv": ("Validación multipozo de la posición de cada malla: "
                               "offset entre el cruce pozo-malla y el pico de DI "
                               "más cercano."),
@@ -9835,8 +9496,6 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
     ]),
     dcc.Upload(id="up-dxf", multiple=True, children=html.Div(), style={"display":"none"}),
     dcc.Upload(id="up-xml", multiple=True, children=html.Div(), style={"display":"none"}),
-    dcc.Upload(id="up-excel", multiple=False, children=html.Div(), style={"display":"none"}),
-    dcc.Upload(id="up-geomech", multiple=False, children=html.Div(), style={"display":"none"}),
     dcc.Upload(id="up-project", multiple=False, children=html.Span(""), accept=".gwz",
                style={"display":"none"}),
     dcc.Upload(id="up-drillhole", multiple=True, children=html.Div(), accept=".csv",
@@ -10966,13 +10625,18 @@ def render_viewport(_, color_by, layer_vis_vals, well_vis_vals, layer_ids, well_
 
 def _layer_tree():
     items = []
-    caseron_opts = [{"label": c, "value": c} for c in excel_caserones()]
-    lito_opts = [{"label": l, "value": l} for l in excel_litologias()]
+    caseron_opts = [{"label": c, "value": c}
+                    for c in sorted({w.caseron for w in wells.values() if w.caseron})]
+    lito_opts = [{"label": a.id, "value": a.id}
+                 for a in attr_registry.values() if a.rol == "litologia"]
     for i, (name, layer) in enumerate(layers.items()):
-        ucs_badge = dbc.Badge(f"{layer.ucs_lab} MPa", color="success", className="ms-1") \
-                    if layer.ucs_lab else dbc.Badge("sin UCS", color="secondary", className="ms-1")
-        band_badge = dbc.Badge(f"banda {layer.ucs_lo:.0f}–{layer.ucs_hi:.0f}", color="info",
-                               className="ms-1") if layer.ucs_lo is not None and layer.ucs_hi is not None else None
+        # La UCS ya no se pide ni se muestra por capa: es propiedad del
+        # atributo canónico y se ve en el panel de vocabulario.
+        _lito = layer_role_ids(layer).get("litologia")
+        _a = attr_registry.get(_lito or "")
+        ucs_badge = (dbc.Badge(_lito, color="success", className="ms-1") if _a
+                     else dbc.Badge("sin atributo", color="secondary", className="ms-1"))
+        band_badge = None
         layer_children = [
             html.Div([
                 dbc.Checkbox(id={"type":"vis-layer","index":name}, value=True,
@@ -10980,16 +10644,8 @@ def _layer_tree():
                 html.Small([html.Span("●",style={"color":PALETTE[i%len(PALETTE)],"marginRight":"4px"}),
                             f"{layer.kind[:4]}: ", name, ucs_badge, band_badge], style={"fontSize":"11px"}),
             ], style={"display":"flex","alignItems":"center"}),
-            # (P1-T1.6) SIN min/max en el componente: con ellos, un valor fuera
-            # de rango llega como None al callback y la validación no puede
-            # distinguirlo de "campo vacío" → se perdía en silencio. La
-            # validación vive en update_ucs, que rechaza con mensaje visible.
-            dbc.Input(id={"type":"ucs-in","index":name}, type="number", placeholder="UCS [MPa]",
-                      value=layer.ucs_lab,
-                      step=1, size="sm", debounce=True, style={"fontSize":"10px","marginTop":"3px"}),
         ]
-        # Etiquetado caserón×litología (T2). Los dropdowns solo se muestran si
-        # hay Excel geomecánico cargado. Ids pattern-matching (contenido
+        # Etiquetado caserón×litología. Ids pattern-matching (contenido
         # regenerado) → nunca ids fijos.
         if caseron_opts:
             layer_children.append(dbc.Row([
@@ -11033,44 +10689,6 @@ def _layer_tree():
             style={"padding":"3px 8px","background":"transparent","border":"none","borderBottom":"1px solid #1a1a1a"}))
     return dbc.ListGroup(items, flush=True) if items else \
            html.Small("Sin datos.", style={"color":"#444","fontSize":"10px"})
-
-@app.callback(
-    Output("refresh","data",allow_duplicate=True),
-    Output("toast","children",allow_duplicate=True),
-    Output("toast","is_open",allow_duplicate=True),
-    Input({"type":"ucs-in","index":ALL},"value"),
-    State({"type":"ucs-in","index":ALL},"id"),
-    State("refresh","data"), prevent_initial_call=True,
-)
-def update_ucs(values, ids, ref):
-    """
-    (P1-T1.6) Un valor fuera de los límites físicos produce ERROR VISIBLE, nunca
-    sustitución silenciosa. Antes se ignoraba el valor sin avisar y la capa se
-    quedaba con su UCS anterior (o sin UCS), excluyéndola del entrenamiento sin
-    que nada lo dijera.
-    """
-    changed, rechazados = False, []
-    lo, hi = UCS_CONFIG["physical_min"], UCS_CONFIG["physical_max"]
-    for val, id_d in zip(values, ids):
-        name = id_d["index"]
-        if name not in layers or val is None: continue
-        try:
-            ucs = float(val)
-        except (TypeError, ValueError):
-            rechazados.append(f"{name}: «{val}» no es un número."); continue
-        if not np.isfinite(ucs):
-            rechazados.append(f"{name}: valor no finito."); continue
-        if not (lo <= ucs <= hi):
-            rechazados.append(f"{name}: {ucs:g} MPa fuera del rango físico [{lo:g}, {hi:g}]."); continue
-        if layers[name].ucs_lab != ucs:
-            layers[name].ucs_lab = ucs; changed = True
-    if rechazados:
-        build_domain_index()
-        return ref+1, "🚫 UCS rechazado (valor NO aplicado): " + " · ".join(rechazados), True
-    if changed:
-        build_domain_index()
-        return ref+1, no_update, no_update
-    return no_update, no_update, no_update
 
 @app.callback(
     Output("refresh","data",allow_duplicate=True),
@@ -11205,119 +10823,6 @@ def on_dxf(contents_list, filenames, ref):
     Output("refresh","data",allow_duplicate=True),
     Output("toast","children",allow_duplicate=True),
     Output("toast","is_open",allow_duplicate=True),
-    Input("up-xml","contents"), State("up-xml","filename"),
-    State("refresh","data"), prevent_initial_call=True,
-)
-def on_xml(contents_list, filenames, ref):
-    if not contents_list: return no_update, no_update, no_update
-    dq_list, mw_by_hole, errs = [], {}, []
-    for content, fname in zip(contents_list, filenames):
-        try:
-            _, b64 = content.split(",", 1)
-            raw = base64.b64decode(b64)
-            with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as f:
-                f.write(raw); tmp = f.name
-            try:
-                root = ET.parse(tmp).getroot()
-                root_tag = root.tag
-            except: root_tag = ""
-            if is_dq(fname, root_tag):
-                # Se ACUMULAN los DQ, no se indexan por plan_id: varios
-                # archivos pueden ser revisiones del mismo abanico y cada
-                # una traer tiros distintos. La fusión (y el reporte de sus
-                # desacuerdos) ocurre después, en merge_dq_siblings.
-                dq_list.append(parse_dq(tmp, fname))
-            else:
-                mw = parse_mw(tmp, fname)
-                key = f"{mw['plan_id']}_H{mw['hole_id'] or 'X'}"
-                mw_by_hole.setdefault(key, []).append(mw)
-            os.unlink(tmp)
-        except Exception as e:
-            errs.append(f"{fname}: {e}")
-    dq_results, dq_rep = merge_dq_siblings(dq_list)
-    # La decisión sobre collares aproximados se toma UNA vez, en el perfil de
-    # faena, y vale para toda la carga: no se pregunta pozo por pozo.
-    counts = match_and_place_wells(
-        dq_results, mw_by_hole,
-        asignar_por_tolerancia=bool(get_param("carga.asignar_por_tolerancia")),
-        tolerancia_err_pct=float(get_param("carga.tolerancia_err_pct")))
-    if wells:
-        wz_state['step1']['xml_loaded'] = True
-    parts = [f"✅ {len(mw_by_hole)} pozos MWD"]
-    if counts["matched"]:   parts.append(f"{counts['matched']} matcheados")
-    if counts["fallback"]:  parts.append(f"{counts['fallback']} por hermano ⚠")
-    if counts.get("tolerancia"):
-        parts.append(f"{counts['tolerancia']} por tolerancia ⚠ (posición aproximada)")
-    n_desc = (counts.get("descartados_sin_posicion", 0)
-              + counts.get("descartados_sin_registro", 0))
-    if n_desc:
-        parts.append(f"{n_desc} descartados ⚠ "
-                     f"({counts.get('descartados_sin_posicion', 0)} sin posición, "
-                     f"{counts.get('descartados_sin_registro', 0)} sin registro útil)")
-    if counts.get("fuera_sitio"):
-        parts.append(f"🚫 {counts['fuera_sitio']} FUERA DEL SITIO {active_site()['id']} "
-                     f"(no cargados — ver advertencias)")
-    if dq_rep["n_archivos"] > dq_rep["n_planes"]:
-        parts.append(f"{dq_rep['n_archivos']} DQ → {dq_rep['n_planes']} planes "
-                     f"({dq_rep['n_tiros']} tiros)")
-    if dq_rep["conflictos"]:
-        parts.append(f"{len(dq_rep['conflictos'])} tiro(s) con coordenadas distintas "
-                     f"entre revisiones ⚠")
-    if errs: parts.append(f"Err: {'; '.join(errs)}")
-    return ref+1, " · ".join(parts), True
-
-@app.callback(
-    Output("refresh","data",allow_duplicate=True),
-    Output("toast","children",allow_duplicate=True),
-    Output("toast","is_open",allow_duplicate=True),
-    Input("up-excel","contents"), State("up-excel","filename"),
-    State("refresh","data"), prevent_initial_call=True,
-)
-def on_excel(content, fname, ref):
-    if not content: return no_update, no_update, no_update
-    try:
-        _, b64 = content.split(",", 1)
-        raw = base64.b64decode(b64)
-        with tempfile.NamedTemporaryFile(suffix=Path(fname).suffix, delete=False) as f:
-            f.write(raw); tmp = f.name
-        rows = parse_excel(tmp); os.unlink(tmp)
-        excel_data.clear(); excel_data.extend(rows)
-        apply_seteo_from_excel()
-        return ref+1, f"✅ Excel: {len(rows)} tiros.", True
-    except Exception as e:
-        return no_update, f"❌ Excel: {e}", True
-
-@app.callback(
-    Output("refresh","data",allow_duplicate=True),
-    Output("toast","children",allow_duplicate=True),
-    Output("toast","is_open",allow_duplicate=True),
-    Input("up-geomech","contents"), State("up-geomech","filename"),
-    State("refresh","data"), prevent_initial_call=True,
-)
-def on_geomech(content, fname, ref):
-    """Carga el Excel geomecánico caserón×litología y reconstruye geomech_bands."""
-    if not content: return no_update, no_update, no_update
-    try:
-        _, b64 = content.split(",", 1)
-        raw = base64.b64decode(b64)
-        with tempfile.NamedTemporaryFile(suffix=Path(fname).suffix, delete=False) as f:
-            f.write(raw); tmp = f.name
-        records = parse_geomech_excel(tmp); os.unlink(tmp)
-        index_geomech_bands(records)
-        # Reaplicar bandas a las capas que ya tengan caserón asignado.
-        for layer in layers.values():
-            if layer.caseron: apply_layer_band(layer)
-        build_domain_index()
-        n_cas, n_lit = len(excel_caserones()), len(excel_litologias())
-        return ref+1, (f"✅ Excel geomecánico: {len(records)} bandas "
-                       f"({n_cas} caserones, {n_lit} litologías)."), True
-    except Exception as e:
-        return no_update, f"❌ Excel geomecánico: {e}", True
-
-@app.callback(
-    Output("refresh","data",allow_duplicate=True),
-    Output("toast","children",allow_duplicate=True),
-    Output("toast","is_open",allow_duplicate=True),
     Input("btn-preview-cross","n_clicks"),
     State("refresh","data"), prevent_initial_call=True,
 )
@@ -11339,57 +10844,12 @@ def do_preview_cross(n, ref):
     n_dom = sum(1 for p in all_pts if p.dominio)
     return ref+1, f"✅ Cruce ejecutado: {n_dom}/{len(all_pts)} pts dentro de alguna malla, {n_ucs} con UCS asignado.", True
 
-for btn_id, upload_id in [("btn-dxf","up-dxf"),("btn-xml","up-xml"),("btn-excel","up-excel"),
-                          ("btn-geomech","up-geomech"),("btn-drillhole","up-drillhole")]:
+for btn_id, upload_id in [("btn-dxf","up-dxf"), ("btn-xml","up-xml"),
+                          ("btn-drillhole","up-drillhole")]:
     app.clientside_callback(
         f"""function(n){{if(n){{var e=document.querySelector('#{upload_id} input[type=file]');if(e)e.click();}}return window.dash_clientside.no_update;}}""",
         Output(btn_id,"n_clicks"), Input(btn_id,"n_clicks"), prevent_initial_call=True,
     )
-
-@app.callback(
-    Output("refresh","data",allow_duplicate=True),
-    Output("toast","children",allow_duplicate=True),
-    Output("toast","is_open",allow_duplicate=True),
-    Input("btn-cal-apply","n_clicks"),
-    [State(f"cal-{k}","value") for k in ("vel","pp","pa","pd","pr","pf")],
-    State("refresh","data"), prevent_initial_call=True,
-)
-def do_cal(n, *args):
-    if not n: return no_update, no_update, no_update
-    vals = args[:6]; ref = args[6]
-    for k, v in zip(("vel","pp","pa","pd","pr","pf"), vals):
-        cal_factors[k] = float(v or 1.0)
-    apply_calibration()
-    wz_state['step2']['calibrated'] = True
-    return ref+1, "✅ Calibración aplicada.", True
-
-@app.callback(
-    Output("refresh","data",allow_duplicate=True),
-    Output("toast","children",allow_duplicate=True),
-    Output("toast","is_open",allow_duplicate=True),
-    Input("btn-cal-derive","n_clicks"),
-    State("refresh","data"), prevent_initial_call=True,
-)
-def do_derive(n, ref):
-    if not n: return no_update, no_update, no_update
-    derived = derive_cal_factors_from_excel()
-    if not derived:
-        return no_update, "⚠ Sin tiros comunes.", True
-    cal_factors.update(derived); apply_calibration()
-    return ref+1, f"✅ Factores: {derived}", True
-
-@app.callback(
-    Output("refresh","data",allow_duplicate=True),
-    Output("toast","children",allow_duplicate=True),
-    Output("toast","is_open",allow_duplicate=True),
-    Input("btn-prelim","n_clicks"),
-    State("refresh","data"), prevent_initial_call=True,
-)
-def do_prelim(n, ref):
-    if not n: return no_update, no_update, no_update
-    s = train_prelim_from_excel()
-    if "error" in s: return no_update, f"⚠ {s['error']}", True
-    return ref+1, f"✅ Prelim: R²={s['r2']}, RMSE={s['rmse']} MPa", True
 
 @app.callback(Output("refresh","data",allow_duplicate=True),
     Output("toast","children",allow_duplicate=True),
@@ -11776,11 +11236,10 @@ def poll_mesh_validation(_, prog_ids, ref):
     Output("toast","is_open",allow_duplicate=True),
     Input("btn-exp-dom","n_clicks"), Input("btn-exp-pred","n_clicks"),
     Input({"type":"val-export-btn","index":ALL},"n_clicks"),
-    Input({"type":"di-rqd-export-btn","index":ALL},"n_clicks"),
     Input("btn-save-project","n_clicks"), Input("btn-kit-cap5","n_clicks"),
     prevent_initial_call=True,
 )
-def on_export_trigger(n_dom, n_pred, n_val, n_rqd, n_proj, n_kit):
+def on_export_trigger(n_dom, n_pred, n_val, n_proj, n_kit):
     """
     (P3-3.3) Punto de entrada ÚNICO de las seis exportaciones. Nunca descarga
     directo: arma el descriptor (qué se exporta, cuántos registros, nombre de
@@ -11791,7 +11250,7 @@ def on_export_trigger(n_dom, n_pred, n_val, n_rqd, n_proj, n_kit):
     trig_val = callback_context.triggered[0]["value"]
     if not trig_val: return no_update, no_update, no_update, no_update, no_update
     if isinstance(trig, dict):
-        kind = "validacion" if trig.get("type") == "val-export-btn" else "di_rqd"
+        kind = "validacion" if trig.get("type") == "val-export-btn" else None
     else:
         kind = {"btn-exp-dom":"dominios", "btn-exp-pred":"predicciones",
                "btn-save-project":"proyecto", "btn-kit-cap5":"kit"}.get(trig)
@@ -11840,9 +11299,6 @@ def on_export_confirm(n, pending):
     if kind == "validacion":
         return (dcc.send_data_frame(export_validation_csv().to_csv, fname, index=False),
                no_update, no_update, False, no_update, no_update)
-    if kind == "di_rqd":
-        csv = _csv_with_metadata(export_di_rqd_csv(), meta)
-        return dcc.send_string(csv, fname), no_update, no_update, False, no_update, no_update
     if kind == "proyecto":
         if not wells:
             return no_update, no_update, no_update, False, "⚠ No hay datos cargados para guardar.", True
@@ -12081,7 +11537,6 @@ def _step1():
     n_dxf, n_wells = len(layers), len(wells)
     n_ucs = sum(1 for p in all_pts if p.dominio and domains.get(p.dominio, {}).get("ucs_lab"))
     n_no_ucs = len(all_pts) - n_ucs
-    n_excel = len(excel_data)
     diag = _diagnostico_calce()
     status_block = dbc.Alert([
         html.B("Etiquetado automático punto a punto"), html.Br(),
@@ -12142,20 +11597,6 @@ def _step1():
         dbc.Button("🔎 Vista previa del cruce DXF↔MWD (opcional)", id="btn-preview-cross",
                    color="success", outline=True, size="sm", className="mb-2") if layers and wells else None,
         status_block, diag,
-        card("Excel calibrador (opcional)", [
-            html.Small("Promedios por tiro con UCS asignado.",
-                       style={"color":"#aaa","display":"block","marginBottom":"8px"}),
-            dbc.Button([f"📈 Cargar Excel ({n_excel} tiros)"], id="btn-excel",
-                       color="secondary", outline=True, size="sm"),
-        ]),
-        card("Excel geomecánico caserón×litología (bandas UCS/RMR/RQD/GSI)", [
-            html.Small("Rangos de laboratorio por caserón×litología. Alimenta las "
-                       "bandas [UCS_lo, UCS_hi] de las capas DXF y la verificación de "
-                       "consistencia (Paso 5).",
-                       style={"color":"#aaa","display":"block","marginBottom":"8px"}),
-            dbc.Button([f"🧪 Cargar Excel geomecánico ({len(geomech_bands['records'])} bandas)"],
-                       id="btn-geomech", color="secondary", outline=True, size="sm"),
-        ]),
         card("Sondajes con testigo (P2)", [
             html.Small("header · survey · lithology · structure · geomec · density "
                        "(6 CSV, ';' / latin-1). Fuente de verdad INDEPENDIENTE del MWD: "
@@ -12192,22 +11633,6 @@ def _step1():
 def _step2():
     all_pts = list(all_points())
     active = sum(1 for p in all_pts if p.entrenable)
-    n_excel = len(excel_data)
-    var_labels = {"vel":"ROP [m/min]","pp":"Percusión","pa":"Avance",
-                  "pd":"Damper","pr":"Rotación","pf":"Flujo"}
-    def cal_row(k, lbl):
-        raw_vals = [getattr(p, f"raw_{k}") for p in all_pts]
-        if raw_vals and any(np.isfinite(v) for v in raw_vals):
-            rng = f"raw:[{np.nanmin(raw_vals):.1f}, {np.nanmax(raw_vals):.1f}]"
-        else: rng = "sin datos"
-        return dbc.Row([
-            dbc.Col(html.Small(lbl, style={"color":"#aaa"}), width=3),
-            dbc.Col(dbc.Input(id=f"cal-{k}", type="number",
-                               value=round(cal_factors.get(k, 1.0), 4),
-                               step=0.0001, min=0.001, size="sm",
-                               style={"fontSize":"11px"}), width=3),
-            dbc.Col(html.Small(rng, style={"color":"#555","fontSize":"10px"}), width=6),
-        ], className="g-1 mb-1")
     # (P3-3.8) El corte de emboquillado se APLICA (apply_inicio_filter) pero
     # antes no figuraba en ninguna lista de filtros. Se antepone como entrada
     # sintética de solo lectura — no es removible aquí porque no es un filtro
@@ -12228,26 +11653,12 @@ def _step2():
                    outline=True, style={"fontSize":"10px","padding":"0px 7px"}),
     ], className="d-flex align-items-center py-1 px-2") for i, f in enumerate(clean_filters)]
     return html.Div([
-        html.H6("Paso 2 — Calibración y limpieza", className="mb-3"),
-        card("Calibración de unidades", [
-            html.Small("Factor = media_Excel / media_raw por variable.",
-                       style={"color":"#aaa","display":"block","marginBottom":"8px"}),
-            *[cal_row(k, l) for k, l in var_labels.items()],
-            dbc.Row([
-                dbc.Col(dbc.Button("Aplicar", id="btn-cal-apply", color="info",
-                                    outline=True, size="sm"), width="auto"),
-                dbc.Col(dbc.Button("Derivar del Excel", id="btn-cal-derive",
-                                    color="secondary", outline=True, size="sm",
-                                    disabled=n_excel == 0), width="auto"),
-            ], className="g-1 mt-2"),
-        ]),
-        card("Entrenamiento preliminar con Excel", [
-            html.Small("Modelo RF rápido con promedios por tiro. Se descarta al hacer ML real.",
-                       style={"color":"#aaa","display":"block","marginBottom":"8px"}),
-            dbc.Button(f"🧪 Entrenar preliminar ({n_excel} tiros)",
-                       id="btn-prelim", color="warning", outline=True, size="sm",
-                       disabled=n_excel == 0),
-        ]) if n_excel else None,
+        html.H6("Paso 2 — Limpieza", className="mb-3"),
+        # (Simplificación) La "calibración de unidades" y el entrenamiento
+        # preliminar salieron de acá. Dependían de un Excel de promedios por
+        # tiro cuyo propósito nunca fue el que el paso suponía: multiplicar el
+        # MWD por un factor derivado de esos promedios no corrige unidades,
+        # reescala el dato crudo contra un agregado que ya lo contiene.
         card("Filtros de limpieza (globales)", [
             dbc.Alert(f"Activos: {active}/{len(all_pts)} pts · {len(wells)} pozos",
                       color="info", style={"fontSize":"11px","padding":"4px 8px"}, className="mb-2"),
@@ -12282,45 +11693,47 @@ def _step2():
 
 def _di_rqd_card():
     """
-    (T5c) Card "Validación independiente DI ↔ RQD" del Paso 3. El RQD del
-    Excel geomecánico proviene de mapeo/sondajes — es independiente del MWD —
-    y es la única validación externa del DI disponible en la mina. Solo se
-    muestra si hay geomech_bands cargadas; si no hay ningún caserón evaluable
-    (falta asignar caserón a alguna capa, o falta calcular el DI), se explicita
-    el requisito faltante en vez de un gráfico vacío.
+    Card "¿Qué tan bien describe el DI al macizo?" del Paso 3.
+
+    Antes esto era "Validación independiente DI ↔ RQD": el RQD del Excel
+    geomecánico contra el DI medio POR CASERÓN. Ese contraste no era factible
+    —un promedio de caserón contra otro promedio de caserón, con cinco
+    caserones, no valida nada— y además tenía el encuadre al revés. El testigo
+    no es un contraste independiente: es el PATRÓN que ajusta los pesos para
+    que el MWD calcule RQD, y ese cálculo extrapolado es el que después vale
+    en todo el caserón.
+
+    Así que la pregunta ya no es "¿coinciden dos fuentes?" sino "¿cuánto se
+    aparta, en puntos de RQD, lo que calcula el MWD de lo que midió el
+    testigo?".
     """
-    if not geomech_bands["records"]:
-        return card("Validación independiente DI ↔ RQD", [
-            dbc.Alert("Carga el Excel geomecánico (Paso 1) para habilitar esta validación.",
-                      color="secondary", style={"fontSize":"11px","padding":"6px 10px"}),
+    ind = di_quality_indicator()
+    titulo = "¿Qué tan bien describe el DI al macizo?"
+    if ind.get("status") != "ok":
+        return card(titulo, [
+            dbc.Alert(ind.get("motivo") or "Sin pares testigo↔MWD todavía.",
+                      color="secondary", style={"fontSize": "11px", "padding": "6px 10px"}),
+            html.Small("Hacen falta sondajes con RQD en su tabla geomec y el DI "
+                       "calculado.", style={"color": "#666", "fontSize": "10px"}),
         ])
-    result = di_rqd_correlation()
-    data = result["data"]
-    if not data:
-        return card("Validación independiente DI ↔ RQD", [
-            dbc.Alert(f"Ningún caserón evaluable todavía: asigna caserón a una capa DXF "
-                      f"(árbol de capas) con banda RQD, y calcula el DI (≥{DI_RQD_MIN_PUNTOS} "
-                      f"puntos MWD dentro de esa malla).",
-                      color="secondary", style={"fontSize":"11px","padding":"6px 10px"}),
-        ])
-    if result["rho"] is None:
-        badge = dbc.Badge(f"n={result['n']} caserones — {result['warning']}", color="warning")
-    else:
-        badge = dbc.Badge(f"Spearman ρ = {result['rho']:.3f}  (n={result['n']})",
-                          color="success" if result["rho"] < 0 else "danger")
-    return card("Validación independiente DI ↔ RQD", [
-        html.Small("El RQD proviene de mapeo/sondajes: es independiente del MWD. Es la "
-                   "única validación externa del DI disponible en la mina.",
-                   style={"color":"#aaa","display":"block","marginBottom":"6px"}),
-        badge,
-        dcc.Graph(figure=build_di_rqd_figure(data), config={"displayModeBar": False},
-                  style={"marginTop":"6px"}),
-        dbc.Alert("Se espera anticorrelación (ρ<0). Una correlación nula o positiva sugiere "
-                  "revisar pesos/ventana del DI o la asignación de caserones a las mallas.",
-                  color="dark", style={"fontSize":"10px","padding":"6px 10px","marginTop":"6px"}),
-        dbc.Button("CSV DI↔RQD por caserón", id={"type":"di-rqd-export-btn","index":0},
-                   color="secondary", outline=True, size="sm", className="mt-2"),
+    color = ("success" if ind["mae_rqd"] <= 10 and (ind["rho"] or 0) >= 0.4
+             else "warning" if (ind["rho"] or 0) >= 0.4 else "danger")
+    return card(titulo, [
+        html.Small(ind["encuadre"],
+                   style={"color": "#aaa", "display": "block", "marginBottom": "6px"}),
+        dbc.Row([
+            dbc.Col(dbc.Badge(f"error medio {ind['mae_rqd']:.1f} pts de RQD",
+                              color=color), width="auto"),
+            dbc.Col(dbc.Badge(f"ρ = {ind['rho']:+.2f}" if ind["rho"] is not None
+                              else "ρ n/d", color="info"), width="auto"),
+            dbc.Col(dbc.Badge(f"n={ind['n_pares']} pares · {ind['n_sondajes']} sondaje(s)",
+                              color="secondary"), width="auto"),
+        ], className="g-1 mb-2"),
+        dbc.Alert(ind["veredicto"], color=color,
+                  style={"fontSize": "11px", "padding": "6px 10px"}),
+        html.Small(ind["sesgo_lectura"], style={"color": "#888", "fontSize": "10px"}),
     ])
+
 
 def _di_sensitivity_card():
     """
