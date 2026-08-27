@@ -8841,12 +8841,59 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
                             colorbar=dict(title=dict(text=label,font=dict(size=10)),
                                           thickness=14,len=0.55,x=1.02)),legendgroup="wells",
                 visible=is_visible))
+    # ── Sondajes con testigo ────────────────────────────────────────────────
+    # Van en la misma vista que el MWD y las mallas: es la única forma de ver
+    # si un sondaje pasa cerca de los tiros que dice describir, y esa cercanía
+    # es justo lo que decide si su RQD sirve para calibrar. Se dibujan como
+    # líneas gruesas, distintas del MWD, y cada uno declara en su hover su
+    # estado y sus métricas.
+    n_sondajes_dibujados = 0
+    for hid, dh in drillholes.items():
+        if not dh.trace or len(dh.trace) < 2:
+            continue
+        if f"DH::{hid}" in hidden_wells:
+            continue
+        col = ("#2ecc71" if dh.estado == "intersecta" else
+               "#f1c40f" if dh.estado == "cercano" else "#7f8c8d")
+        sel = dh.seleccionado()
+        detalle = [f"<b>{hid}</b>",
+                   f"estado: {dh.estado or 'sin cruce'}",
+                   f"seleccionado: {'sí' if sel else 'no'}"]
+        if dh.metros_dentro:
+            detalle.append(f"metros dentro de malla: {dh.metros_dentro:.1f}")
+        if dh.n_estructuras:
+            detalle.append(f"estructuras: {dh.n_estructuras}")
+        if dh.rqd_mediana is not None:
+            detalle.append(f"RQD mediana: {dh.rqd_mediana:.0f}")
+        if dh.banda:
+            detalle.append(f"banda: {dh.banda}")
+        texto = "<br>".join(detalle)
+        fig.add_trace(go.Scatter3d(
+            x=[t[1] for t in dh.trace], y=[t[2] for t in dh.trace],
+            z=[t[3] for t in dh.trace],
+            mode="lines", name=f"🗿 {hid}",
+            line=dict(color=col, width=6 if sel else 3),
+            opacity=1.0 if sel else 0.45,
+            hoverinfo="text", text=[texto] * len(dh.trace),
+            showlegend=True, legendgroup="sondajes",
+            visible=True))
+        # El collar, para poder ubicarlo aunque la traza quede tapada.
+        fig.add_trace(go.Scatter3d(
+            x=[dh.trace[0][1]], y=[dh.trace[0][2]], z=[dh.trace[0][3]],
+            mode="markers", name=f"collar {hid}",
+            marker=dict(size=4, color=col, symbol="diamond"),
+            hoverinfo="text", text=[f"collar {hid}"],
+            showlegend=False, legendgroup="sondajes", visible=True))
+        n_sondajes_dibujados += 1
+
     # (E.4) El conteo real se declara SIEMPRE, se haya recortado la vista o
     # no — omitirlo cuando "por suerte" cabe entero sería el mismo default
     # silencioso que el proyecto prohíbe en todo lo demás: el usuario nunca
     # debería tener que adivinar si está viendo el 100% o una muestra.
     titulo_conteo = (f"Mostrando {n_dibujados:,} de {n_total_pts:,} puntos MWD"
                      .replace(",", "."))
+    if n_sondajes_dibujados:
+        titulo_conteo += f" · {n_sondajes_dibujados} sondaje(s)"
     fig.update_layout(paper_bgcolor="#0d0d1a",
         title=dict(text=titulo_conteo, font=dict(size=11, color="#888"),
                    x=0.01, xanchor="left", y=0.99, yanchor="top"),
@@ -9403,6 +9450,15 @@ def export_kit_index_md(rep: Dict) -> str:
     return "\n".join(L) + "\n"
 
 
+# Campos por los que se puede ordenar la lista de sondajes. Vive acá, antes
+# del layout, porque la cabecera del modal de sondajes lo usa al construirse.
+_DH_SORT_FIELDS = [
+    ("holeid", "Hole ID"), ("banda", "Banda"), ("estado", "Estado"),
+    ("metros_dentro", "Metros dentro"), ("n_estructuras", "N° estructuras"),
+    ("rqd_mediana", "RQD mediana"), ("rmr_mediana", "RMR mediana"),
+    ("dist_min_m", "Distancia mín."),
+]
+
 # ─── APP DASH ─────────────────────────────────────────────────────────────────
 # (P1) Sembrar el registro de vocabulario ANTES de construir el layout: el
 # contador de pendientes y el panel de vocabulario lo leen al renderizar.
@@ -9540,6 +9596,29 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
     # reparto espacial y cruce traza↔malla.
     dbc.Modal([
         dbc.ModalHeader(dbc.ModalTitle("Sondajes — selección de pozos relevantes")),
+        # (Corrección) Los controles de orden viven ACÁ, en la cabecera
+        # estática, y no dentro del cuerpo del modal. Estando dentro del
+        # cuerpo no existían mientras el modal estaba cerrado, y el callback
+        # que ABRE el modal los pedía como Input: Dash no puede disparar un
+        # callback cuyos Input no existen en el layout, así que el botón
+        # mostraba "6/11 sondajes" y no abría nada.
+        html.Div([
+            dbc.Row([
+                dbc.Col([html.Small("Ordenar por",
+                                    style={"color": "#888", "display": "block"}),
+                         dcc.Dropdown(id="dh-sort-field",
+                                      options=[{"label": l, "value": k}
+                                               for k, l in _DH_SORT_FIELDS],
+                                      value="holeid", clearable=False,
+                                      style={"fontSize": "10px"})], width=8),
+                dbc.Col([html.Small("Orden",
+                                    style={"color": "#888", "display": "block"}),
+                         dbc.Checklist(id="dh-sort-desc",
+                                       options=[{"label": " desc", "value": 1}],
+                                       value=[], switch=True,
+                                       style={"fontSize": "10px"})], width=4),
+            ], className="g-2"),
+        ], style={"padding": "0 16px 8px"}),
         dbc.ModalBody(id="drillhole-modal-body", style={"maxHeight":"75vh","overflowY":"auto"}),
         dbc.ModalFooter(dbc.Button("Cerrar", id="close-drillhole", size="sm", color="secondary")),
     ], id="drillhole-modal", size="xl", is_open=False, scrollable=True),
@@ -10323,12 +10402,6 @@ def on_vocab_import(content, fname, ref):
 # ║  reparto espacial y anulación manual en ambos sentidos.                 ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
-_DH_SORT_FIELDS = [
-    ("holeid", "Hole ID"), ("banda", "Banda"), ("estado", "Estado"),
-    ("metros_dentro", "Metros dentro"), ("n_estructuras", "N° estructuras"),
-    ("rqd_mediana", "RQD mediana"), ("rmr_mediana", "RMR mediana"),
-    ("dist_min_m", "Distancia mín."),
-]
 _DH_ESTADO_COLOR = {"intersecta": "success", "cercano": "warning", "lejano": "secondary"}
 _DH_ESTADO_LABEL = {"intersecta": "Intersecta", "cercano": "Cercano", "lejano": "Lejano"}
 
@@ -10442,18 +10515,7 @@ def _drillhole_panel_body(sort_field="holeid", desc=False):
                                    outline=True, size="sm", className="mt-4"), width="auto"),
             ], className="g-2"),
         ]),
-        card("Pozos", [
-            dbc.Row([
-                dbc.Col([html.Small("Ordenar por", style={"color": "#888", "display": "block"}),
-                        dcc.Dropdown(id="dh-sort-field",
-                                    options=[{"label": l, "value": k} for k, l in _DH_SORT_FIELDS],
-                                    value=sort_field, clearable=False,
-                                    style={"fontSize": "10px"})], width=8),
-                dbc.Col([html.Small("Orden", style={"color": "#888", "display": "block"}),
-                        dbc.Checklist(id="dh-sort-desc", options=[{"label": " desc", "value": 1}],
-                                     value=[1] if desc else [], switch=True,
-                                     style={"fontSize": "10px"})], width=4),
-            ], className="g-2 mb-2"),
+        card(f"Pozos ({len(holes)})", [
             dbc.ListGroup([_dh_row(dh) for dh in holes], flush=True,
                          style={"maxHeight": "340px", "overflowY": "auto"}),
         ]),
