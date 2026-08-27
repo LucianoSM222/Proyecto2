@@ -3580,6 +3580,24 @@ def seed_param_registry(force: bool = False):
         return
     param_registry.clear()
     P = [
+        _param("repo.ruta", "Repositorio", "Carpeta-repositorio de la faena",
+               "", "texto", "ruta",
+               "Carpeta del computador desde la que se cargan DXF, XML y CSV "
+               "de sondaje sin subirlos uno por uno. El caserón se deduce de "
+               "la carpeta que contiene cada archivo."),
+        _param("repo.patron_caseron", "Repositorio",
+               "Patrón que identifica un caserón en la ruta",
+               r"PC[SC]_\d{3,4}", "texto", "regex",
+               "Expresión regular buscada en la ruta completa del archivo, "
+               "incluido su nombre. En MPC los caserones son PCS_1043, "
+               "PCC_0042, PCC_1541… y el patrón tiene que ser específico: uno "
+               "genérico como [A-Za-z]{2,4}_\\d{3,4} se traga el prefijo del "
+               "archivo y devuelve QPCC_1502 en vez de PCC_1502. Otra faena "
+               "con otra nomenclatura cambia el patrón acá, sin tocar código."),
+        _param("repo.ruta_proyecto", "Repositorio",
+               "Dónde guardar el proyecto (.gwz)", "", "texto", "ruta",
+               "Guardar a disco esquiva la descarga del navegador, que falla "
+               "sin avisar con proyectos de decenas de MB."),
         # ── Carga de pozos ───────────────────────────────────────────────────
         _param("carga.largo_min_m", "Carga de pozos",
                "Registro mínimo para cargar un pozo", 1.0, "float", "m",
@@ -3776,6 +3794,10 @@ def get_param(pid: str):
 
 
 def _validar_param(p: Dict, valor):
+    if p["tipo"] == "texto":
+        if not isinstance(valor, str):
+            raise TypeError(f'"{p["id"]}" es texto; se recibió {valor!r}.')
+        return valor
     if p["tipo"] == "opcion":
         if valor not in (p.get("opciones") or []):
             raise ValueError(f'"{p["id"]}" admite {p.get("opciones")}; '
@@ -8257,6 +8279,128 @@ def _drillhole_from_dict(d: Dict) -> DrillHole:
     dh.rmr_mediana = d.get("rmr_mediana")
     dh.seleccion_manual = d.get("seleccion_manual")
     return dh
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  CARPETA-REPOSITORIO Y GUARDADO A DISCO                                 ║
+# ║                                                                          ║
+# ║  Subir archivo por archivo no escala: un caserón trae 477 XML. Se apunta ║
+# ║  a una carpeta del computador y el programa la recorre.                  ║
+# ║                                                                          ║
+# ║  Y el proyecto se guarda a una RUTA, no por descarga del navegador: el   ║
+# ║  .gwz de tres caserones pesa decenas de MB y esa descarga falla sin      ║
+# ║  decir nada en Colab. El guardado siempre funcionó; el transporte no.    ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+# Carpetas cuyo nombre NO es un caserón: son organización, no sitio.
+_REPO_CARPETAS_GENERICAS = {
+    "xml", "xmls", "capas", "dxf", "litologia", "litología", "estructura",
+    "estructuras", "sondaje", "sondajes", "datos", "data", "notas", "docs",
+    "mwd", "dq", "mw",
+}
+
+
+def explorar_repositorio(raiz: str) -> Dict:
+    """
+    Recorre una carpeta-repositorio y clasifica lo que encuentra: DXF, DQ, MW
+    y CSV de sondaje, más el caserón que se deduce de la carpeta contenedora.
+
+    Lo que NO se reconoce se NOMBRA. Un archivo que el programa ignora en
+    silencio es indistinguible de un archivo que no llegó, y en una carga de
+    2.000 archivos esa diferencia importa.
+    """
+    if not raiz or not os.path.isdir(raiz):
+        return {"status": "error",
+                "motivo": f"No existe la carpeta «{raiz}» o no es un directorio.",
+                "raiz": raiz}
+    out = {"status": "ok", "raiz": raiz, "dxf": [], "dq": [], "mw": [],
+           "sondajes": [], "no_reconocidos": [], "por_caseron": {}}
+
+    # El caserón se busca por PATRÓN dentro de la ruta, no por posición: en un
+    # repositorio real viene embebido en nombres como "Capas PCC_1541" o en el
+    # propio archivo (MWPCS_1043_...), y un criterio posicional devuelve la
+    # carpeta contenedora ("reales", "test_data") en vez del caserón.
+    patron = get_param("repo.patron_caseron")
+    try:
+        rx = re.compile(patron) if patron else None
+    except re.error as e:
+        return {"status": "error", "raiz": raiz,
+                "motivo": (f"El patrón de caserón «{patron}» no es una expresión "
+                           f"regular válida: {e}")}
+
+    def caseron_de(rel: str) -> Optional[str]:
+        if rx is not None:
+            m = rx.search(rel)
+            if m:
+                return m.group(0)
+        # Sin patrón que calce, el primer tramo que no sea de organización.
+        for parte in rel.split(os.sep)[:-1]:
+            if _norm_txt(parte) not in _REPO_CARPETAS_GENERICAS:
+                return parte
+        return None
+
+    for dirpath, _dirs, files in os.walk(raiz):
+        for f in sorted(files):
+            full = os.path.join(dirpath, f)
+            rel = os.path.relpath(full, raiz)
+            low = f.lower()
+            if low.startswith("."):
+                continue
+            if low.endswith(".dxf"):
+                tipo = "dxf"
+            elif low.endswith(".xml"):
+                tipo = "dq" if is_dq(f) else "mw"
+            elif low.endswith(".csv") and guess_drillhole_kind(f):
+                tipo = "sondajes"
+            else:
+                out["no_reconocidos"].append(rel)
+                continue
+            out[tipo].append(full)
+            cas = caseron_de(rel)
+            if cas:
+                d = out["por_caseron"].setdefault(
+                    cas, {"dxf": [], "dq": [], "mw": [], "sondajes": []})
+                d[tipo].append(full)
+    out["n_total"] = sum(len(out[k]) for k in ("dxf", "dq", "mw", "sondajes"))
+    out["patron_caseron"] = patron
+    out["criterio_caseron"] = (
+        f"El caserón se busca con el patrón «{patron}» en la ruta completa del "
+        "archivo, incluido su nombre: en un repositorio real viene embebido en "
+        "carpetas como «Capas PCC_1541» o en el propio archivo. Si el patrón no "
+        "calza, se usa el primer tramo que no sea una carpeta de organización "
+        "(xml, capas, litología, estructuras, sondajes…).")
+    out["motivo_no_reconocidos"] = (
+        f"{len(out['no_reconocidos'])} archivo(s) no son DXF, ni XML de MWD o DQ, "
+        "ni CSV de sondaje reconocible por su nombre. Se listan porque un "
+        "archivo ignorado en silencio es indistinguible de uno que no llegó."
+        if out["no_reconocidos"] else None)
+    return out
+
+
+def guardar_proyecto_en(path: str) -> Dict:
+    """
+    Guarda el proyecto en una RUTA del disco y declara qué guardó y cuánto
+    pesa. Crea la carpeta si falta. Los errores se devuelven, no se lanzan:
+    el llamador es una interfaz que tiene que mostrarlos.
+    """
+    try:
+        carpeta = os.path.dirname(os.path.abspath(path))
+        if carpeta:
+            os.makedirs(carpeta, exist_ok=True)
+        save_project(path)
+        n_bytes = os.path.getsize(path)
+        return {"status": "ok", "ruta": os.path.abspath(path),
+                "tamano_bytes": int(n_bytes),
+                "tamano_MB": round(n_bytes / 1e6, 3),
+                "n_pozos": len(wells),
+                "n_puntos": sum(len(w.points) for w in wells.values()),
+                "n_mallas": len(layers), "n_sondajes": len(drillholes),
+                "nota": ("Guardado a disco, sin pasar por la descarga del "
+                         "navegador: con proyectos de decenas de MB esa "
+                         "descarga falla sin avisar.")}
+    except Exception as e:
+        return {"status": "error",
+                "motivo": f"No se pudo guardar en «{path}»: {type(e).__name__}: {e}"}
 
 
 def save_project(path):
