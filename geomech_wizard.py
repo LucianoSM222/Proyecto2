@@ -377,13 +377,6 @@ class Attribute:
             if self.ucs_min is not None and self.ucs_max is not None:
                 return (float(self.ucs_min) + float(self.ucs_max)) / 2.0
             return None
-        if modo == "rango_vs_se":
-            # La etiqueta no es constante por litología: la reparte
-            # aplicar_ucs_por_se() punto a punto. Acá se devuelve el punto
-            # medio como valor de respaldo declarado.
-            if self.ucs_min is not None and self.ucs_max is not None:
-                return (float(self.ucs_min) + float(self.ucs_max)) / 2.0
-            return None
         if self.ucs_central is not None: return float(self.ucs_central)
         if self.ucs_media is not None: return float(self.ucs_media)
         if self.ucs_min is not None and self.ucs_max is not None:
@@ -1494,10 +1487,6 @@ class MWDPoint:
     # la que estaba es una etiqueta que se puede confundir con una medición
     # hecha en este mismo punto, y no lo es. Sobre los datos reales la
     # distancia mediana al intervalo de RQD más cercano son 26,1 m.
-    # UCS proyectado desde el rango de la litología sobre el rango de SE
-    # observado. Vive aparte de ucs_ml: es una ETIQUETA candidata, no una
-    # predicción del modelo.
-    ucs_por_se: Optional[float] = None
     rqd_sondaje: Optional[float] = None
     rqd_sondaje_origen: Optional[str] = None
     rqd_sondaje_dist_m: Optional[float] = None
@@ -3227,85 +3216,6 @@ def build_domain_index():
             info["pi_factor"] = attr.pi_factor()
             info["calidad"] = attr.calidad
 
-def aplicar_ucs_por_se() -> Dict:
-    """
-    Modo «rango_vs_se»: proyecta la banda min-max de UCS de cada litología
-    sobre el rango de SE observado en los puntos de ESA litología, y escribe
-    el resultado punto a punto en `p.ucs_por_se`.
-
-    LA IDEA, del autor: una banda de UCS trae min y max, y los pozos que caen
-    dentro de esa litología traen un rango de energía específica. Proyectar uno
-    sobre otro reparte la etiqueta dentro de la litología en vez de darle un
-    solo número a los cientos de miles de puntos que la componen — que es
-    justamente lo que deja al modelo con tres etiquetas distintas para 400.000
-    registros.
-
-    LA ADVERTENCIA QUE NO SE PUEDE CALLAR: si la etiqueta se construye desde
-    SE y SE es predictora, el modelo aprende la proyección, no la roca, y su
-    R² mide la aritmética que acabamos de hacer. Por eso este modo declara
-    que SE queda fuera de las predictoras. No es una precaución opcional.
-
-    La proyección es MONÓTONA por rango: el punto con menor SE de la litología
-    recibe ucs_min y el de mayor SE recibe ucs_max. Se usa el rango de rangos
-    —no una regresión— porque no hay ninguna evidencia de la forma funcional,
-    y fingir una sería peor que declarar la que se eligió.
-    """
-    por_lito: Dict[str, list] = {}
-    for w in wells.values():
-        for p in w.points:
-            p.ucs_por_se = None
-            if not p.entrenable or p.se is None or not np.isfinite(p.se):
-                continue
-            lito = p.lito or p.dominio
-            if lito:
-                por_lito.setdefault(lito, []).append(p)
-    if not por_lito:
-        return {"status": "sin_datos",
-                "motivo": ("Ningún punto MWD tiene litología y energía específica "
-                           "con la que proyectar."),
-                "sin_banda": [], "litologias": {}}
-    aplicados, sin_banda, detalle = 0, [], {}
-    for lito, pts in por_lito.items():
-        a = attr_registry.get(lito)
-        lo = getattr(a, "ucs_min", None) if a else None
-        hi = getattr(a, "ucs_max", None) if a else None
-        if lo is None or hi is None or hi <= lo:
-            sin_banda.append(lito)
-            continue
-        se = np.array([p.se for p in pts], dtype=np.float64)
-        se_lo, se_hi = float(se.min()), float(se.max())
-        if se_hi - se_lo < 1e-9:
-            sin_banda.append(lito)
-            continue
-        for p in pts:
-            frac = (float(p.se) - se_lo) / (se_hi - se_lo)
-            p.ucs_por_se = round(float(lo) + frac * (float(hi) - float(lo)), 2)
-        aplicados += len(pts)
-        detalle[lito] = {"n_puntos": len(pts),
-                         "ucs_min": float(lo), "ucs_max": float(hi),
-                         "se_min": round(se_lo, 2), "se_max": round(se_hi, 2)}
-    return {
-        "status": "ok" if aplicados else "sin_datos",
-        "n_aplicados": aplicados, "litologias": detalle, "sin_banda": sin_banda,
-        "motivo": (None if aplicados else
-                   "Ninguna litología presente tiene banda min-max con la que "
-                   "proyectar; ningún punto recibe etiqueta."),
-        "predictoras_excluidas": ["se"],
-        "advertencia_circularidad": (
-            "La etiqueta se construyó DESDE la energía específica. Si SE entra "
-            "como predictora, el modelo aprende esta proyección y no la roca, y "
-            "su R² mide la aritmética de arriba. Por eso SE queda excluida de "
-            "las predictoras mientras este modo esté activo."),
-        "forma": ("Proyección monótona por rango: el punto de menor SE de cada "
-                  "litología recibe su ucs_min y el de mayor SE su ucs_max. Se "
-                  "usa el rango y no una regresión porque no hay evidencia de "
-                  "la forma funcional."),
-        "sin_banda_motivo": (f"{len(sin_banda)} litología(s) sin banda min-max "
-                             "utilizable: sus puntos quedan sin etiqueta "
-                             "proyectada." if sin_banda else None),
-    }
-
-
 def apply_inicio_filter(cut_m):
     """(P3-3.8) Recuerda el corte vigente en `inicio_cut_m`, para que
     recompute_filters() pueda reaplicarlo sin caer a un default hardcodeado."""
@@ -3743,11 +3653,13 @@ def seed_param_registry(force: bool = False):
                "rango— y es el defecto porque los modos estrictos dejan sin "
                "etiqueta a los atributos que no documentan esa estadística, y "
                "esos puntos saldrían del entrenamiento sin que nada lo delate. "
-               "'rango_vs_se' reparte la banda min-max sobre el rango de SE "
-               "observado y da una etiqueta POR PUNTO, a costa de inducir "
-               "circularidad con SE.",
-               opciones=["auto", "central", "media", "mediana", "rango_medio",
-                         "rango_vs_se"]),
+               "NINGUNA opción construye la etiqueta desde SE: SE es una "
+               "PREDICTORA y describe la roca —una caída de SE hace esperar "
+               "menos resistencia o más discontinuidades—, así que derivar la "
+               "etiqueta de ella haría que el modelo aprendiera esa aritmética "
+               "en vez de la roca, y obligaría a sacar SE de las predictoras. "
+               "Las dos cosas son inaceptables.",
+               opciones=["auto", "central", "media", "mediana", "rango_medio"]),
         _param("ucs.min_fisico", "Límites físicos", "UCS mínima", 0.0, "float",
                "MPa", "Límite físico declarado en CLAUDE.md. Sin truncamiento "
                "silencioso jamás.", 0.0, 1000.0),

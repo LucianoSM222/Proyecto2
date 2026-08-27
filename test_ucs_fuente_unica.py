@@ -15,14 +15,14 @@ es un número sino una estadística, hay que ELEGIR cuál se usa como etiqueta:
   · media        la media de las probetas.
   · mediana      la mediana, cuando la faena la tiene documentada.
   · rango_medio  el punto medio de la banda min-max.
-  · rango_vs_se  el rango de UCS proyectado sobre el rango de SE observado en
-                 los pozos de esa litología. NO es una etiqueta constante:
-                 cada punto recibe la suya.
-
-La última merece una advertencia que el programa NO se puede callar: si la
-etiqueta se construye desde SE y SE es predictora, el modelo aprende la
-proyección y no la roca. Por eso ese modo excluye SE de las predictoras y lo
-declara.
+NINGUNA opción construye la etiqueta desde SE. Se probó proyectar la banda
+min-max sobre el rango de SE observado —daba una etiqueta por punto y atacaba
+el problema de las tres etiquetas para 400.000 registros— y se descartó: SE es
+una PREDICTORA y describe la roca. Una caída de SE hace esperar menos
+resistencia o más discontinuidades, y eso es justamente lo que se quiere que
+el modelo aproveche. Derivar la etiqueta de SE lo obligaría a aprender esa
+aritmética en vez de la roca, y a sacar SE de las predictoras. Las dos cosas
+son inaceptables.
 
 La elección vive en el perfil de faena, no en el código: otra faena con otra
 estadística documentada elige la suya.
@@ -94,9 +94,15 @@ def la_estadistica_se_elige_desde_el_perfil():
           "por defecto es la cadena histórica: un modo estricto dejaría sin "
           "etiqueta a los atributos que no documentan esa estadística, y esos "
           "puntos saldrían del entrenamiento sin que nada lo delate", p["valor"])
-    check(set(p.get("opciones") or []) >=
-          {"auto", "central", "media", "mediana", "rango_medio", "rango_vs_se"},
+    check(set(p.get("opciones") or []) ==
+          {"auto", "central", "media", "mediana", "rango_medio"},
           "y declara sus opciones", p.get("opciones"))
+    check(not any("se" == o for o in (p.get("opciones") or [])),
+          "ninguna opción construye la etiqueta desde SE: SE es predictora y "
+          "describe la roca, derivar la etiqueta de ella la envenenaría",
+          p.get("opciones"))
+    check("se" in gw.ML_FEATURES,
+          "y SE sigue entre las predictoras, sin condiciones", gw.ML_FEATURES)
     try:
         gw.set_param("ucs.estadistica_ml", "no_existe")
         check(False, "un modo inventado tiene que fallar")
@@ -154,55 +160,6 @@ def el_modo_llega_a_los_dominios():
     gw.seed_param_registry(force=True)
 
 
-def rango_vs_se_reparte_dentro_de_la_litologia():
-    section("Una fuente — «rango_vs_se» da una etiqueta POR PUNTO, no una sola")
-    reset(); _attr()
-    _pozo("W1", n=200, se_desde=200.0, se_hasta=400.0)
-    gw.set_param("ucs.estadistica_ml", "rango_vs_se")
-    rep = gw.aplicar_ucs_por_se()
-    check(rep["status"] == "ok", "el reparto corre", rep.get("motivo"))
-    if rep["status"] != "ok":
-        gw.seed_param_registry(force=True); return
-    vals = sorted({round(p.ucs_por_se, 1) for p in gw.wells["W1"].points
-                   if p.ucs_por_se is not None})
-    check(len(vals) > 10,
-          "la litología deja de tener UNA etiqueta y pasa a tener muchas",
-          len(vals))
-    check(abs(min(vals) - 100.0) < 1.0 and abs(max(vals) - 200.0) < 1.0,
-          "que recorren la banda min-max del atributo", (min(vals), max(vals)))
-    # Mayor SE -> mayor UCS: la proyección respeta el orden.
-    pts = sorted(gw.wells["W1"].points, key=lambda p: p.se)
-    check(pts[0].ucs_por_se < pts[-1].ucs_por_se,
-          "y más energía específica se proyecta a más UCS",
-          (pts[0].ucs_por_se, pts[-1].ucs_por_se))
-    check(rep.get("advertencia_circularidad"),
-          "el reporte NO se calla la circularidad con SE",
-          rep.get("advertencia_circularidad"))
-    check("se" in (rep.get("predictoras_excluidas") or []),
-          "y declara que SE queda fuera de las predictoras",
-          rep.get("predictoras_excluidas"))
-    gw.seed_param_registry(force=True)
-
-
-def rango_vs_se_sin_banda_no_inventa():
-    section("Una fuente — sin banda min-max no hay proyección que hacer")
-    reset()
-    gw.create_attribute(attr_id="SinBanda", nombre_oficial="Sin banda",
-                        rol="litologia", ucs_central=120.0, calidad=3,
-                        fuente="análogo")
-    w = _pozo("W1")
-    for p in w.points:
-        p.dominio = p.lito = "SinBanda"
-    gw.set_param("ucs.estadistica_ml", "rango_vs_se")
-    rep = gw.aplicar_ucs_por_se()
-    check(rep["status"] in ("ok", "sin_datos"), "declara su estado", rep.get("status"))
-    check(all(p.ucs_por_se is None for p in w.points),
-          "ningún punto recibe un UCS proyectado desde una banda que no existe")
-    check(rep.get("sin_banda"), "y se declara qué litologías quedaron fuera",
-          rep.get("sin_banda"))
-    gw.seed_param_registry(force=True)
-
-
 def la_capa_ya_no_pide_ucs():
     section("Una fuente — la ventana de capas ya no pide UCS")
     reset(); _attr()
@@ -221,8 +178,6 @@ ALL_TESTS = [
     la_estadistica_se_elige_desde_el_perfil,
     cada_modo_da_su_numero,
     el_modo_llega_a_los_dominios,
-    rango_vs_se_reparte_dentro_de_la_litologia,
-    rango_vs_se_sin_banda_no_inventa,
     la_capa_ya_no_pide_ucs,
 ]
 
