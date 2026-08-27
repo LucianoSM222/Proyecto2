@@ -258,8 +258,19 @@ def pares_de_calibracion():
         return
     check(len(pares["pares"]) >= 1, "hay al menos un par", len(pares["pares"]))
     p0 = pares["pares"][0]
-    for k in ("rqd_mwd", "rqd_sondaje", "sondaje", "n_puntos_mwd", "n_pozos"):
+    for k in ("rqd_mwd", "rqd_sondaje", "sondaje", "n_puntos_mwd", "n_pozos",
+              "pozo", "distancia_m"):
         check(k in p0, f"cada par trae {k}", list(p0))
+    # UNO A UNO: cada intervalo se aparea con UN punto MWD, no con una nube.
+    check(all(p["n_pozos"] == 1 for p in pares["pares"]),
+          "cada par usa UN solo pozo: el del punto más cercano al centro medido",
+          [p["n_pozos"] for p in pares["pares"][:5]])
+    check(all(p["distancia_m"] <= 10.0 for p in pares["pares"]),
+          "y la distancia a ese punto viaja con el par",
+          [p["distancia_m"] for p in pares["pares"][:5]])
+    check(pares.get("distancia_m") and "mediana" in pares["distancia_m"],
+          "el reporte resume a qué distancia quedaron los apareos",
+          pares.get("distancia_m"))
     check(pares["variante"] == gw.DI_VARIANTE_CONVENCION,
           "por defecto se calibra contra el DI de convención", pares.get("variante"))
     check(pares.get("agrupado_por") == "sondaje",

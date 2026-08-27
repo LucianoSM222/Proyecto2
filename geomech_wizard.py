@@ -3793,12 +3793,6 @@ def seed_param_registry(force: bool = False):
                "de un punto MWD al intervalo de RQD más cercano son 26,1 m: el "
                "radio decide cuánto dato recibe etiqueta y con qué credibilidad.",
                1.0, 200.0, "RQD_RADIO_MAX_M"),
-        _param("rqd.margen_axial_m", "RQD", "Margen axial del intervalo",
-               1.0, "float", "m", "Cuánto se extiende el tramo del sondaje a lo "
-               "largo de su eje para juntar puntos MWD. Sin esta restricción "
-               "todos los intervalos de un sondaje ven casi los mismos puntos y "
-               "el RQD_MWD no puede seguir la variación tramo a tramo.",
-               0.0, 50.0),
         _param("rqd.min_puntos_intervalo", "RQD",
                "Puntos MWD mínimos por intervalo", 30, "int", "registros",
                "Bajo esto el RQD_MWD de un intervalo es ruido de unos pocos "
@@ -6401,34 +6395,6 @@ def _intervalos_rqd_sondaje() -> List[Dict]:
     return out
 
 
-def _vecinos_de_intervalo(P: np.ndarray, iv: Dict, radio_m: float,
-                          margen_axial_m: float) -> np.ndarray:
-    """
-    Índices de los puntos de `P` que acompañan a ESTE intervalo: cerca del
-    SEGMENTO del intervalo, no de una bola alrededor de su centro.
-
-    Es la diferencia entre comparar y no comparar nada. Con radio 10 m y
-    tramos de 3 m, una bola alrededor del centro abarca a los vecinos del
-    intervalo de arriba y del de abajo: todos los intervalos de un sondaje
-    terminan viendo casi los mismos puntos MWD, su RQD_MWD sale casi idéntico
-    y la correlación con el RQD tramo a tramo no puede existir aunque la
-    física esté ahí. Restringir al segmento —distancia perpendicular dentro
-    del radio Y proyección axial dentro del tramo, con su margen— le devuelve
-    a cada intervalo su propia vecindad.
-    """
-    d = iv["b"] - iv["a"]
-    L2 = float(d @ d)
-    if L2 < 1e-9:
-        dist = np.linalg.norm(P - iv["a"], axis=1)
-        return np.where(dist <= radio_m)[0]
-    t = ((P - iv["a"]) @ d) / L2
-    margen = margen_axial_m / max(np.sqrt(L2), 1e-9)
-    dentro = (t >= -margen) & (t <= 1.0 + margen)
-    proy = iv["a"] + np.clip(t, 0.0, 1.0)[:, None] * d
-    dist = np.linalg.norm(P - proy, axis=1)
-    return np.where(dentro & (dist <= radio_m))[0]
-
-
 def propagate_drillhole_rqd(radio_m: Optional[float] = None) -> Dict:
     """
     (2.1) Asigna a cada punto MWD el RQD del intervalo de sondaje más cercano
@@ -6505,22 +6471,24 @@ def rqd_calibration_pairs(radio_m: Optional[float] = None,
                           umbral: Optional[float] = None,
                           min_puntos: Optional[int] = None) -> Dict:
     """
-    (2.2) Pares de calibración: por cada intervalo de sondaje con RQD, el
-    RQD_MWD calculado por la regla de Deere sobre los puntos MWD cercanos.
+    (2.2) Pares de calibración: por cada intervalo de sondaje con RQD, UN solo
+    punto MWD —el más cercano al centro medido— y el RQD_MWD del tramo de ESE
+    pozo con el mismo largo del intervalo.
 
-    Un número contra un número, sobre el MISMO SOPORTE. Comparar el DI
-    puntual —un valor cada 2 cm— contra el RQD de un intervalo de 1 a 3 m es
-    comparar cosas distintas y hunde cualquier correlación por construcción.
+    UNO A UNO, decisión del autor: "asignas el RQD de cada centro medido al
+    MWD más cercano, solo a 1, y con esos poquitos que tengan alcance buscamos
+    los pesos". Promediar varios pozos vecinos mezclaba roca que el sondaje
+    nunca vio y diluía justo la variación que se quiere seguir. Agregar o
+    quitar sondajes mejora la calibración; esta primera aproximación ya sirve.
 
-    Los puntos vecinos se agrupan POR POZO antes de aplicar Deere: la regla
-    cuenta tramos continuos a lo largo de UNA perforación, no sobre una nube.
+    MISMO SOPORTE. El tramo de MWD que se mide tiene el LARGO DEL INTERVALO,
+    centrado en el punto más cercano: comparar el DI puntual —un valor cada
+    2 cm— contra el RQD de 1 a 3 m de testigo es comparar cosas distintas.
 
-    `variante` elige con qué configuración de DI se calcula el RQD_MWD; por
-    defecto, la de convención. El RQD del sondaje no depende de eso.
+    `radio_m` deja de ser un radio de vecindad y pasa a ser el ALCANCE máximo:
+    si el punto más cercano está más lejos que eso, el intervalo no tiene par.
     """
     radio_m = get_param("rqd.radio_max_m") if radio_m is None else radio_m
-    min_puntos = (get_param("rqd.min_puntos_intervalo")
-                  if min_puntos is None else min_puntos)
     nombre_var = variante or DI_VARIANTE_CONVENCION
     v = di_variantes.get(nombre_var)
     if v is None:
@@ -6530,10 +6498,9 @@ def rqd_calibration_pairs(radio_m: Optional[float] = None,
     intervalos = _intervalos_rqd_sondaje()
     if not intervalos:
         return {"status": "sin_datos", "pares": [],
-                "motivo": ("Ningún sondaje cargado tiene RQD en su tabla geomec."),
+                "motivo": "Ningún sondaje cargado tiene RQD en su tabla geomec.",
                 "variante": nombre_var}
 
-    # Puntos MWD con su valor de DI según la variante pedida.
     pts, meta = [], []
     for wn, w in wells.items():
         perfil = w.di_variantes.get(nombre_var) if variante is not None else None
@@ -6543,89 +6510,89 @@ def rqd_calibration_pairs(radio_m: Optional[float] = None,
             if variante is not None:
                 if perfil is None or i >= len(perfil) or not np.isfinite(perfil[i]):
                     continue
-                di_val = float(perfil[i])
-            else:
-                if p.di is None or not np.isfinite(p.di):
-                    continue
-                di_val = float(p.di)
+            elif p.di is None or not np.isfinite(p.di):
+                continue
             pts.append((p.este, p.norte, p.cota))
-            meta.append((wn, p.largo, di_val))
+            meta.append((wn, i))
     if not pts:
         return {"status": "sin_datos", "pares": [],
                 "motivo": (f'Ningún punto MWD tiene DI calculado para la variante '
                            f'"{nombre_var}".'),
                 "variante": nombre_var}
     P = np.array(pts)
-    margen = get_param("rqd.margen_axial_m")
-    pares, sin_soporte = [], 0
+    pares, sin_par = [], 0
     for iv in intervalos:
-        cerca = _vecinos_de_intervalo(P, iv, radio_m, margen)
-        if len(cerca) < min_puntos:
-            sin_soporte += 1; continue
-        por_pozo: Dict[str, list] = {}
-        for i in cerca:
-            wn, largo, di_val = meta[i]
-            por_pozo.setdefault(wn, []).append((largo, di_val))
-        valores = []
-        for wn, lista in por_pozo.items():
-            lista.sort()
-            v_rqd = _rqd_deere(lista, thr)
-            if v_rqd is not None:
-                valores.append(v_rqd)
-        if not valores:
-            sin_soporte += 1; continue
+        d = np.linalg.norm(P - iv["centro"], axis=1)
+        k = int(np.argmin(d))
+        if d[k] > radio_m:
+            sin_par += 1; continue
+        wn, i = meta[k]
+        w = wells[wn]
+        largo_centro = w.points[i].largo
+        media = max(iv["largo_m"], 0.2) / 2.0
+        tramo = _tramo_di_de_pozo(w, nombre_var if variante is not None else None,
+                                  largo_centro, media)
+        if tramo is None:
+            sin_par += 1; continue
+        largos, di_vals = tramo
+        v_rqd = _rqd_deere_np(largos, di_vals, thr)
+        if v_rqd is None:
+            sin_par += 1; continue
         pares.append({"sondaje": iv["sondaje"], "desde": iv["desde"],
-                      "hasta": iv["hasta"],
-                      "rqd_sondaje": iv["rqd"],
-                      "rqd_mwd": round(float(np.mean(valores)), 2),
-                      "n_puntos_mwd": int(len(cerca)), "n_pozos": len(por_pozo)})
+                      "hasta": iv["hasta"], "rqd_sondaje": iv["rqd"],
+                      "rqd_mwd": round(float(v_rqd), 2),
+                      "pozo": wn, "largo_mwd_m": round(float(largo_centro), 3),
+                      "distancia_m": round(float(d[k]), 3),
+                      "n_puntos_mwd": int(largos.size), "n_pozos": 1})
     if not pares:
         return {"status": "sin_soporte", "pares": [], "variante": nombre_var,
-                "motivo": (f"Ningún intervalo de sondaje reúne {min_puntos} punto(s) "
-                           f"MWD a menos de {radio_m:g} m. Sin soporte no hay par "
-                           "que comparar."),
-                "n_intervalos": len(intervalos),
-                "intervalos_sin_soporte": sin_soporte}
+                "motivo": (f"Ningún intervalo de sondaje tiene un punto MWD a menos "
+                           f"de {radio_m:g} m con tramo suficiente para medir."),
+                "n_intervalos": len(intervalos), "intervalos_sin_par": sin_par}
+    dist = np.array([p["distancia_m"] for p in pares])
     return {"status": "ok", "pares": pares, "variante": nombre_var,
-            "umbral": thr, "radio_m": radio_m, "min_puntos": min_puntos,
-            "n_intervalos": len(intervalos), "intervalos_sin_soporte": sin_soporte,
+            "umbral": thr, "radio_m": radio_m,
+            "n_intervalos": len(intervalos), "intervalos_sin_par": sin_par,
             "agrupado_por": "sondaje",
             "n_sondajes": len({p["sondaje"] for p in pares}),
-            "margen_axial_m": margen,
-            "nota_soporte": ("Un número por intervalo, sobre el mismo soporte que "
-                             "el RQD del sondaje. Los puntos vecinos se agrupan por "
-                             "POZO antes de aplicar Deere, porque la regla cuenta "
-                             "tramos continuos a lo largo de una perforación."),
+            "distancia_m": {"mediana": round(float(np.median(dist)), 2),
+                            "p90": round(float(np.percentile(dist, 90)), 2),
+                            "max": round(float(dist.max()), 2)},
+            "nota_soporte": ("UNO A UNO: cada intervalo de sondaje se aparea con "
+                             "el punto MWD más cercano a su centro, y el RQD_MWD "
+                             "se mide sobre el tramo de ESE pozo con el mismo "
+                             "largo del intervalo."),
             "validacion": ("La unidad de validación es el SONDAJE: dejar-uno-fuera "
                            "por sondaje, no por intervalo. Dos intervalos del mismo "
                            "sondaje no son observaciones independientes.")}
 
 
-def _rqd_deere(pares_largo_di: List[Tuple[float, float]], umbral: float) -> Optional[float]:
+def _tramo_di_de_pozo(well, variante: Optional[str], largo_centro: float,
+                      media_m: float):
     """
-    Regla de Deere sobre una lista [(largo, di), ...] ORDENADA de un solo
-    pozo: porcentaje del metraje en tramos continuos de RQD_TRAMO_MIN_M o más
-    sin discontinuidad, con la discontinuidad definida por DI > umbral.
+    (largos, di) del tramo de un pozo centrado en `largo_centro`, de media
+    longitud `media_m`, ordenado. None si no alcanza para medir nada.
     """
-    if len(pares_largo_di) < 2:
-        return None
-    total = pares_largo_di[-1][0] - pares_largo_di[0][0]
-    if total <= 0:
-        return None
-    tramos, ini, fin = [], None, None
-    for largo, di_val in pares_largo_di:
-        if di_val > umbral:
-            if ini is not None:
-                tramos.append(fin - ini); ini = fin = None
+    perfil = well.di_variantes.get(variante) if variante else None
+    largos, valores = [], []
+    for i, p in enumerate(well.points):
+        if not p.entrenable or abs(p.largo - largo_centro) > media_m:
+            continue
+        if variante:
+            if perfil is None or i >= len(perfil) or not np.isfinite(perfil[i]):
+                continue
+            valores.append(float(perfil[i]))
         else:
-            if ini is None:
-                ini = largo
-            fin = largo
-    if ini is not None:
-        tramos.append(fin - ini)
-    buenos = [t for t in tramos if t >= RQD_TRAMO_MIN_M]
-    return 100.0 * sum(buenos) / total
-
+            if p.di is None or not np.isfinite(p.di):
+                continue
+            valores.append(float(p.di))
+        largos.append(p.largo)
+    if len(largos) < 2:
+        return None
+    a = np.array(largos, dtype=np.float64)
+    b = np.array(valores, dtype=np.float64)
+    o = np.argsort(a)
+    return a[o], b[o]
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -6651,11 +6618,15 @@ def _rqd_deere(pares_largo_di: List[Tuple[float, float]], umbral: float) -> Opti
 
 # Búsqueda sobre el símplex de pesos por muestreo de Dirichlet. La métrica es
 # una correlación de RANGOS, que no es diferenciable: un optimizador de
-# gradiente no sirve, y con cuatro pesos el muestreo cubre el espacio de sobra.
+# gradiente no sirve, y con cinco pesos el muestreo cubre el espacio de sobra.
 CAL_N_MUESTRAS = 400
 CAL_SEMILLA = 42
 CAL_MIN_SONDAJES = 2
-CAL_PARAMS = ("pp", "pr", "pd", "pf")
+# TODAS las presiones entran como candidatas, incluida la de avance (AP), que
+# la convención de Fernández no usa. Decisión del autor: qué presión queda
+# fuera lo decide la CALIBRACIÓN, con un peso cercano a cero, no un descarte
+# previo. ROP no entra: es una velocidad, no una presión.
+CAL_PARAMS = ("pp", "pr", "pd", "pf", "pa")
 
 
 def _z2_por_param(points, window: int, params) -> Optional[Dict[str, np.ndarray]]:
@@ -6787,31 +6758,29 @@ def _preparar_intervalos_calibracion(radio_m: float, min_puntos: int):
     if not pts:
         return [], []
     P = np.array(pts)
-    margen = get_param("rqd.margen_axial_m")
     listos, pozos_rel = [], set()
     for iv in intervalos:
-        cerca = _vecinos_de_intervalo(P, iv, radio_m, margen)
-        if len(cerca) < min_puntos:
+        # UNO A UNO: el punto MWD más cercano al centro medido, y nada más.
+        d = np.linalg.norm(P - iv["centro"], axis=1)
+        k = int(np.argmin(d))
+        if d[k] > radio_m:
             continue
-        # Los índices y los largos se ordenan UNA vez acá: dentro de la
-        # búsqueda solo cambian los valores de DI, nunca el orden.
-        crudo: Dict[str, list] = {}
-        for k in cerca:
-            wn, i = meta[k]
-            crudo.setdefault(wn, []).append(i)
-        vecinos = {}
-        for wn, idxs in crudo.items():
-            if len(idxs) < 2:
-                continue
-            arr = np.array(idxs, dtype=np.int64)
-            largos = np.array([wells[wn].points[i].largo for i in arr],
-                              dtype=np.float64)
-            orden = np.argsort(largos)
-            vecinos[wn] = (arr[orden], largos[orden])
-        if not vecinos:
+        wn, i = meta[k]
+        w = wells[wn]
+        largo_centro = w.points[i].largo
+        media = max(iv["largo_m"], 0.2) / 2.0
+        # Índices y largos del tramo, ordenados UNA vez: dentro de la búsqueda
+        # solo cambian los valores de DI, nunca el orden ni la pertenencia.
+        idxs = [j for j, p in enumerate(w.points)
+                if p.entrenable and abs(p.largo - largo_centro) <= media]
+        if len(idxs) < 2:
             continue
-        listos.append({**iv, "vecinos": vecinos})
-        pozos_rel.update(vecinos)
+        arr = np.array(idxs, dtype=np.int64)
+        largos = np.array([w.points[j].largo for j in arr], dtype=np.float64)
+        orden = np.argsort(largos)
+        listos.append({**iv, "vecinos": {wn: (arr[orden], largos[orden])},
+                       "distancia_m": float(d[k])})
+        pozos_rel.add(wn)
     return listos, sorted(pozos_rel)
 
 
@@ -6840,9 +6809,9 @@ def calibrate_di_weights(radio_m: Optional[float] = None,
     intervalos, pozos_rel = _preparar_intervalos_calibracion(radio_m, min_puntos)
     if len(intervalos) < 5:
         return {"status": "sin_datos",
-                "motivo": (f"Solo {len(intervalos)} intervalo(s) de sondaje reúnen "
-                           f"{min_puntos} punto(s) MWD a menos de {radio_m:g} m. "
-                           "Con menos de cinco pares no hay correlación que ajustar."),
+                "motivo": (f"Solo {len(intervalos)} intervalo(s) de sondaje tienen "
+                           f"un punto MWD a menos de {radio_m:g} m. Con menos de "
+                           "cinco pares no hay correlación que ajustar."),
                 "n_intervalos": len(intervalos), "radio_m": radio_m}
     sondajes = sorted({iv["sondaje"] for iv in intervalos})
     if len(sondajes) < CAL_MIN_SONDAJES:
@@ -6942,8 +6911,12 @@ def calibrate_di_weights(radio_m: Optional[float] = None,
                      f"{rho_val:+.3f}. Los pesos transfieren al sondaje que no "
                      "participó del ajuste.")
 
+    dists = [iv.get("distancia_m") for iv in intervalos
+             if iv.get("distancia_m") is not None]
     fuente = (f"Calibrado contra el RQD de {len(sondajes)} sondaje(s) de {ACTIVE_SITE} "
-              f"({n_pares} par(es), radio {radio_m:g} m). Mismo procedimiento que "
+              f"({n_pares} par(es), uno a uno, alcance {radio_m:g} m"
+              + (f", distancia mediana {np.median(dists):.1f} m" if dists else "")
+              + f"). Presiones candidatas: {', '.join(params)}. Mismo procedimiento que "
               "Fernández et al. 2023, que busca los pesos de su DI con varianza "
               "móvil (movvar): esta variante es ese procedimiento aplicado a los "
               "datos de este sitio, no una desviación del método. "
@@ -6968,6 +6941,8 @@ def calibrate_di_weights(radio_m: Optional[float] = None,
         "n_pares": n_pares, "n_intervalos": len(intervalos),
         "n_sondajes": len(sondajes), "sondajes": sondajes,
         "radio_m": radio_m, "min_puntos": min_puntos,
+        "params_candidatos": list(params),
+        "distancia_mediana_m": (round(float(np.median(dists)), 2) if dists else None),
         "window": window, "umbral": umbral,
         "semilla": seed, "n_combinaciones": len(cand),
         "variante": nombre_variante if registrar else None,

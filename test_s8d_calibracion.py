@@ -147,6 +147,17 @@ def la_calibracion_produce_una_variante():
           v.get("fuente"))
     check(abs(sum(v["weights"].values()) - 1.0) < 1e-6,
           "los pesos suman 1", v["weights"])
+    # Ninguna presión queda fuera por descarte previo: la de avance (AP), que
+    # la convención de Fernández no usa, entra como candidata y su peso lo
+    # decide la calibración.
+    check("pa" in rep["params_candidatos"],
+          "la presión de avance entra como candidata, no se descarta de entrada",
+          rep.get("params_candidatos"))
+    check(set(rep["params_candidatos"]) == {"pp", "pr", "pd", "pf", "pa"},
+          "las cinco presiones son candidatas", rep.get("params_candidatos"))
+    check(rep.get("distancia_mediana_m") is not None,
+          "y el reporte declara a qué distancia quedaron los apareos uno a uno",
+          rep.get("distancia_mediana_m"))
 
 
 def encuentra_la_variable_que_manda():
