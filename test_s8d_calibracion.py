@@ -51,6 +51,7 @@ def reset():
     gw.seed_param_registry(force=True)
     gw.layers.clear(); gw.wells.clear(); gw.domains.clear()
     gw.drillholes.clear(); gw.set_training_caserones(None)
+    gw.olvidar_radio_rqd()
 
 
 E0, N0, Z0 = 376700.0, 6959000.0, 300.0
@@ -248,9 +249,18 @@ def es_reproducible():
 def los_parametros_vienen_del_perfil():
     section("3 — El radio y el mínimo de puntos salen del perfil de faena")
     _escenario()
-    gw.set_param("rqd.radio_max_m", 15.0)
+    # (Auditoría) EL CONTRATO CAMBIÓ, por pedido del autor: el radio ya no se
+    # toma del perfil por omisión. Se ELIGE a la vista de la tabla de
+    # sensibilidad, porque decide el resultado —a 5 y 10 m domina el dámper, a
+    # 25 m domina el barrido— y un default que nadie miró decidiría la tesis.
+    sin_elegir = gw.calibrate_di_weights(nombre_variante="cal_x", n_muestras=20)
+    check(sin_elegir["status"] == "sin_radio",
+          "sin elegir el radio, la calibración se rechaza", sin_elegir.get("status"))
+    check(sin_elegir.get("tabla"),
+          "y el rechazo trae la tabla para poder elegir ahí mismo")
+    gw.confirmar_radio_rqd(15.0)
     rep = gw.calibrate_di_weights(nombre_variante="cal_perfil", n_muestras=80, seed=5)
-    check(rep["status"] == "ok", "corre tomando el radio del perfil", rep.get("motivo"))
+    check(rep["status"] == "ok", "elegido el radio, corre con él", rep.get("motivo"))
     if rep["status"] == "ok":
         check(rep["radio_m"] == 15.0, "y lo declara", rep.get("radio_m"))
     gw.seed_param_registry(force=True)

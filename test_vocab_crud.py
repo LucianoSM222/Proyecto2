@@ -65,18 +65,18 @@ def alta_basica():
     reset()
     n_antes = len(gw.attr_registry)
     a = gw.create_attribute(
-        "Ka", "Calizas Formación Abundancia", rol="litologia",
+        "Ka_prueba", "Calizas Formación Abundancia", rol="litologia",
         ucs_min=60.0, ucs_max=120.0, ucs_media=90.0, calidad=3,
         fuente="Informe geológico base Pucobre; banda de literatura para calizas.")
-    check(a is not None and a.id == "Ka", "devuelve el atributo creado")
+    check(a is not None and a.id == "Ka_prueba", "devuelve el atributo creado")
     check(len(gw.attr_registry) == n_antes + 1, "queda registrado")
-    check(gw.attr_registry["Ka"].nombre_oficial == "Calizas Formación Abundancia",
+    check(gw.attr_registry["Ka_prueba"].nombre_oficial == "Calizas Formación Abundancia",
           "conserva el nombre oficial")
-    check(gw.attr_registry["Ka"].rol == "litologia", "conserva el rol")
-    check(gw.attr_registry["Ka"].ucs_ancla() == 90.0, "la banda de UCS queda utilizable")
-    check(gw.attr_registry["Ka"].entrenable() == (True, ""),
+    check(gw.attr_registry["Ka_prueba"].rol == "litologia", "conserva el rol")
+    check(gw.attr_registry["Ka_prueba"].ucs_ancla() == 90.0, "la banda de UCS queda utilizable")
+    check(gw.attr_registry["Ka_prueba"].entrenable() == (True, ""),
           "un atributo nuevo con banda y calidad es entrenable de inmediato",
-          gw.attr_registry["Ka"].entrenable())
+          gw.attr_registry["Ka_prueba"].entrenable())
     check(not gw.validate_attribute_tree(),
           "el árbol del registro sigue siendo válido", gw.validate_attribute_tree())
     reset()
@@ -183,7 +183,7 @@ def baja_arrastra_alias():
 def persistencia_round_trip():
     section("Persistencia — alta y baja sobreviven al export/import")
     reset()
-    gw.create_attribute("Ka", "Calizas Formación Abundancia", rol="litologia",
+    gw.create_attribute("Ka_prueba", "Calizas Formación Abundancia", rol="litologia",
                         ucs_min=60.0, ucs_max=120.0, ucs_media=90.0, calidad=3,
                         fuente="Informe geológico base")
     gw.delete_attribute("DL", force=True)          # código sin identificar
@@ -195,8 +195,8 @@ def persistencia_round_trip():
     check(not res["errores"], "la importación no arroja errores", res["errores"])
     check(len(gw.attr_registry) == n_esperado, "el conteo de atributos sobrevive",
           (len(gw.attr_registry), n_esperado))
-    check("Ka" in gw.attr_registry, "el atributo creado en caliente sobrevive")
-    check(gw.attr_registry["Ka"].ucs_ancla() == 90.0, "con su banda intacta")
+    check("Ka_prueba" in gw.attr_registry, "el atributo creado en caliente sobrevive")
+    check(gw.attr_registry["Ka_prueba"].ucs_ancla() == 90.0, "con su banda intacta")
     check("DL" not in gw.attr_registry, "el atributo borrado NO reaparece")
     reset()
 
@@ -204,15 +204,15 @@ def persistencia_round_trip():
 def atributo_nuevo_etiqueta_de_verdad():
     section("Un atributo creado en caliente etiqueta el entrenamiento")
     reset()
-    gw.create_attribute("Ka", "Calizas Formación Abundancia", rol="litologia",
+    gw.create_attribute("Ka_prueba", "Calizas Formación Abundancia", rol="litologia",
                         ucs_min=60.0, ucs_max=120.0, ucs_media=90.0, calidad=3,
                         fuente="Informe geológico base")
     # Dos dominios con etiquetas distintas: uno sembrado, otro creado en caliente.
-    gw.domains["Ka"] = {"ucs_lab": 90.0, "atributo_id": "Ka", "nombre": "Ka"}
+    gw.domains["Ka_prueba"] = {"ucs_lab": 90.0, "atributo_id": "Ka_prueba", "nombre": "Ka_prueba"}
     gw.domains["Kfa"] = {"ucs_lab": 289.6, "atributo_id": "Kfa", "nombre": "Kfa"}
 
     rng = np.random.default_rng(0)
-    for wn, dom in (("W_ka", "Ka"), ("W_kfa", "Kfa")):
+    for wn, dom in (("W_ka", "Ka_prueba"), ("W_kfa", "Kfa")):
         pts = []
         for i in range(30):
             p = gw.MWDPoint(largo=i * 0.02, vel=float(rng.uniform(1, 9)),

@@ -553,8 +553,36 @@ def seed_attribute_registry(force: bool = False):
                          "resolución alcanzable para UCS, y se declara como "
                          "limitación, no se oculta ensanchando la banda de confianza.")),
         Attribute(id="Kpcli", nombre_oficial="Lavas Inferiores", rol="litologia", nivel="unidad",
-                  calidad=0,
-                  notas="Sin UCS de laboratorio. 1,2% del metraje MPC (20,8 m)."),
+                  ucs_central=180.0, calidad=2, fuente="autor de la memoria",
+                  notas=("UCS 180 MPa aportada por el autor. Las mallas que "
+                         "Pucobre entrega como «Lavas» son esta unidad: es la "
+                         "litología con más metraje MWD después de Bht (120.013 "
+                         "puntos entre PCS_1043 y PCC_1541). Antes figuraba en "
+                         "calidad 0 y sin banda, lo que la dejaba fuera del "
+                         "entrenamiento entero.")),
+        # ── Calizas de la Formación Abundancia ───────────────────────────────
+        # Dos niveles, aportados por el autor. La malla que Pucobre entrega
+        # como «Ka» no distingue cuál de los dos es, así que la unidad padre
+        # queda SIN ancla a propósito: promediar 60 y 120 inventaría un número
+        # que ninguna probeta midió. Hoy no tiene puntos MWD (ninguna
+        # perforación cruza esa malla), así que no afecta a ningún resultado.
+        Attribute(id="Ka", nombre_oficial="Calizas Fm. Abundancia", rol="litologia",
+                  nivel="unidad", calidad=0, fuente="autor de la memoria",
+                  notas=("Dos niveles con resistencias distintas: caliza ~60 MPa "
+                         "y un nivel de arenisca media de ~20 m de espesor a "
+                         "~120 MPa. La unidad padre no lleva ancla: se etiqueta "
+                         "por el nivel, no por el promedio.")),
+        Attribute(id="Ka_caliza", nombre_oficial="Caliza (Fm. Abundancia)",
+                  rol="litologia", nivel="subunidad", padre="Ka",
+                  ucs_central=60.0, calidad=2, fuente="autor de la memoria",
+                  notas="~60 MPa. Nivel de caliza propiamente tal."),
+        Attribute(id="Ka_arenisca", nombre_oficial="Arenisca media (Fm. Abundancia)",
+                  rol="litologia", nivel="subunidad", padre="Ka",
+                  ucs_central=120.0, calidad=2, fuente="autor de la memoria",
+                  notas=("~120 MPa. Nivel de arenisca media, ~20 m de espesor. "
+                         "PENDIENTE DE CONFIRMAR: la descripción del autor "
+                         "llegó parcialmente ininteligible en este punto y "
+                         "estos dos niveles son mi lectura de ella.")),
         Attribute(id="DL", nombre_oficial="Sin identificar", rol="litologia", nivel="unidad",
                   calidad=0,
                   notas="Código sin identificar en los sondajes. 0,2% del metraje MPC (3,1 m)."),
@@ -973,12 +1001,17 @@ def _seed_default_aliases():
     base = {
         "Kfa": ["KFA", "Albitofiro", "ALB", "Albitófiro"],
         "Bht": ["BHT", "Brecha Hidrotermal", "Bx Hidrotermal", "BXH"],
-        "Kpcli": ["KPCLI", "Lavas Inferiores"],
+        # "Lavas" a secas es como Pucobre nombra la malla de Kpcli: sin este
+        # alias, 120.013 puntos quedaban sin atributo y sin UCS.
+        "Kpcli": ["KPCLI", "Lavas Inferiores", "Lavas"],
+        "Ka": ["Ka", "KA", "Calizas"],
         "DL": ["dl"],
         "Fk": ["FK", "Feldespato potasica", "Feldespato potásica",
                "Potasica", "Potásica", "K-feldespato"],
-        "Brecha_mixta": ["Brecha mixta", "Bx mixta"],
-        "Kpcsb_sedimentaria": ["Brecha sedimentaria", "Bx sedimentaria"],
+        # "Kpcmix" y "Kpcsb" son como Pucobre nombra estas mallas.
+        "Brecha_mixta": ["Brecha mixta", "Bx mixta", "Kpcmix", "KPCMIX"],
+        "Kpcsb_sedimentaria": ["Brecha sedimentaria", "Bx sedimentaria",
+                               "Kpcsb", "KPCSB"],
         "Kpcsb_basal": ["Brecha basal"],
         "Kpcs": ["Miembro Trinidad", "Trinidad"],
         "Lutitas_normales": ["Lutitas normales", "Lutita normal"],
@@ -6985,6 +7018,99 @@ def _preparar_intervalos_calibracion(radio_m: float, min_puntos: int):
     return listos, sorted(pozos_rel)
 
 
+# ─── El radio de asignación del RQD se ELIGE mirando la tabla ────────────────
+# El radio decide con qué RQD se calibran los pesos del DI, y no hay valor
+# correcto universal: depende de la densidad de sondajes de la faena. Sobre MPC
+# la tabla trae un hallazgo que no se ve sin ella —el RQD viene logueado en
+# tramos de 3,00 m, así que apretar por debajo de ~3 m no compra resolución y
+# solo destruye la muestra—. Con otra faena, otro logueo, otra respuesta.
+RQD_RADIOS_TABLA = (2.0, 3.0, 5.0, 7.5, 10.0, 15.0, 25.0)
+
+_rqd_radio_confirmado: Optional[float] = None
+
+
+def radio_rqd_confirmado() -> Optional[float]:
+    """El radio que el usuario eligió a la vista de la tabla, o None."""
+    return _rqd_radio_confirmado
+
+
+def olvidar_radio_rqd() -> None:
+    """Vuelve al estado 'sin elegir'. Lo usan las pruebas y el reinicio."""
+    global _rqd_radio_confirmado
+    _rqd_radio_confirmado = None
+
+
+def confirmar_radio_rqd(radio_m: float) -> float:
+    """Fija el radio como decisión explícita y lo escribe en el perfil."""
+    r = float(radio_m)
+    if not np.isfinite(r) or r <= 0:
+        raise ValueError(f"El radio de asignación del RQD tiene que ser un "
+                         f"número positivo; se recibió {radio_m!r}.")
+    global _rqd_radio_confirmado
+    set_param("rqd.radio_max_m", r)
+    _rqd_radio_confirmado = r
+    return r
+
+
+def rqd_radius_sensitivity(radios=None, min_puntos: Optional[int] = None) -> Dict:
+    """
+    Cuántos pares de calibración sobreviven a cada radio, y a cuántos sondajes
+    se alcanza. Es la tabla con la que se elige el radio: muestra el COSTO de
+    apretar, no solo el beneficio.
+    """
+    radios = tuple(radios) if radios else RQD_RADIOS_TABLA
+    min_puntos = (get_param("rqd.min_puntos_intervalo")
+                  if min_puntos is None else min_puntos)
+    tramos = [(dh.holeid, r) for dh in drillholes.values()
+              for r in (dh.geomec or []) if r.get("rqd") is not None]
+    if not tramos:
+        return {"status": "sin_datos",
+                "motivo": ("No hay sondajes con RQD cargados. La tabla del radio "
+                           "compara cuántos tramos de testigo alcanza cada "
+                           "distancia; sin testigo no hay nada que comparar.")}
+    largos = [r["to"] - r["from"] for _, r in tramos if r.get("to") is not None]
+    largo_med = round(float(np.median(largos)), 2) if largos else None
+    filas = []
+    for R in sorted(radios):
+        try:
+            pares = rqd_calibration_pairs(radio_m=float(R), min_puntos=min_puntos)
+        except Exception as e:
+            filas.append({"radio_m": float(R), "n_pares": 0, "n_sondajes": 0,
+                          "pct_tramos": 0.0, "motivo": f"{type(e).__name__}: {e}"})
+            continue
+        ps = pares.get("pares", []) if isinstance(pares, dict) else (pares or [])
+        sond = {x.get("sondaje") for x in ps if x.get("sondaje")}
+        filas.append({"radio_m": float(R), "n_pares": len(ps),
+                      "n_sondajes": len(sond),
+                      "pct_tramos": round(100.0 * len(ps) / len(tramos), 1)})
+    # Recomendación razonada, que el usuario puede ignorar: el radio más
+    # apretado que siga siendo defendible contra el largo del tramo logueado.
+    piso = max(largo_med / 2.0, 1.0) if largo_med else 5.0
+    cand = [f for f in filas if f["radio_m"] >= piso and f["n_pares"] >= 20]
+    rec = None
+    if cand:
+        elegido = min(cand, key=lambda f: f["radio_m"])
+        rec = (f"{elegido['radio_m']:g} m: es el radio más apretado que conserva "
+               f"al menos 20 pares ({elegido['n_pares']}) sin bajar de medio "
+               f"intervalo de logueo"
+               + (f" ({largo_med:g} m)" if largo_med else "")
+               + ". Apretar más no compra resolución —la variación más fina que "
+                 "el tramo logueado no está en el dato— y sí destruye la muestra.")
+    elif filas:
+        mejor = max(filas, key=lambda f: f["n_pares"])
+        rec = (f"Ningún radio conserva 20 pares. El mayor alcance es "
+               f"{mejor['n_pares']} par(es) a {mejor['radio_m']:g} m. La "
+               "restricción que manda es la cantidad de sondajes con RQD, no la "
+               "elección del radio.")
+    return {"status": "ok", "filas": filas,
+            "n_tramos_totales": len(tramos),
+            "n_sondajes_con_rqd": len({h for h, _ in tramos}),
+            "largo_tramo_mediano": largo_med,
+            "radio_vigente": get_param("rqd.radio_max_m"),
+            "radio_confirmado": _rqd_radio_confirmado,
+            "recomendacion": rec}
+
+
 def calibrate_di_weights(radio_m: Optional[float] = None,
                          min_puntos: Optional[int] = None,
                          params: Tuple[str, ...] = CAL_PARAMS,
@@ -7000,6 +7126,19 @@ def calibrate_di_weights(radio_m: Optional[float] = None,
 
     El resultado se registra como VARIANTE. La de convención no se toca.
     """
+    # CANDADO: el radio decide el resultado entero —a 5 m manda el dámper, a
+    # 25 m manda el barrido— así que no puede quedar en un default que nadie
+    # miró. Se exige haberlo elegido a la vista de la tabla, y el rechazo trae
+    # la tabla para poder elegir ahí mismo.
+    if radio_m is None and _rqd_radio_confirmado is None:
+        return {"status": "sin_radio",
+                "motivo": ("Falta elegir el radio de asignación del RQD. Ese "
+                           "radio decide con qué testigo se calibran los pesos "
+                           "y cambia el resultado: sobre MPC, a 5 y 10 m domina "
+                           "el dámper y a 25 m domina el barrido. Elegirlo por "
+                           "omisión sería dejar que el default decida. Mira la "
+                           "tabla y fíjalo con confirmar_radio_rqd()."),
+                "tabla": rqd_radius_sensitivity()}
     radio_m = get_param("rqd.radio_max_m") if radio_m is None else radio_m
     min_puntos = (get_param("rqd.min_puntos_intervalo")
                   if min_puntos is None else min_puntos)
@@ -8195,10 +8334,23 @@ def leave_one_lithology_out(metodo: str = "relacion") -> Dict:
         if metodo == "linea_base":
             pred = float(np.mean(list(entrena.values())))
         elif metodo == "relacion":
-            curva = _ajustar_curva_se_ucs(
-                [(_se_mediana_por_estrato(k), v) for k, v in entrena.items()])
+            cal = [(_se_mediana_por_estrato(k), v) for k, v in entrena.items()]
+            curva = _ajustar_curva_se_ucs(cal)
             pred = _aplicar_curva(curva, se_fuera) if curva else None
             motivo = None if curva else "no se pudo ajustar la curva"
+            # EXTRAPOLACIÓN. Con pocas anclas, una litología cuya SE cae fuera
+            # del rango de calibración obliga a la curva a extrapolar, y una
+            # recta ajustada a dos puntos puede irse a valores sin sentido
+            # físico (se vio un pliegue prediciendo 0,0 MPa). El valor se
+            # entrega igual —acotarlo en silencio sería peor— pero el pliegue
+            # queda MARCADO: un error de extrapolación no es comparable con uno
+            # de interpolación, y promediarlos sin distinguir ensucia el MAE.
+            if curva and cal:
+                ses = [a for a, _ in cal]
+                if se_fuera < min(ses) or se_fuera > max(ses):
+                    motivo = (f"EXTRAPOLACIÓN: SE={se_fuera:.0f} cae fuera del "
+                              f"rango de calibración [{min(ses):.0f}, {max(ses):.0f}] "
+                              f"cubierto por {len(cal)} ancla(s).")
         elif metodo == "ml":
             pred, motivo = _ml_predice_litologia_fuera(fuera, entrena)
         else:
@@ -8211,6 +8363,9 @@ def leave_one_lithology_out(metodo: str = "relacion") -> Dict:
                          "error_mpa": None if pred is None else round(abs(pred - real), 1),
                          "motivo": motivo})
     errs = [p["error_mpa"] for p in pliegues if p["error_mpa"] is not None]
+    interp = [p["error_mpa"] for p in pliegues if p["error_mpa"] is not None
+              and not str(p.get("motivo") or "").startswith("EXTRAPOLACIÓN")]
+    n_extrap = len(errs) - len(interp)
     if not errs:
         return {"status": "sin_datos", "metodo": metodo, "pliegues": pliegues,
                 "motivo": "Ningún pliegue produjo predicción.",
@@ -8218,6 +8373,10 @@ def leave_one_lithology_out(metodo: str = "relacion") -> Dict:
     return {"status": "ok", "metodo": metodo,
             "mae_mpa": round(float(np.mean(errs)), 1),
             "rmse_mpa": round(float(np.sqrt(np.mean(np.square(errs)))), 1),
+            # El error solo sobre los pliegues que NO extrapolaron: es el que
+            # describe lo que el método hace cuando tiene con qué.
+            "mae_interpolacion": (round(float(np.mean(interp)), 1) if interp else None),
+            "n_extrapolados": n_extrap,
             "n_litologias": len(usables), "pliegues": pliegues,
             "anclas": {k: round(v, 1) for k, v in sorted(usables.items())}}
 
@@ -8270,6 +8429,8 @@ def compare_ucs_methods() -> Dict:
         fila = {"metodo": met, "predictoras": preds, "status": r["status"]}
         if r["status"] == "ok":
             fila.update(mae_mpa=r["mae_mpa"], rmse_mpa=r["rmse_mpa"],
+                        mae_interpolacion=r.get("mae_interpolacion"),
+                        n_extrapolados=r.get("n_extrapolados", 0),
                         pliegues=r["pliegues"])
         else:
             fila["motivo"] = r.get("motivo")
@@ -10275,6 +10436,10 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
         # ajusta primero, y estaba solo disponible llamando set_param() a mano.
         html.Div(id="perfil-badge", className="d-flex align-items-center",
                  style={"marginRight":"10px"}),
+        # El radio del RQD decide con qué testigo se calibran los pesos del DI.
+        # Va en la barra porque hay que mirarlo ANTES de calibrar, no después.
+        html.Div(id="rqd-radio-badge", className="d-flex align-items-center",
+                 style={"marginRight":"10px"}),
         html.Div([html.Label("Color:", style={"fontSize":"11px","color":"#aaa","marginRight":"4px"}),
                   dcc.Dropdown(id="color-by",
                     options=[{"label":v[0],"value":k} for k,v in COLOR_FIELDS.items()],
@@ -10397,6 +10562,12 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
     # pantalla. Sin esto el registro existía pero solo se alcanzaba llamando
     # set_param() a mano, que para quien usa la plataforma es lo mismo que
     # tenerlos clavados en el código.
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("Radio de asignación del RQD")),
+        dbc.ModalBody(id="rqd-radio-body", style={"maxHeight": "75vh", "overflowY": "auto"}),
+        dbc.ModalFooter(dbc.Button("Cerrar", id="close-rqd-radio", size="sm",
+                                   color="secondary")),
+    ], id="rqd-radio-modal", size="lg", is_open=False, scrollable=True),
     dbc.Modal([
         dbc.ModalHeader(dbc.ModalTitle("Perfil de faena — parámetros de operación")),
         dbc.ModalBody(id="perfil-modal-body", style={"maxHeight": "75vh", "overflowY": "auto"}),
@@ -10647,6 +10818,78 @@ def _perfil_protegido(p: Dict):
                    style={"fontSize": "9px", "color": "#7F8C8D",
                           "display": "block", "marginLeft": "18px",
                           "marginBottom": "6px"}),
+    ])
+
+
+def _rqd_radio_panel_body():
+    """
+    (Auditoría) Pantalla del radio de asignación del RQD.
+
+    La tabla es el punto: el radio no tiene valor correcto universal —depende
+    de la densidad de sondajes de la faena— y con muchos sondajes cerca
+    conviene apretarlo para ganar calidad. Sin ver el costo de apretar, esa
+    decisión no se puede tomar.
+    """
+    t = rqd_radius_sensitivity()
+    if t["status"] != "ok":
+        return html.Div([
+            html.Small("Radio de asignación del RQD", style={"fontWeight": "bold"}),
+            html.Div(t.get("motivo", ""), style={"fontSize": "11px",
+                                                 "color": "#F39C12",
+                                                 "marginTop": "8px"}),
+        ])
+    vigente = t["radio_vigente"]
+    filas = []
+    for f in t["filas"]:
+        es = abs(float(f["radio_m"]) - float(vigente)) < 1e-9
+        filas.append(html.Tr([
+            html.Td(f"{f['radio_m']:g} m", style={"fontWeight": "bold" if es else "normal"}),
+            html.Td(f"{f['n_pares']:,}".replace(",", "."), className="text-end"),
+            html.Td(str(f["n_sondajes"]), className="text-end"),
+            html.Td(f"{f['pct_tramos']:.1f} %", className="text-end"),
+        ], style={"background": "#1d3a2f" if es else None}))
+    tabla = dbc.Table([
+        html.Thead(html.Tr([html.Th("Radio"), html.Th("Pares", className="text-end"),
+                            html.Th("Sondajes", className="text-end"),
+                            html.Th("% tramos", className="text-end")])),
+        html.Tbody(filas),
+    ], bordered=False, size="sm", style={"fontSize": "11px", "marginBottom": "6px"})
+
+    contexto = [
+        f"{t['n_tramos_totales']} tramo(s) con RQD en "
+        f"{t['n_sondajes_con_rqd']} sondaje(s).",
+    ]
+    if t.get("largo_tramo_mediano"):
+        contexto.append(
+            f"El testigo está logueado en tramos de {t['largo_tramo_mediano']:g} m: "
+            "apretar el radio por debajo de la mitad de eso no compra "
+            "resolución, porque la variación más fina no está en el dato.")
+    return html.Div([
+        html.Small("Con qué testigo se calibran los pesos del DI",
+                   style={"fontWeight": "bold", "fontSize": "11px"}),
+        html.Div(" ".join(contexto),
+                 style={"fontSize": "10px", "color": "#888", "margin": "6px 0"}),
+        tabla,
+        html.Div(t.get("recomendacion") or "",
+                 style={"fontSize": "10px", "color": "#5DCAA5", "marginBottom": "8px"}),
+        dbc.Row([
+            dbc.Col(html.Small("Radio a usar [m]", style={"fontSize": "10px"}), width="auto"),
+            dbc.Col(dbc.Input(id="rqd-radio-input", type="number", value=vigente,
+                              min=0.5, max=100.0, step=0.5, size="sm",
+                              style={"fontSize": "10px", "width": "90px"}), width="auto"),
+            dbc.Col(dbc.Button("Fijar radio", id="btn-rqd-radio", size="sm",
+                               color="primary"), width="auto"),
+        ], className="g-2 align-items-center"),
+        html.Div(
+            ("✔ Radio elegido: " + f"{t['radio_confirmado']:g} m"
+             if t.get("radio_confirmado") is not None
+             else "⚠ Sin elegir. Los pesos del DI no se calibran hasta fijarlo: "
+                  "el radio cambia el resultado y no puede quedar en un default "
+                  "que nadie miró."),
+            id="rqd-radio-estado",
+            style={"fontSize": "10px", "marginTop": "8px",
+                   "color": "#2ECC71" if t.get("radio_confirmado") is not None
+                            else "#F39C12"}),
     ])
 
 
@@ -10941,6 +11184,53 @@ def _vocab_panel_body():
 @app.callback(Output("vocab-badge", "children"), Input("refresh", "data"))
 def render_vocab_badge(_):
     return _vocab_badge_children()
+
+
+@app.callback(Output("rqd-radio-modal", "is_open"),
+              Output("rqd-radio-body", "children"),
+              Input("btn-open-rqd-radio", "n_clicks"),
+              Input("close-rqd-radio", "n_clicks"),
+              State("rqd-radio-modal", "is_open"), prevent_initial_call=True)
+def toggle_rqd_radio_modal(open_c, close_c, is_open):
+    trig = callback_context.triggered_id
+    if trig == "btn-open-rqd-radio":
+        return True, _rqd_radio_panel_body()
+    if trig == "close-rqd-radio":
+        return False, no_update
+    return no_update, no_update
+
+
+@app.callback(Output("rqd-radio-body", "children", allow_duplicate=True),
+              Output("refresh", "data", allow_duplicate=True),
+              Output("toast", "children", allow_duplicate=True),
+              Output("toast", "is_open", allow_duplicate=True),
+              Input("btn-rqd-radio", "n_clicks"),
+              State("rqd-radio-input", "value"),
+              State("refresh", "data"), prevent_initial_call=True)
+def on_rqd_radio_fijar(n, valor, ref):
+    if not n:
+        return no_update, no_update, no_update, no_update
+    try:
+        r = confirmar_radio_rqd(valor)
+    except (ValueError, TypeError) as e:
+        return no_update, no_update, f"🚫 {e}", True
+    return (_rqd_radio_panel_body(), (ref or 0) + 1,
+            f"✔ Radio de asignación del RQD fijado en {r:g} m. Los pesos del DI "
+            "ya se pueden calibrar contra el testigo.", True)
+
+
+@app.callback(Output("rqd-radio-badge", "children"), Input("refresh", "data"))
+def render_rqd_radio_badge(_):
+    r = radio_rqd_confirmado()
+    if not drillholes:
+        return html.Span()
+    etiqueta = (f"📏 RQD {r:g} m" if r is not None
+                else "📏 RQD sin radio elegido")
+    return dbc.Button(dbc.Badge(etiqueta,
+                                color="secondary" if r is not None else "warning",
+                                style={"fontSize": "10px"}),
+                      id="btn-open-rqd-radio", color="link", size="sm",
+                      style={"padding": "0", "textDecoration": "none"})
 
 
 @app.callback(Output("perfil-badge", "children"), Input("refresh", "data"))
