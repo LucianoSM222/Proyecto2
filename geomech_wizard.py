@@ -1566,9 +1566,21 @@ prelim_model = None
 # restauración a estos mismos valores.
 DI_DEFAULTS = {"window": 14, "threshold": 1.5,
               "weights": {"pp": 0.35, "pr": 0.20, "pd": 0.25, "pf": 0.20}}
+# Nombre de la variante de convención. Vive acá arriba, junto a DI_DEFAULTS,
+# porque `di_variante_activa` lo necesita antes de que se declare el registro
+# de variantes; el registro mismo se siembra más abajo (seed_di_variants).
+DI_VARIANTE_CONVENCION = "convencion_Fernandez_2023"
 di_config = {"params": ["pp","pr","pd","pf"], "weights": dict(DI_DEFAULTS["weights"]),
             "window": DI_DEFAULTS["window"]}
 di_threshold: float = DI_DEFAULTS["threshold"]
+# Qué variante del DI está corriendo AHORA. `di_config` y `di_threshold` son su
+# reflejo, no una segunda verdad: se escriben solo desde `activar_di()`.
+di_variante_activa: str = DI_VARIANTE_CONVENCION
+
+
+def di_activo() -> str:
+    """Nombre de la variante de DI con la que se está calculando."""
+    return di_variante_activa
 
 
 def di_config_is_default() -> bool:
@@ -1587,10 +1599,11 @@ def di_config_summary() -> str:
     pantalla donde se cambió.
     """
     w = di_config["weights"]
-    linea = (f"DI: ventana={di_config['window']} umbral={di_threshold:g} "
+    linea = (f"DI «{di_variante_activa}»: ventana={di_config['window']} "
+            f"umbral={di_threshold:g} "
             f"pesos(PP={w.get('pp')},DP={w.get('pd')},FP={w.get('pf')},RP={w.get('pr')})")
-    linea += (" [valores por defecto, Fernández et al. 2023]" if di_config_is_default()
-              else " [MODIFICADO respecto a Fernández et al. 2023]")
+    linea += (" [convención Fernández et al. 2023]" if di_config_is_default()
+              else " [VARIANTE, distinta de Fernández et al. 2023]")
     return linea
 group_interval_m: float = 2.0
 ucs_range = dict(ucs_min=UCS_CONFIG["default_min"], ucs_max=UCS_CONFIG["default_max"])
@@ -3308,7 +3321,7 @@ def di_profile(points, window, params=None, weights=None):
 # ║  calibra su propia variante sin tocar la referencia publicada.           ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
-DI_VARIANTE_CONVENCION = "convencion_Fernandez_2023"
+# DI_VARIANTE_CONVENCION se declara junto a DI_DEFAULTS, más arriba.
 di_variantes: Dict[str, Dict] = {}
 
 
@@ -3334,20 +3347,113 @@ def seed_di_variants(force: bool = False):
                   "variante aparte para que la comparación siga siendo posible."),
         "solo_lectura": True,
     }
+    # Sembrar el registro sin reponer el DI vigente dejaría corriendo una
+    # variante que ya no existe: el mismo defecto, por otra puerta.
+    activar_di(DI_VARIANTE_CONVENCION)
 
 
 def di_variant(nombre: str) -> Optional[Dict]:
     return di_variantes.get(nombre)
 
 
+def activar_di(nombre: str) -> Dict:
+    """
+    Pone a correr una variante: `di_config` y `di_threshold` pasan a ser SU
+    reflejo, y `di_activo()` la nombra.
+
+    Es el único camino por el que se escribe la configuración vigente del DI.
+    El panel escribía directo sobre `di_config` y `di_threshold`, que son la
+    convención de Fernández: el DI corría con otros pesos mientras el parámetro
+    protegido del perfil y la variante de solo lectura seguían declarando los
+    originales. Dos fuentes de verdad mintiendo a la vez, y todo reporte
+    citando a Fernández con pesos que no eran los suyos.
+    """
+    global di_threshold, di_variante_activa
+    v = di_variantes.get(nombre)
+    if v is None:
+        raise KeyError(f'No existe una variante de DI llamada "{nombre}". '
+                       f"Registradas: {sorted(di_variantes)}.")
+    di_config["window"] = int(v["window"])
+    di_config["params"] = list(v["params"])
+    di_config["weights"] = dict(v["weights"])
+    di_threshold = float(v["threshold"])
+    di_variante_activa = nombre
+    return v
+
+
+def _misma_config_di(v: Dict, window: int, threshold: float,
+                     weights: Dict[str, float]) -> bool:
+    if int(v["window"]) != int(window) or abs(float(v["threshold"]) - float(threshold)) > 1e-12:
+        return False
+    # Se comparan las presiones que PARTICIPAN: un peso 0 escrito y una clave
+    # ausente son la misma configuración de DI.
+    a = {k: float(x) for k, x in v["weights"].items() if float(x) > 0}
+    b = {k: float(x) for k, x in weights.items() if float(x) > 0}
+    if set(a) != set(b):
+        return False
+    return all(abs(a[k] - b[k]) <= 1e-9 for k in b)
+
+
+def aplicar_di_config(window: int, threshold: float, weights: Dict[str, float],
+                      nombre: str = "", fuente: str = "", notas: str = "") -> str:
+    """
+    Lo que hace el panel del DI cuando el usuario cambia parámetros: NO pisa la
+    convención, sino que resuelve a qué variante corresponde esa configuración
+    y la activa. Devuelve el nombre de la variante que quedó corriendo.
+
+    · Si los valores coinciden con los de Fernández, vuelve a la convención.
+    · Si coinciden con una variante ya registrada, activa esa en vez de
+      fabricar una copia con otro nombre.
+    · Si no, crea una variante nueva y la activa.
+    """
+    w, params = _normalizar_pesos(weights)
+    win = int(window)
+    if win < 3:
+        raise ValueError(f"La ventana del DI tiene que ser 3 o más; se recibió {win}.")
+    thr = float(threshold)
+    if thr <= 0:
+        raise ValueError(f"El umbral del DI tiene que ser positivo; se recibió {thr}.")
+    for nom, v in di_variantes.items():
+        if _misma_config_di(v, win, thr, w):
+            activar_di(nom)
+            return nom
+    if nombre and str(nombre).strip():
+        destino = str(nombre).strip()
+    else:
+        k = 1
+        while f"panel_{k}" in di_variantes:
+            k += 1
+        destino = f"panel_{k}"
+    create_di_variant(destino, weights=w, window=win, threshold=thr,
+                      fuente=fuente or "Ajustada a mano en el panel del DI.",
+                      notas=notas or ("Creada porque los valores del panel no son "
+                                      "los de la convención. La convención queda "
+                                      "intacta para poder comparar contra ella."))
+    activar_di(destino)
+    return destino
+
+
 def _normalizar_pesos(weights: Dict[str, float]) -> Tuple[Dict[str, float], List[str]]:
-    """Pesos a suma 1. Los parámetros son las claves con peso > 0."""
-    limpios = {k: float(v) for k, v in (weights or {}).items() if float(v) > 0}
-    total = sum(limpios.values())
-    if not limpios or total <= 0:
+    """
+    Pesos a suma 1. Los PARÁMETROS son las claves con peso > 0; un peso 0
+    explícito se conserva en `weights` como 0,0 en vez de desaparecer: pedir
+    que una presión no participe es una decisión, y tiene que quedar escrita
+    como tal y no como un campo ausente que nadie sabe si se olvidó.
+    """
+    todos = {k: float(v) for k, v in (weights or {}).items()}
+    if any(v < 0 for v in todos.values()):
+        raise ValueError("Ningún peso del DI puede ser negativo: "
+                         f"se recibió {weights!r}.")
+    activos = {k: v for k, v in todos.items() if v > 0}
+    total = sum(activos.values())
+    if not activos or total <= 0:
         raise ValueError("Los pesos del DI tienen que sumar más que cero: "
                          f"se recibió {weights!r}.")
-    return {k: v / total for k, v in limpios.items()}, sorted(limpios)
+    # Si ya suman 1, no se dividen: reescalar por 1,0000000000000002 mete ruido
+    # de coma flotante en pesos que están documentados con dos decimales.
+    if abs(total - 1.0) > 1e-12:
+        todos = {k: (v / total if v > 0 else 0.0) for k, v in todos.items()}
+    return todos, sorted(activos)
 
 
 def create_di_variant(nombre: str, weights: Dict[str, float],
@@ -3410,6 +3516,9 @@ def update_di_variant(nombre: str, **campos) -> Dict:
     # vez de quedar como un valor viejo que nadie sabe de dónde salió.
     for w in wells.values():
         w.di_variantes.pop(nombre, None)
+    # Si es la que está corriendo, el reflejo vigente quedó viejo.
+    if di_variante_activa == nombre:
+        activar_di(nombre)
     return v
 
 
@@ -3418,6 +3527,11 @@ def delete_di_variant(nombre: str) -> None:
     di_variantes.pop(nombre, None)
     for w in wells.values():
         w.di_variantes.pop(nombre, None)
+    # Borrar la variante que está corriendo dejaría el DI apuntando a algo que
+    # ya no existe. Se vuelve a la convención, que es el único destino que
+    # siempre está disponible.
+    if di_variante_activa == nombre:
+        activar_di(DI_VARIANTE_CONVENCION)
 
 
 def compute_di_variant(nombre: str) -> Dict:
@@ -8355,6 +8469,11 @@ def save_project(path):
         "inicio_cut_m": inicio_cut_m,
         "di_config": di_config,
         "di_threshold": di_threshold,
+        # Las variantes del DI y CUÁL está corriendo: sin esto, un proyecto
+        # calculado con una variante se reabre diciendo "convención".
+        "di_variantes": {k: v for k, v in di_variantes.items()
+                         if not v.get("solo_lectura")},
+        "di_variante_activa": di_variante_activa,
         "group_interval_m": group_interval_m,
         "ucs_range": ucs_range,
         "global_center": global_center,
@@ -8381,7 +8500,9 @@ def load_project(path):
     Carga un proyecto desde `path` (.gwz). Limpia el estado global y lo
     reconstruye. El modelo RF NO se restaura (se muestra advertencia en la UI).
     """
-    global di_threshold, group_interval_m, global_center, inicio_cut_m
+    # di_threshold ya no se escribe acá: lo fija activar_di(), que es la única
+    # puerta por la que se cambia el DI vigente.
+    global group_interval_m, global_center, inicio_cut_m
     with _zipfile.ZipFile(path, "r") as zf:
         proj = json.loads(zf.read("project.json"))
         npz_data = np.load(_io.BytesIO(zf.read("triangles.npz")), allow_pickle=False)
@@ -8419,8 +8540,50 @@ def load_project(path):
     domain_groups.extend(proj.get("domain_groups", []))
     clean_filters.extend(proj.get("clean_filters", []))
     inicio_cut_m = proj.get("inicio_cut_m", inicio_cut_m)
-    di_config.update(proj.get("di_config", {}))
-    di_threshold = proj.get("di_threshold", di_threshold)
+    # Variantes del DI y cuál corría. Se restauran ANTES de fijar el vigente:
+    # activar una variante que todavía no está registrada sería un KeyError.
+    seed_di_variants(force=True)
+    for nom, v in (proj.get("di_variantes") or {}).items():
+        if nom == DI_VARIANTE_CONVENCION or v.get("solo_lectura"):
+            continue          # la convención se siembra, no se lee del archivo
+        try:
+            create_di_variant(nom, weights=v.get("weights") or {},
+                              window=v.get("window"), threshold=v.get("threshold"),
+                              fuente=v.get("fuente", ""), notas=v.get("notas", ""))
+        except (ValueError, TypeError) as e:
+            parse_warnings.append(
+                f'Variante de DI "{nom}" del proyecto no se pudo restaurar: {e}')
+    activa = proj.get("di_variante_activa")
+    if activa in di_variantes:
+        activar_di(activa)
+    elif activa:
+        parse_warnings.append(
+            f'El proyecto corría con la variante de DI "{activa}", que no se pudo '
+            "restaurar. Se activó la convención de Fernández et al. 2023: los DI "
+            "guardados en los puntos NO corresponden a ella.")
+        activar_di(DI_VARIANTE_CONVENCION)
+    else:
+        # Proyecto anterior a las variantes: trae di_config/di_threshold sueltos
+        # y no se sabe de qué variante salieron. Se declara.
+        cfg = proj.get("di_config") or {}
+        thr = proj.get("di_threshold", DI_DEFAULTS["threshold"])
+        try:
+            nom = aplicar_di_config(
+                window=int(cfg.get("window", DI_DEFAULTS["window"])),
+                threshold=float(thr),
+                weights=cfg.get("weights") or DI_DEFAULTS["weights"],
+                nombre="proyecto_cargado",
+                fuente="Configuración suelta de un proyecto guardado antes de "
+                       "que existieran las variantes del DI.")
+            if nom != DI_VARIANTE_CONVENCION:
+                parse_warnings.append(
+                    f'El proyecto traía una configuración de DI distinta de la '
+                    f'convención; se registró como variante "{nom}".')
+        except (ValueError, TypeError) as e:
+            parse_warnings.append(
+                f"La configuración de DI del proyecto no es válida ({e}). Se "
+                "activó la convención de Fernández et al. 2023.")
+            activar_di(DI_VARIANTE_CONVENCION)
     group_interval_m = proj.get("group_interval_m", group_interval_m)
     ucs_range.update(proj.get("ucs_range", {}))
     global_center = proj.get("global_center")
@@ -11245,21 +11408,28 @@ def do_di(n, window, thresh, w_pp, w_pd, w_pf, w_pr, ref):
     if errores:
         return no_update, "🚫 " + " · ".join(errores), True
     window_v, thresh_v, wpp, wpd, wpf, wpr = valores
-    global di_threshold
-    di_config["window"] = int(window_v)
-    di_threshold = float(thresh_v)
-    di_config["weights"] = {"pp": wpp, "pd": wpd, "pf": wpf, "pr": wpr}
     suma = wpp + wpd + wpf + wpr
     aviso_suma = ""
     if abs(suma - 1.0) > 0.02:
-        aviso_suma = f" ⚠ los pesos suman {suma:.3f} (no 1,0)."
+        aviso_suma = (f" ⚠ los pesos ingresados suman {suma:.3f} (no 1,0); "
+                      "se normalizaron a 1 para la variante.")
+    # El panel NO escribe sobre la convención: resuelve a qué variante
+    # corresponde lo ingresado y la activa. Si son los valores de Fernández,
+    # vuelve a la convención sola.
+    try:
+        activa = aplicar_di_config(window=int(window_v), threshold=float(thresh_v),
+                                   weights={"pp": wpp, "pd": wpd, "pf": wpf, "pr": wpr})
+    except (ValueError, TypeError) as e:
+        return no_update, f"🚫 {e}", True
     compute_di()
     wz_state['step3']['di_computed'] = True
     all_pts = list(all_points())
     n_di = sum(1 for p in all_pts if p.di is not None)
     n_disc = sum(1 for p in all_pts if p.di is not None and p.di > di_threshold)
-    modif = "" if di_config_is_default() else " · configuración MODIFICADA respecto a Fernández et al. 2023"
-    return ref+1, f"✅ DI: {n_di} pts · {n_disc} discontinuidades{modif}.{aviso_suma}", True
+    origen = ("convención Fernández et al. 2023" if activa == DI_VARIANTE_CONVENCION
+              else f"VARIANTE «{activa}» (la convención queda intacta)")
+    return (ref+1, f"✅ DI: {n_di} pts · {n_disc} discontinuidades · {origen}.{aviso_suma}",
+            True)
 
 @app.callback(
     Output("refresh","data",allow_duplicate=True),
@@ -11275,10 +11445,7 @@ def do_di_reset(n, ref):
     """(P3-3.7) Restaura ventana, umbral y pesos a Fernández et al. 2023. Solo
     cambia la configuración; no recalcula el DI hasta que se pulse Calcular."""
     if not n: return (no_update,)*8
-    global di_threshold
-    di_config["window"] = DI_DEFAULTS["window"]
-    di_threshold = DI_DEFAULTS["threshold"]
-    di_config["weights"] = dict(DI_DEFAULTS["weights"])
+    activar_di(DI_VARIANTE_CONVENCION)
     w = di_config["weights"]
     return (ref+1, di_config["window"], di_threshold, w["pp"], w["pd"], w["pf"], w["pr"],
            "↺ Configuración DI restaurada a Fernández et al. 2023. Pulsa «Calcular DI» "
