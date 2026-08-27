@@ -92,6 +92,13 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | PF | Perfil de faena configurable | — | ✅ `47e273b` |
 | P1-2 | Variantes del DI · RQD propagado | — | ✅ `ee8d3c5` |
 | P3 | Calibración de pesos contra RQD | — | ✅ `4ced6b6` |
+| S1 | Geometría de carga (estiramiento, traslape) | — | ✅ `5804ec9` |
+| S2 | RQD uno a uno · todas las presiones candidatas | — | ✅ `f2a15c8` |
+| S3 | UCS de fuente única · estadística elegible | — | ✅ `01c6689` |
+| S4 | Fuera Excel calibrador y geomecánico | — | ✅ `16653fa` |
+| S5 | Sondajes en 3D · menú de selección | — | ✅ `764a7be` |
+| S6 | Árbol por caserón y abanico | — | ✅ `a53b8c6` |
+| S7 | Carpeta-repositorio · guardado a disco | — | ✅ `fdbfeb3` |
 
 Hallazgos que condicionan la interpretación, no defectos pendientes:
 
@@ -113,10 +120,19 @@ Hallazgos que condicionan la interpretación, no defectos pendientes:
 - El RQD de sondaje solo alcanza a PCC_0042: los 10 sondajes con RQD están
   todos junto a ese caserón, y PCS_1043 y PCC_1541 quedan en 0% a cualquier
   radio. Cualquier calibración es "calibrada en PCC_0042".
-- Vecindad por SEGMENTO, no por bola: con radio 10 m y tramos de 3 m todos
-  los intervalos de un sondaje compartían casi los mismos puntos MWD. Al
-  corregirlo, rho(RQD_MWD, RQD_sondaje) con los pesos de convención pasó de
-  -0,10 a +0,18 a 5 m.
+- GEOMETRÍA DE CARGA, dos defectos que invalidaban posiciones: los puntos se
+  colocaban por parámetro normalizado y un registro que no llegaba al fondo se
+  ESTIRABA sobre todo el tiro (20 pozos, hasta 1,65 m sobre tiros de 35 m); y
+  los pozos sin DQ coherente iban al centro global, dejando 16 apilados sobre
+  la misma vertical. Corregidos: cada punto va a su profundidad real y un pozo
+  sin posición se descarta declarando el motivo.
+- El RQD se aparea UNO A UNO: cada centro medido con el punto MWD más cercano,
+  y el RQD_MWD se mide sobre el tramo de ese pozo con el largo del intervalo.
+- Las CINCO presiones son candidatas del DI, incluida la de avance: qué
+  presión sobra lo decide la calibración, no un descarte previo.
+- El testigo NO es un contraste independiente: es el patrón que ajusta los
+  pesos. di_quality_indicator() mide el apartamiento en PUNTOS DE RQD, y su
+  veredicto separa ORDENAR bien los sectores de MEDIR bien el RQD.
 - Calibración DI↔RQD: los pesos NO se estabilizan. A 5 y 10 m domina el
   dámper (0,65 y 0,82 contra el 0,25 de la convención); a 25 m domina el
   barrido (0,49) con el dámper en 0,10. El rho de validación es -0,21 (5 m),
@@ -127,9 +143,27 @@ Hallazgos que condicionan la interpretación, no defectos pendientes:
 Hoja de ruta, prompts por sesión y criterio de modelo: `docs/roadmap_ejecucion.md`.
 Documento maestro completo (respaldo): `docs/MWD_GeoMech_Documento_Maestro.md`.
 
+## Fuentes de datos
+
+UNA sola fuente de UCS: el registro de atributos. La capa ya no lleva `ucs_lab`
+y el Excel geomecánico salió del programa, junto con el Excel calibrador y el
+paso de "calibración de unidades" que colgaba de él. Qué estadística alimenta
+el modelo se elige en `ucs.estadistica_ml`: `auto` (cadena histórica, defecto),
+`central`, `media`, `mediana`, `rango_medio` o `rango_vs_se`.
+
+`rango_vs_se` proyecta la banda min-max sobre el rango de SE observado y da una
+etiqueta POR PUNTO, atacando el problema de fondo —tres etiquetas para 400.000
+registros—. Induce circularidad con SE: ese modo lo declara y excluye SE de las
+predictoras.
+
+`explorar_repositorio(ruta)` recorre una carpeta y clasifica DXF, DQ, MW y CSV
+de sondaje por caserón, con `repo.patron_caseron`. `guardar_proyecto_en(ruta)`
+escribe el .gwz a disco: el guardado siempre funcionó, lo que falla es la
+descarga del navegador con archivos de decenas de MB.
+
 ## Perfil de faena
 
-Los parámetros de operación viven en `param_registry` (32 en seis secciones),
+Los parámetros de operación viven en `param_registry` (42 en diez secciones),
 no en el código: `get_param` / `set_param` / `reset_param`, con validación y
 procedencia declarada. `export_site_profile()` e `import_site_profile()` en
 JSON es lo que recibe una faena nueva. Seis parámetros están PROTEGIDOS —la
