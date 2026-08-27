@@ -139,15 +139,24 @@ def la_dispersion_manda_sobre_la_banda_de_confianza():
 def sin_banda_se_deriva_y_se_declara():
     section("Banda — una litología sin banda no queda fuera: se deriva y se dice")
     reset()
-    esc = gw.ucs_escala(gw.attr_registry["Kpcli"])
+    # Kpcli YA NO sirve de ejemplo: el autor confirmó su rango (150-230), y la
+    # σ medida resultó 20,0 contra la 20,2 que la derivación había estimado
+    # —buena señal para las unidades que sigan sin banda—. Se usa Ka_caliza,
+    # que tiene ancla (60 MPa) y ningún rango documentado.
+    esc = gw.ucs_escala(gw.attr_registry["Ka_caliza"])
     check(esc["status"] == "ok",
-          "Kpcli tiene ancla (180) pero ninguna banda: igual recibe escala",
+          "Ka_caliza tiene ancla (60) pero ninguna banda: igual recibe escala",
           esc.get("motivo"))
     if esc["status"] != "ok":
         return
     check(esc["derivada"],
           "marcada como DERIVADA, no como medida: quien la lea tiene que saber "
-          "que ese ancho no salió de probetas de esta unidad")
+          "que ese ancho no salió de probetas de esta unidad", esc["fuente"])
+    # Y una que SÍ tiene banda no se marca como derivada.
+    k = gw.ucs_escala(gw.attr_registry["Kpcli"])
+    check(not k["derivada"] and abs(k["sigma"] - 20.0) < 1e-6,
+          "Kpcli, con su rango 150-230 confirmado, da σ=20,0 medida",
+          (k["sigma"], k["derivada"]))
     check(esc["sigma"] > 0, "con una escala utilizable", esc["sigma"])
     check("deriv" in esc["fuente"].lower() or "cv" in esc["fuente"].lower(),
           "y el motivo dice cómo se obtuvo", esc["fuente"])

@@ -553,13 +553,15 @@ def seed_attribute_registry(force: bool = False):
                          "resolución alcanzable para UCS, y se declara como "
                          "limitación, no se oculta ensanchando la banda de confianza.")),
         Attribute(id="Kpcli", nombre_oficial="Lavas Inferiores", rol="litologia", nivel="unidad",
-                  ucs_central=180.0, calidad=2, fuente="autor de la memoria",
-                  notas=("UCS 180 MPa aportada por el autor. Las mallas que "
-                         "Pucobre entrega como «Lavas» son esta unidad: es la "
-                         "litología con más metraje MWD después de Bht (120.013 "
-                         "puntos entre PCS_1043 y PCC_1541). Antes figuraba en "
-                         "calidad 0 y sin banda, lo que la dejaba fuera del "
-                         "entrenamiento entero.")),
+                  ucs_central=180.0, ucs_min=150.0, ucs_max=230.0,
+                  calidad=2, fuente="autor de la memoria",
+                  notas=("UCS 180 MPa, rango 150-230, aportados por el autor. En MPC "
+                         "hay Lavas Superiores e Inferiores: las INFERIORES bajo "
+                         "la cota ~320 y las superiores sobre la ~400. Sobre los "
+                         "datos reales, las Lavas de PCC_1541 caen 93,4% bajo la "
+                         "cota 320 —son estas— mientras que las de PCS_1043 están "
+                         "99,6% entre 320 y 400, o sea 35 m sobre el techo de las "
+                         "inferiores: NO se pueden dar por Kpcli sin confirmarlo.")),
         # ── Calizas de la Formación Abundancia ───────────────────────────────
         # Dos niveles, aportados por el autor. La malla que Pucobre entrega
         # como «Ka» no distingue cuál de los dos es, así que la unidad padre
@@ -1003,17 +1005,24 @@ def _seed_default_aliases():
         "Bht": ["BHT", "Brecha Hidrotermal", "Bx Hidrotermal", "BXH"],
         # "Lavas" a secas es como Pucobre nombra la malla de Kpcli: sin este
         # alias, 120.013 puntos quedaban sin atributo y sin UCS.
-        "Kpcli": ["KPCLI", "Lavas Inferiores", "Lavas"],
+        # "Lavas", "LAVA" y "Lavas_0042" son como Pucobre nombra la malla de
+        # Kpcli en cada caserón. En MPC hay Lavas Superiores e Inferiores: las
+        # inferiores bajo la cota ~320 y las superiores sobre la ~400, así que
+        # la cota separa las dos y el nombre de la malla no.
+        "Kpcli": ["KPCLI", "Lavas Inferiores", "Lavas", "LAVA", "Lavas_0042"],
         "Ka": ["Ka", "KA", "Calizas"],
         "DL": ["dl"],
-        "Fk": ["FK", "Feldespato potasica", "Feldespato potásica",
+        # "Bht_feldk" es COMPUESTA: Bht con alteración feldespato potásica. El
+        # separador la descompone en litología + alteración, que es justo el
+        # caso para el que se construyó la composición por roles.
+        "Fk": ["FK", "feldk", "Feldespato potasica", "Feldespato potásica",
                "Potasica", "Potásica", "K-feldespato"],
         # "Kpcmix" y "Kpcsb" son como Pucobre nombra estas mallas.
         "Brecha_mixta": ["Brecha mixta", "Bx mixta", "Kpcmix", "KPCMIX"],
         "Kpcsb_sedimentaria": ["Brecha sedimentaria", "Bx sedimentaria",
                                "Kpcsb", "KPCSB"],
         "Kpcsb_basal": ["Brecha basal"],
-        "Kpcs": ["Miembro Trinidad", "Trinidad"],
+        "Kpcs": ["Miembro Trinidad", "Trinidad", "VOLSED_KPCS", "VOLSED"],
         "Lutitas_normales": ["Lutitas normales", "Lutita normal"],
         "Lutitas_metamorfoseadas": ["Lutitas metamorfoseadas", "Lutita metamorfoseada"],
         # (P2-T2.1) Códigos de estructura y sinónimos. V/vet es el caso
