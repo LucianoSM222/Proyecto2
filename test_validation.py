@@ -31,8 +31,12 @@ sys.path.insert(0, HERE)
 
 import numpy as np
 import geomech_wizard as gw
-from test_support import require_real_data, SkipTest, fixture, skipped_banner
+from test_support import asegurar_fixture_granate, permitir_fixture_de_granate, require_real_data, SkipTest, fixture, skipped_banner
 
+
+# El fixture de Granate vive comprimido en el repositorio: se prepara antes
+# de buscar los archivos, para que un clon limpio no omita el canario.
+asegurar_fixture_granate()
 
 def _find(env_var, patterns):
     p = os.environ.get(env_var)
@@ -66,6 +70,9 @@ def _load_real_h5():
     dq = gw.parse_dq(DQ_PATH, os.path.basename(DQ_PATH))
     mw = gw.parse_mw(MW_PATH, os.path.basename(MW_PATH))
     key = f"{mw['plan_id']}_H{mw['hole_id']}"
+    # El fixture es de Mina Granate: se declara la excepción de sitio con la
+    # misma puerta que usa el usuario, en vez de apagar el guardián.
+    permitir_fixture_de_granate(key)
     gw.match_and_place_wells({dq["plan_id"]: dq}, {key: [mw]})
     return gw.wells[key]
 
@@ -217,6 +224,16 @@ def test_synthetic_displacement(well_h5):
 # ─── TEST 3: caso consistente — picos EN la malla → offset ≈ 0 ────────────────
 def test_synthetic_consistent(well_h5):
     L0 = 18.0
+    # Este test creaba la malla sintética NUNCA: se apoyaba en la que dejaba
+    # test_synthetic_displacement. Pero el fixture well_h5 llama a
+    # _reset_state(), que limpia las capas, así que la dependencia de orden
+    # solo funcionaba por casualidad. Quedó oculta mientras el fixture del
+    # canario no estaba en el repositorio y todo esto se omitía. Ahora cada
+    # test arma su propio escenario.
+    p0 = min(well_h5.points, key=lambda p: abs(p.largo - L0))
+    _make_slab_layer((p0.este + 13.7, p0.norte - 9.3, p0.cota))
+    for nombre, d in (("H5_par_1", 8.0), ("H5_par_2", -8.0)):
+        _clone_well_shifted(well_h5, nombre, d)
     for w in gw.wells.values():
         _inject_di(w, L0)   # picos exactamente en la malla
     res = gw.validate_mesh_positions()

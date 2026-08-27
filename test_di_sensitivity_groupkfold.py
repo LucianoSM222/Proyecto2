@@ -23,8 +23,12 @@ sys.path.insert(0, HERE)
 
 import numpy as np
 import geomech_wizard as gw
-from test_support import require_real_data, SkipTest, fixture, skipped_banner
+from test_support import asegurar_fixture_granate, permitir_fixture_de_granate, require_real_data, SkipTest, fixture, skipped_banner
 
+
+# El fixture de Granate vive comprimido en el repositorio: se prepara antes
+# de buscar los archivos, para que un clon limpio no omita el canario.
+asegurar_fixture_granate()
 
 def _find(env_var, patterns):
     p = os.environ.get(env_var)
@@ -55,6 +59,7 @@ def _load_real_h5():
     dq = gw.parse_dq(DQ_PATH, os.path.basename(DQ_PATH))
     mw = gw.parse_mw(MW_PATH, os.path.basename(MW_PATH))
     key = f"{mw['plan_id']}_H{mw['hole_id']}"
+    permitir_fixture_de_granate(*[key])
     gw.match_and_place_wells({dq["plan_id"]: dq}, {key: [mw]})
     return gw.wells[key]
 

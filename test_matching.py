@@ -34,10 +34,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import geomech_wizard as gw
-from test_support import require_real_data, SkipTest, fixture, skipped_banner
+from test_support import asegurar_fixture_granate, permitir_fixture_de_granate, require_real_data, SkipTest, fixture, skipped_banner
 
 
 # ─── Localización de los archivos de datos ────────────────────────────────────
+# El fixture de Granate vive comprimido en el repositorio: se prepara antes
+# de buscar los archivos, para que un clon limpio no omita el canario.
+asegurar_fixture_granate()
+
 def _find(env_var, patterns):
     p = os.environ.get(env_var)
     if p and os.path.exists(p):
@@ -107,6 +111,8 @@ def test_multi_dq_hermanos():
     key = f"{mw['plan_id']}_H{mw['hole_id']}"
     mw_by_hole = {key: [mw]}
 
+    permitir_fixture_de_granate(*mw_by_hole)
+
     counts = gw.match_and_place_wells(dq_results, mw_by_hole)
     well = gw.wells.get(key)
     assert well is not None, "No se creó el pozo."
@@ -153,6 +159,7 @@ def test_end_to_end():
     dq_results = {dq["plan_id"]: dq}
     key = f"{mw['plan_id']}_H{mw['hole_id'] or 'X'}"
     mw_by_hole = {key: [mw]}
+    permitir_fixture_de_granate(*mw_by_hole)
     counts = gw.match_and_place_wells(dq_results, mw_by_hole)
 
     well = gw.wells[key]
@@ -225,6 +232,7 @@ def test_real_hermanos_exact():
     dq_results = _load_dq_results(["P39", "P40", "P41", "P42"])
     mw = gw.parse_mw(os.path.join(_HDIR, _MW_P41H5), _MW_P41H5)
     key = f"{mw['plan_id']}_H{mw['hole_id']}"
+    permitir_fixture_de_granate(*[key])
     counts = gw.match_and_place_wells(dq_results, {key: [mw]})
     w = gw.wells[key]
     print(f"[TEST hermanos-exact] origin={w.origin} plan={gw._plan_short(w.plan_id)} "
@@ -248,6 +256,7 @@ def test_real_fallback_no_exact():
     dq_results = _load_dq_results(["P39", "P40", "P42"])  # sin P41
     mw = gw.parse_mw(os.path.join(_HDIR, _MW_P41H5), _MW_P41H5)
     key = f"{mw['plan_id']}_H{mw['hole_id']}"
+    permitir_fixture_de_granate(*[key])
     counts = gw.match_and_place_wells(dq_results, {key: [mw]})
     w = gw.wells[key]
     err = gw._coherence_err(mw["largo_max"], w.collar, w.final_pt)
@@ -280,6 +289,7 @@ def test_real_coherence_rejection():
     p41["tiros"]["5"] = {"collar": corrupt_collar, "final_pt": dict(hole1["final_pt"])}
     err_corrupt = gw._coherence_err(mw["largo_max"], corrupt_collar, hole1["final_pt"])
     key = f"{mw['plan_id']}_H{mw['hole_id']}"
+    permitir_fixture_de_granate(*[key])
     counts = gw.match_and_place_wells(dq_results, {key: [mw]})
     w = gw.wells[key]
     err_chosen = gw._coherence_err(mw["largo_max"], w.collar, w.final_pt)
@@ -324,6 +334,7 @@ def test_real_all_p41_holes_no_wrong_fan():
         mw = gw.parse_mw(f, os.path.basename(f))
         if not mw["hole_id"]: continue
         mw_by_hole.setdefault(f"{mw['plan_id']}_H{mw['hole_id']}", []).append(mw)
+    permitir_fixture_de_granate(*mw_by_hole)
     counts = gw.match_and_place_wells(dq_results, mw_by_hole)
     n_total = len(gw.wells)
     matched = [w for w in gw.wells.values() if w.origin == "matched"]

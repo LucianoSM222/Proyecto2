@@ -27,8 +27,12 @@ sys.path.insert(0, HERE)
 import numpy as np
 import pandas as pd
 import geomech_wizard as gw
-from test_support import require_real_data, SkipTest, fixture, skipped_banner
+from test_support import asegurar_fixture_granate, permitir_fixture_de_granate, require_real_data, SkipTest, fixture, skipped_banner
 
+
+# El fixture de Granate vive comprimido en el repositorio: se prepara antes
+# de buscar los archivos, para que un clon limpio no omita el canario.
+asegurar_fixture_granate()
 
 def _find(env_var, patterns):
     p = os.environ.get(env_var)

@@ -117,6 +117,46 @@ def carga_xml_reales_y_crea_pozos():
     gw.wells.clear()
 
 
+def el_cache_de_conteos_no_sirve_datos_viejos():
+    """
+    El badge de vocabulario recorría los 765.848 puntos DOS veces en cada
+    acción de la interfaz: 561 ms de espera antes de que pasara nada útil. Se
+    cachea, y por eso hay que probar lo contrario de lo habitual: que el caché
+    NO entregue un resultado que dejó de ser cierto.
+    """
+    section("Rendimiento — el caché de conteos por atributo se invalida")
+    gw.seed_attribute_registry(force=True)
+    gw.wells.clear(); gw.layers.clear(); gw.domains.clear()
+    c0 = gw.attribute_point_counts()
+    check(c0 == {}, "sin pozos, sin conteos", c0)
+
+    pts = []
+    for i in range(40):
+        q = gw.MWDPoint(largo=i * 0.5, vel=0.9, pp=200.0, pa=60.0, pd=75.0,
+                        pr=45.0, pf=8.0, se=340.0, t=0.0)
+        q.atributos = {"litologia": "Bht"}
+        pts.append(q)
+    gw.wells["W1"] = gw.Well(well_name="W1", plan_id="P", hole_id="1", points=pts)
+    c1 = gw.attribute_point_counts()
+    check(c1.get("Bht") == 40,
+          "agregar un pozo cambia el conteo: el caché no se quedó pegado", c1)
+
+    for q in pts[:10]:
+        q.atributos = {"litologia": "Kfa"}
+    gw.wells["W2"] = gw.Well(well_name="W2", plan_id="P", hole_id="2",
+                             points=list(pts[:5]))
+    c2 = gw.attribute_point_counts()
+    check(c2.get("Bht", 0) != 40 or c2.get("Kfa"),
+          "y cambiar los puntos también", c2)
+
+    # El rol de cada identidad sale de la MISMA pasada: tiene que coincidir.
+    counts, roles = gw._agregados_por_atributo()
+    check(set(roles) <= set(counts),
+          "los roles y los conteos vienen de la misma pasada", (roles, counts))
+    check(roles.get("Kfa") == "litologia", "con el rol correcto", roles)
+    gw.wells.clear()
+
+
 def sin_archivos_no_revienta():
     section("Carga — sin archivos no hace nada, sin reventar")
     r = gw.on_xml(None, None, 0)
@@ -128,6 +168,7 @@ ALL_TESTS = [
     todo_upload_tiene_callback,
     el_callback_de_xml_existe,
     carga_xml_reales_y_crea_pozos,
+    el_cache_de_conteos_no_sirve_datos_viejos,
     sin_archivos_no_revienta,
 ]
 

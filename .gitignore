@@ -16,3 +16,10 @@ resultados/kit_capitulo5/*
 # Modelo de bloques en DXF: 20 MB de binario regenerable con `python3 run_sesion9.py`.
 # El CSV equivalente sí se versiona: es legible y cabe.
 resultados/*.dxf
+
+# Fixture de Granate: vive comprimido en test_data/MGN3025.zip y
+# test_support.asegurar_fixture_granate() lo extrae cuando hace falta.
+test_data/_MGN3025/
+test_data/Metandesitas.dxf
+test_data/DQMGN_*.xml
+test_data/MWMGN_*.xml

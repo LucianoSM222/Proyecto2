@@ -1216,13 +1216,51 @@ def delete_attribute(attr_id: str, force: bool = False) -> Dict:
     return uso
 
 
+_last_classify_signature: Optional[str] = None
+
+# Recorrer los 765.848 puntos para contar atributos cuesta 263 ms, y
+# training_blockers() —que lo usa— cuesta 550 ms. El badge de vocabulario los
+# llamaba EN CADA REFRESH, es decir en cada acción de la interfaz: media
+# larga de espera antes de que ocurriera nada útil. Se cachea contra una firma
+# barata; lo único que escribe p.atributos es la clasificación.
+_attr_counts_cache: Dict[str, object] = {"firma": None, "valor": None}
+
+
+def _firma_puntos() -> tuple:
+    """Firma barata de lo que puede cambiar los conteos por atributo."""
+    return (len(wells), sum(len(w.points) for w in wells.values()),
+            _last_classify_signature, len(layers))
+
+
+def _agregados_por_atributo() -> Tuple[Dict[str, int], Dict[str, str]]:
+    """
+    UNA sola pasada por los puntos que devuelve las dos cosas que se necesitan:
+    cuántos puntos tiene cada atributo, y con qué rol aparece cada identidad.
+
+    Antes eran dos recorridos separados dentro de training_blockers() —uno en
+    attribute_point_counts() y otro para armar rol_por_identidad— sobre los
+    mismos 765.848 puntos y leyendo el mismo p.atributos. Juntarlos y cachear
+    el resultado es lo que baja el costo del badge de vocabulario, que se
+    redibuja en cada acción de la interfaz.
+    """
+    firma = _firma_puntos()
+    if _attr_counts_cache["firma"] == firma:
+        return _attr_counts_cache["valor"]
+    counts: Dict[str, int] = {}
+    roles: Dict[str, str] = {}
+    for p in all_points():
+        for rol, aid in (getattr(p, "atributos", None) or {}).items():
+            if not aid: continue
+            counts[aid] = counts.get(aid, 0) + 1
+            roles.setdefault(aid, rol)
+    _attr_counts_cache["firma"] = firma
+    _attr_counts_cache["valor"] = (counts, roles)
+    return counts, roles
+
+
 def attribute_point_counts() -> Dict[str, int]:
     """Puntos MWD clasificados por atributo, contando TODOS los roles del punto."""
-    counts: Dict[str, int] = {}
-    for p in all_points():
-        for aid in (getattr(p, "atributos", None) or {}).values():
-            if aid: counts[aid] = counts.get(aid, 0) + 1
-    return counts
+    return _agregados_por_atributo()[0]
 
 
 def training_blockers() -> List[Dict]:
@@ -1235,7 +1273,7 @@ def training_blockers() -> List[Dict]:
 
     Cada entrada: {id, nombre, rol, motivo, metros, puntos}.
     """
-    counts = attribute_point_counts()
+    counts, roles_de_puntos = _agregados_por_atributo()
     presentes = set(counts) | set(attribute_meters)
     # Un atributo referenciado por una capa cargada también cuenta como presente
     # aunque todavía no tenga puntos (el cruce puede no haberse corrido).
@@ -1254,9 +1292,8 @@ def training_blockers() -> List[Dict]:
     for lay in layers.values():
         for rol, ident in layer_role_ids(lay).items():
             if ident: rol_por_identidad.setdefault(ident, rol)
-    for p in all_points():
-        for rol, ident in (getattr(p, "atributos", None) or {}).items():
-            if ident: rol_por_identidad.setdefault(ident, rol)
+    for ident, rol in roles_de_puntos.items():
+        rol_por_identidad.setdefault(ident, rol)
 
     out = []
     for aid in sorted(presentes):
@@ -2720,7 +2757,6 @@ def vocab_classification_signature() -> str:
     return hashlib.sha256(blob).hexdigest()[:24]
 
 
-_last_classify_signature: Optional[str] = None
 
 
 def classify_all_wells_cached(force: bool = False) -> bool:
@@ -3632,6 +3668,33 @@ class ParametroProtegido(Exception):
     """Se intentó escribir un parámetro de convención. Es un error."""
 
 
+# Cada sección va a un MENÚ. Sin esto, el panel del perfil dibujaba los 64
+# parámetros de 18 secciones de una sola vez: lento de renderizar e imposible
+# de recorrer para decidir algo.
+MENUS_PERFIL = {
+    "Datos": ["Repositorio", "Carga de datos", "Carga de pozos", "Sondajes"],
+    "Geometría": ["Validación de mallas", "Plano del abanico", "Modelo de bloques"],
+    "Roca": ["UCS", "Etiqueta de UCS", "Límites físicos", "Percusión (PP)",
+             "Presión de percusión"],
+    "Fracturamiento": ["RQD", "Calibración DI↔RQD", "Discriminador",
+                       "DI (convención)"],
+    "Modelo": ["Modelo de aprendizaje", "Visor 3D"],
+}
+
+# Parámetros que una faena nueva SÍ toca. El resto son afinaciones que se
+# mueven poco: viven detrás del interruptor de avanzados para que la pantalla
+# muestre lo que hay que decidir y no lo que hay que dejar quieto.
+PARAMS_BASICOS = {
+    "repo.ruta", "repo.patron_caseron", "repo.ruta_proyecto",
+    "carga.asignar_por_tolerancia", "carga.tolerancia_err_pct",
+    "sondajes.radio_cercania",
+    "rqd.radio_max_m",
+    "bloques.tamano_m", "bloques.holgura_m",
+    "ucs.estadistica_ml", "pp.estratos",
+    "calibracion.sondajes_minimos",
+}
+
+
 def _param(pid, seccion, etiqueta, defecto, tipo, unidad, procedencia,
            minimo=None, maximo=None, global_name=None, protegido=False,
            descripcion="", opciones=None):
@@ -3639,7 +3702,10 @@ def _param(pid, seccion, etiqueta, defecto, tipo, unidad, procedencia,
             "valor": defecto, "defecto": defecto, "tipo": tipo, "unidad": unidad,
             "min": minimo, "max": maximo, "procedencia": procedencia,
             "global": global_name, "protegido": protegido,
-            "descripcion": descripcion, "opciones": opciones}
+            "descripcion": descripcion, "opciones": opciones,
+            "basico": pid in PARAMS_BASICOS,
+            "menu": next((m for m, secs in MENUS_PERFIL.items() if seccion in secs),
+                         "Otros")}
 
 
 def seed_param_registry(force: bool = False):
@@ -10436,10 +10502,6 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
         # ajusta primero, y estaba solo disponible llamando set_param() a mano.
         html.Div(id="perfil-badge", className="d-flex align-items-center",
                  style={"marginRight":"10px"}),
-        # El radio del RQD decide con qué testigo se calibran los pesos del DI.
-        # Va en la barra porque hay que mirarlo ANTES de calibrar, no después.
-        html.Div(id="rqd-radio-badge", className="d-flex align-items-center",
-                 style={"marginRight":"10px"}),
         html.Div([html.Label("Color:", style={"fontSize":"11px","color":"#aaa","marginRight":"4px"}),
                   dcc.Dropdown(id="color-by",
                     options=[{"label":v[0],"value":k} for k,v in COLOR_FIELDS.items()],
@@ -10562,12 +10624,6 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
     # pantalla. Sin esto el registro existía pero solo se alcanzaba llamando
     # set_param() a mano, que para quien usa la plataforma es lo mismo que
     # tenerlos clavados en el código.
-    dbc.Modal([
-        dbc.ModalHeader(dbc.ModalTitle("Radio de asignación del RQD")),
-        dbc.ModalBody(id="rqd-radio-body", style={"maxHeight": "75vh", "overflowY": "auto"}),
-        dbc.ModalFooter(dbc.Button("Cerrar", id="close-rqd-radio", size="sm",
-                                   color="secondary")),
-    ], id="rqd-radio-modal", size="lg", is_open=False, scrollable=True),
     dbc.Modal([
         dbc.ModalHeader(dbc.ModalTitle("Perfil de faena — parámetros de operación")),
         dbc.ModalBody(id="perfil-modal-body", style={"maxHeight": "75vh", "overflowY": "auto"}),
@@ -10893,65 +10949,90 @@ def _rqd_radio_panel_body():
     ])
 
 
-def _perfil_panel_body():
+def _perfil_panel_body(menu: str = None, avanzados: bool = False):
     """
-    (PF-UI) Pantalla del perfil de faena.
+    (PF-UI) Pantalla del perfil de faena, por MENÚ.
 
-    El registro existía desde antes, pero solo se alcanzaba llamando
-    `set_param()` a mano. Para quien abre la plataforma, un parámetro que solo
-    se cambia escribiendo código está tan clavado como si estuviera en el
-    archivo: esta pantalla es lo que hace cierto el requisito de que las
-    decisiones de faena se configuren DESDE EL PROGRAMA.
+    Antes dibujaba los 64 parámetros de 18 secciones de una sola vez: lento de
+    renderizar, y con todo a la vista no se distingue lo que hay que decidir de
+    lo que hay que dejar quieto. Ahora se dibuja UN menú por vez, y los
+    parámetros que una faena mueve poco quedan detrás del interruptor de
+    avanzados en vez de competir por la atención.
 
-    Los seis parámetros de convención aparecen, con candado y con su
-    procedencia. Esconderlos daría a entender que no existen; mostrarlos
-    editables sería mentir sobre lo que se puede tocar.
+    Los seis de convención aparecen siempre, con candado y con su procedencia:
+    esconderlos daría a entender que no existen.
     """
     rep = site_profile_report()
-    secciones: Dict[str, list] = {}
-    for p in param_registry.values():
-        secciones.setdefault(p["seccion"], []).append(p)
+    menus = list(MENUS_PERFIL)
+    menu = menu if menu in menus else menus[0]
 
+    de_este = [p for p in param_registry.values() if p.get("menu") == menu]
+    n_avanzados = sum(1 for p in de_este if not p.get("basico") and not p.get("protegido"))
+    visibles = [p for p in de_este
+                if avanzados or p.get("basico") or p.get("protegido")]
+
+    secciones: Dict[str, list] = {}
+    for p in visibles:
+        secciones.setdefault(p["seccion"], []).append(p)
     bloques = []
     for sec in sorted(secciones):
         ps = sorted(secciones[sec], key=lambda x: x["etiqueta"])
-        filas = [_perfil_protegido(p) if p.get("protegido") else _perfil_campo(p)
-                 for p in ps]
         bloques.append(html.Div([
             html.Div(sec, style={"fontSize": "11px", "fontWeight": "bold",
                                  "color": "#3B8BD4", "marginTop": "10px",
                                  "borderBottom": "1px solid #333",
                                  "paddingBottom": "3px", "marginBottom": "6px"}),
-            *filas,
+            *[_perfil_protegido(p) if p.get("protegido") else _perfil_campo(p)
+              for p in ps],
         ]))
+    if not bloques:
+        bloques = [html.Small("Nada que ajustar acá sin avanzados.",
+                              style={"fontSize": "10px", "color": "#888"})]
 
+    pestanas = dbc.Row([
+        dbc.Col(dbc.Button(m, id={"type": "perfil-menu", "index": m}, size="sm",
+                           color="primary" if m == menu else "secondary",
+                           outline=m != menu, style={"fontSize": "10px"}),
+                width="auto")
+        for m in menus
+    ], className="g-1", style={"marginBottom": "10px"})
+
+    n_mod = rep["n_modificados"]
     cabecera = html.Div([
         html.Small([
-            f"Sitio activo: ", html.B(rep["sitio"]),
+            "Sitio ", html.B(rep["sitio"]),
             f" · {rep['n_parametros']} parámetros · ",
-            html.Span(f"{rep['n_modificados']} movido(s) del defecto",
-                      style={"color": "#F39C12" if rep["n_modificados"] else "#888"}),
+            html.Span(f"{n_mod} movido(s) del defecto",
+                      style={"color": "#F39C12" if n_mod else "#888"}),
             f" · {rep['n_protegidos']} de convención (solo lectura)",
         ], style={"fontSize": "10px"}),
-        html.Small(rep["nota"], style={"fontSize": "9px", "color": "#7F8C8D",
-                                       "display": "block", "marginTop": "3px"}),
     ], style={"marginBottom": "8px"})
 
     acciones = dbc.Row([
-        dbc.Col(dbc.Button("Aplicar cambios", id="btn-perfil-aplicar", size="sm",
+        dbc.Col(dbc.Button("Aplicar", id="btn-perfil-aplicar", size="sm",
                            color="primary"), width="auto"),
         dbc.Col(dbc.Button("Reponer defectos", id="btn-perfil-reset", size="sm",
                            color="secondary", outline=True), width="auto"),
-        dbc.Col(dbc.Button("Exportar perfil (JSON)", id="btn-perfil-export",
+        dbc.Col(dbc.Button("Exportar JSON", id="btn-perfil-export",
                            size="sm", color="info", outline=True), width="auto"),
-        dbc.Col(dcc.Upload(dbc.Button("Importar perfil", size="sm", color="info",
+        dbc.Col(dcc.Upload(dbc.Button("Importar", size="sm", color="info",
                                       outline=True),
                            id="up-perfil", multiple=False), width="auto"),
-    ], className="g-2", style={"marginBottom": "8px"})
+        dbc.Col(dbc.Checklist(id="perfil-avanzados", switch=True,
+                              value=[1] if avanzados else [],
+                              options=[{"label": f" avanzados ({n_avanzados})",
+                                        "value": 1}],
+                              style={"fontSize": "10px"}), width="auto"),
+    ], className="g-2 align-items-center", style={"marginBottom": "8px"})
 
-    return html.Div([cabecera, acciones, html.Div(bloques),
-                     html.Div(id="perfil-msg", style={"marginTop": "8px"})])
-
+    cuerpo = [cabecera, pestanas, acciones, html.Div(bloques)]
+    # El radio del RQD vive DENTRO del menú de Fracturamiento: es donde se
+    # decide, y tenía pantalla propia solo por haberse construido aparte.
+    if menu == "Fracturamiento" and drillholes:
+        cuerpo += [html.Hr(style={"borderColor": "#333", "margin": "14px 0"}),
+                   _rqd_radio_panel_body()]
+    cuerpo.append(html.Div(id="perfil-msg", style={"marginTop": "8px"}))
+    return html.Div(cuerpo)
 
 def _vocab_panel_body():
     attr_opts = [{"label": f"{a.id} — {a.nombre_oficial}  [{a.rol}]", "value": a.id}
@@ -11186,21 +11267,7 @@ def render_vocab_badge(_):
     return _vocab_badge_children()
 
 
-@app.callback(Output("rqd-radio-modal", "is_open"),
-              Output("rqd-radio-body", "children"),
-              Input("btn-open-rqd-radio", "n_clicks"),
-              Input("close-rqd-radio", "n_clicks"),
-              State("rqd-radio-modal", "is_open"), prevent_initial_call=True)
-def toggle_rqd_radio_modal(open_c, close_c, is_open):
-    trig = callback_context.triggered_id
-    if trig == "btn-open-rqd-radio":
-        return True, _rqd_radio_panel_body()
-    if trig == "close-rqd-radio":
-        return False, no_update
-    return no_update, no_update
-
-
-@app.callback(Output("rqd-radio-body", "children", allow_duplicate=True),
+@app.callback(Output("perfil-modal-body", "children", allow_duplicate=True),
               Output("refresh", "data", allow_duplicate=True),
               Output("toast", "children", allow_duplicate=True),
               Output("toast", "is_open", allow_duplicate=True),
@@ -11214,23 +11281,10 @@ def on_rqd_radio_fijar(n, valor, ref):
         r = confirmar_radio_rqd(valor)
     except (ValueError, TypeError) as e:
         return no_update, no_update, f"🚫 {e}", True
-    return (_rqd_radio_panel_body(), (ref or 0) + 1,
+    return (_perfil_panel_body(_perfil_menu_activo["menu"],
+                               _perfil_menu_activo["avanzados"]), (ref or 0) + 1,
             f"✔ Radio de asignación del RQD fijado en {r:g} m. Los pesos del DI "
             "ya se pueden calibrar contra el testigo.", True)
-
-
-@app.callback(Output("rqd-radio-badge", "children"), Input("refresh", "data"))
-def render_rqd_radio_badge(_):
-    r = radio_rqd_confirmado()
-    if not drillholes:
-        return html.Span()
-    etiqueta = (f"📏 RQD {r:g} m" if r is not None
-                else "📏 RQD sin radio elegido")
-    return dbc.Button(dbc.Badge(etiqueta,
-                                color="secondary" if r is not None else "warning",
-                                style={"fontSize": "10px"}),
-                      id="btn-open-rqd-radio", color="link", size="sm",
-                      style={"padding": "0", "textDecoration": "none"})
 
 
 @app.callback(Output("perfil-badge", "children"), Input("refresh", "data"))
@@ -11245,16 +11299,38 @@ def render_perfil_badge(_):
                       style={"padding": "0", "textDecoration": "none"})
 
 
+# Menú del perfil vigente y si se muestran los avanzados. Viven acá y no en un
+# dcc.Store porque el cuerpo se recompone entero en cada acción y necesita
+# saber en qué pestaña estaba.
+_perfil_menu_activo = {"menu": None, "avanzados": False}
+
+
 @app.callback(Output("perfil-modal", "is_open"), Output("perfil-modal-body", "children"),
               Input("btn-open-perfil", "n_clicks"), Input("close-perfil", "n_clicks"),
               State("perfil-modal", "is_open"), prevent_initial_call=True)
 def toggle_perfil_modal(open_c, close_c, is_open):
     trig = callback_context.triggered_id
     if trig == "btn-open-perfil":
-        return True, _perfil_panel_body()
+        return True, _perfil_panel_body(_perfil_menu_activo["menu"],
+                                        _perfil_menu_activo["avanzados"])
     if trig == "close-perfil":
         return False, no_update
     return no_update, no_update
+
+
+@app.callback(Output("perfil-modal-body", "children", allow_duplicate=True),
+              Input({"type": "perfil-menu", "index": ALL}, "n_clicks"),
+              Input("perfil-avanzados", "value"),
+              prevent_initial_call=True)
+def on_perfil_menu(clicks, avanzados):
+    trig = callback_context.triggered_id
+    if isinstance(trig, dict) and trig.get("type") == "perfil-menu":
+        if not any(clicks or []):
+            return no_update
+        _perfil_menu_activo["menu"] = trig["index"]
+    _perfil_menu_activo["avanzados"] = bool(avanzados)
+    return _perfil_panel_body(_perfil_menu_activo["menu"],
+                              _perfil_menu_activo["avanzados"])
 
 
 @app.callback(Output("perfil-modal-body", "children", allow_duplicate=True),
@@ -11277,7 +11353,9 @@ def on_perfil_aplicar(n_ap, n_rst, valores, ids, ref):
                 reset_param(p["id"]); n += 1
         msg = (f"↺ Perfil repuesto: {n} parámetro(s) volvieron a su defecto de "
                f"{ACTIVE_SITE}." if n else "El perfil ya estaba en sus defectos.")
-        return _perfil_panel_body(), (ref or 0) + 1, msg, True
+        return (_perfil_panel_body(_perfil_menu_activo["menu"],
+                                   _perfil_menu_activo["avanzados"]),
+                (ref or 0) + 1, msg, True)
 
     lote = {i["param"]: v for i, v in zip(ids or [], valores or [])}
     rep = aplicar_perfil_desde_panel(lote)
@@ -11287,7 +11365,9 @@ def on_perfil_aplicar(n_ap, n_rst, valores, ids, ref):
         resto = ("" if len(rep["rechazados"]) <= 3
                  else f" (+{len(rep['rechazados']) - 3} más)")
         partes.append(f"🚫 {len(rep['rechazados'])} rechazado(s) — {detalle}{resto}")
-    return _perfil_panel_body(), (ref or 0) + 1, " ".join(partes), True
+    return (_perfil_panel_body(_perfil_menu_activo["menu"],
+                               _perfil_menu_activo["avanzados"]),
+            (ref or 0) + 1, " ".join(partes), True)
 
 
 @app.callback(Output("dl-perfil", "data"),
@@ -11321,7 +11401,9 @@ def on_perfil_import(contents, ref):
         msg += (f" 🚫 {len(rep['rechazados'])} no se aplicaron — "
                 + " · ".join(f"{r['id']}: {r['motivo']}"
                              for r in rep["rechazados"][:3]))
-    return _perfil_panel_body(), (ref or 0) + 1, msg, True
+    return (_perfil_panel_body(_perfil_menu_activo["menu"],
+                               _perfil_menu_activo["avanzados"]),
+            (ref or 0) + 1, msg, True)
 
 
 @app.callback(Output("varjust-modal", "is_open"), Output("varjust-modal-body", "children"),

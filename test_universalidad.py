@@ -226,22 +226,58 @@ def el_perfil_se_edita_desde_el_programa():
     celda: para el geomecánico que abre la plataforma, eso es igual de fijo que
     tenerlo clavado en el código.
     """
-    section("Universalidad — el perfil se edita desde la pantalla, no desde una celda")
-    cuerpo = gw._perfil_panel_body()
-    ids = _ids(cuerpo)
-    campos = [i for i in ids
-              if isinstance(i, dict) and i.get("type") == "perfil-param"]
-    editables = [p for p in gw.param_registry.values() if not p.get("protegido")]
-    check(len(campos) == len(editables),
-          "cada parámetro editable tiene su campo en la pantalla",
-          (len(campos), len(editables)))
-    txt = " | ".join(_textos(cuerpo))
+    section("Universalidad — el perfil se edita desde la pantalla, repartido en menús")
+    # El panel dibuja UN MENÚ por vez: los 64 parámetros de 18 secciones de una
+    # sola vez eran lentos de renderizar y con todo a la vista no se distingue
+    # lo que hay que decidir de lo que hay que dejar quieto. La garantía que
+    # importa es que NADA se haya perdido en el reparto.
+    vistos, textos = set(), []
+    for menu in gw.MENUS_PERFIL:
+        cuerpo = gw._perfil_panel_body(menu, avanzados=True)
+        textos += _textos(cuerpo)
+        for i in _ids(cuerpo):
+            if isinstance(i, dict) and i.get("type") == "perfil-param":
+                vistos.add(i.get("param"))
+    editables = {p["id"] for p in gw.param_registry.values() if not p.get("protegido")}
+    faltan = editables - vistos
+    check(not faltan,
+          "recorriendo los menús, todo parámetro editable tiene su campo: "
+          "ninguno quedó huérfano al repartir", sorted(faltan))
+    check("repo.ruta" not in (editables - vistos), "incluida la ruta del repositorio")
+    txt = " | ".join(textos)
     for sec in ("Sondajes", "Modelo de bloques", "Calibración DI↔RQD",
                 "Modelo de aprendizaje"):
         check(sec in txt, f"la sección «{sec}» aparece agrupada", txt[:200])
     check("Fernández" in txt,
           "y los seis protegidos se muestran con su procedencia, en vez de "
           "esconderse", txt[:200])
+    # Cada sección cae en exactamente un menú, y ningún menú queda vacío.
+    secs = {p["seccion"] for p in gw.param_registry.values()}
+    cubiertas = {s for lista in gw.MENUS_PERFIL.values() for s in lista}
+    check(secs <= cubiertas, "ninguna sección queda fuera de los menús",
+          sorted(secs - cubiertas))
+    check(not any(p.get("menu") == "Otros" for p in gw.param_registry.values()),
+          "y ningún parámetro cae en el cajón de sastre")
+
+
+def los_basicos_son_los_que_una_faena_toca():
+    section("Universalidad — lo que varía poco no compite por la atención")
+    basicos = {p["id"] for p in gw.param_registry.values() if p.get("basico")}
+    check(basicos, "hay un subconjunto declarado de parámetros básicos", len(basicos))
+    for pid in ("repo.ruta", "sondajes.radio_cercania", "rqd.radio_max_m",
+                "bloques.tamano_m", "ucs.estadistica_ml"):
+        check(pid in basicos, f"{pid} es básico: una faena nueva lo toca sí o sí")
+    for pid in ("ml.semilla", "calibracion.semilla", "discriminador.var_factor"):
+        if pid in gw.param_registry:
+            check(pid not in basicos,
+                  f"{pid} es avanzado: se mueve poco y va detrás del interruptor")
+    # Sin avanzados, la pantalla muestra MENOS que con ellos. Es el punto.
+    for menu in gw.MENUS_PERFIL:
+        n_b = len([i for i in _ids(gw._perfil_panel_body(menu, False))
+                   if isinstance(i, dict) and i.get("type") == "perfil-param"])
+        n_a = len([i for i in _ids(gw._perfil_panel_body(menu, True))
+                   if isinstance(i, dict) and i.get("type") == "perfil-param"])
+        check(n_b <= n_a, f"menú {menu}: básico ({n_b}) ≤ avanzado ({n_a})")
 
 
 def la_pantalla_no_puede_pisar_la_convencion():
@@ -306,6 +342,7 @@ ALL_TESTS = [
     los_estratos_de_pp_son_de_la_faena,
     ningun_parametro_queda_congelado_en_un_default,
     el_perfil_se_edita_desde_el_programa,
+    los_basicos_son_los_que_una_faena_toca,
     la_pantalla_no_puede_pisar_la_convencion,
     un_valor_fuera_de_rango_se_declara,
     el_perfil_completo_viaja,
