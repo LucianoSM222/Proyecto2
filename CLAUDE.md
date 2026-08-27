@@ -99,6 +99,9 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | S5 | Sondajes en 3D · menú de selección | — | ✅ `764a7be` |
 | S6 | Árbol por caserón y abanico | — | ✅ `a53b8c6` |
 | S7 | Carpeta-repositorio · guardado a disco | — | ✅ `fdbfeb3` |
+| A1 | DI activo · el panel no pisa la convención | — | ✅ `a6a64ce` |
+| A2 | Fuera defaults silenciosos y kit duplicado | — | ✅ `bd974c7` |
+| A3 | Universalidad · 64 parámetros y pantalla de perfil | — | ✅ `05aee77` |
 
 Hallazgos que condicionan la interpretación, no defectos pendientes:
 
@@ -163,15 +166,25 @@ descarga del navegador con archivos de decenas de MB.
 
 ## Perfil de faena
 
-Los parámetros de operación viven en `param_registry` (42 en diez secciones),
-no en el código: `get_param` / `set_param` / `reset_param`, con validación y
-procedencia declarada. `export_site_profile()` e `import_site_profile()` en
-JSON es lo que recibe una faena nueva. Seis parámetros están PROTEGIDOS —la
-ventana, el umbral y los cuatro pesos del DI— y rechazan la escritura.
+Los parámetros de operación viven en `param_registry` (64 en dieciocho
+secciones), no en el código: `get_param` / `set_param` / `reset_param`, con
+validación y procedencia declarada. Se editan desde la PANTALLA del perfil
+(botón ⚙ de la barra, `_perfil_panel_body`), no solo desde código;
+`aplicar_perfil_desde_panel` escribe por lote y un valor rechazado no bloquea
+los demás. `export_site_profile()` e `import_site_profile()` en JSON es lo que
+recibe una faena nueva. Seis parámetros están PROTEGIDOS —la ventana, el
+umbral y los cuatro pesos del DI— y rechazan la escritura.
 
-Para calibrar el DI se crea una VARIANTE (`create_di_variant`), nunca se toca
-la de convención. Fernández busca sus pesos con `movvar`: calibrar es su
-método, no una desviación.
+Un parámetro del perfil NUNCA se usa como valor por defecto de argumento
+(`def f(r=RADIO)`): Python los congela al importar y el número dejaría de
+seguir al perfil. Se resuelve en el cuerpo. `test_universalidad.py` recorre el
+AST y falla si vuelve a aparecer.
+
+El DI que corre es una VARIANTE ACTIVA: `di_activo()` la nombra y `activar_di`
+es la única puerta que escribe `di_config`/`di_threshold`. Cambiar parámetros
+en el panel crea o reusa una variante (`aplicar_di_config`); la convención de
+Fernández nunca se toca. Fernández busca sus pesos con `movvar`: calibrar es
+su método, no una desviación.
 
 ## Suite de tests
 
