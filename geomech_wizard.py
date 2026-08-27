@@ -10669,88 +10669,232 @@ def render_layer_tree(_):
 @app.callback(
     Output("viewport-3d","figure"),
     Input("refresh","data"), Input("color-by","value"),
+    Input({"type":"vis-caseron","index":ALL},"value"),
     Input({"type":"vis-layer","index":ALL},"value"),
     Input({"type":"vis-well","index":ALL},"value"),
+    Input({"type":"vis-dh","index":ALL},"value"),
+    State({"type":"vis-caseron","index":ALL},"id"),
     State({"type":"vis-layer","index":ALL},"id"),
     State({"type":"vis-well","index":ALL},"id"),
+    State({"type":"vis-dh","index":ALL},"id"),
 )
-def render_viewport(_, color_by, layer_vis_vals, well_vis_vals, layer_ids, well_ids):
+def render_viewport(_, color_by, cas_vals, layer_vis_vals, well_vis_vals, dh_vals,
+                    cas_ids, layer_ids, well_ids, dh_ids):
     """
     Único callback que toca la figura 3D. Se dispara solo cuando cambian datos
     (refresh), el color, o los checkboxes de visibilidad — nunca al navegar
     entre pasos del wizard. uirevision="viewport" (fijo) preserva cámara.
+
+    El interruptor de CASERÓN manda sobre todo lo suyo; con el caserón
+    encendido manda la casilla individual. La traducción vive en
+    resolver_ocultos(), que es lo que se puede probar sin levantar Dash.
     """
-    hidden_layers = {lid["index"] for lid, v in zip(layer_ids, layer_vis_vals) if not v}
-    hidden_wells  = {wid["index"] for wid, v in zip(well_ids,  well_vis_vals)  if not v}
-    fig = build_3d_figure(color_by, hidden_layers, hidden_wells)
-    return fig
+    caserones_apagados = {cid["index"] for cid, v in zip(cas_ids, cas_vals) if not v}
+    mallas_apagadas = {lid["index"] for lid, v in zip(layer_ids, layer_vis_vals) if not v}
+    pozos_apagados = {wid["index"] for wid, v in zip(well_ids, well_vis_vals) if not v}
+    sondajes_apagados = {did["index"] for did, v in zip(dh_ids, dh_vals) if not v}
+    hidden_layers, hidden_wells = resolver_ocultos(
+        caserones_apagados, mallas_apagadas, pozos_apagados, sondajes_apagados)
+    return build_3d_figure(color_by, hidden_layers, hidden_wells)
+
+SIN_CASERON = "— sin caserón asignado —"
+
+
+def _caseron_de_sondaje(dh) -> Optional[str]:
+    """
+    Caserón de un sondaje: el de la malla más cercana que tenga uno asignado.
+    Un sondaje no declara caserón por sí mismo — pertenece al que describe.
+    """
+    if dh.malla_cercana and dh.malla_cercana in layers:
+        return layers[dh.malla_cercana].caseron
+    return None
+
+
+def _abanico_de_pozo(well) -> str:
+    """
+    Abanico de un tiro. Sale del plan_id del DQ, que es justamente lo que
+    identifica el abanico perforado: la agrupación es AUTOMÁTICA y no hay que
+    etiquetar nada a mano.
+    """
+    return _plan_short(well.plan_id) if well.plan_id else "— sin plan —"
+
+
+def resolver_ocultos(caserones_apagados: set, mallas_apagadas: set,
+                     pozos_apagados: set, sondajes_apagados: set):
+    """
+    Traduce el estado de las casillas del árbol a los dos conjuntos que
+    entiende build_3d_figure: mallas ocultas y "pozos" ocultos (los sondajes
+    viajan ahí con prefijo DH:: para no chocar con un pozo del mismo nombre).
+
+    Un caserón apagado apaga TODO lo suyo sin que haya que destildar cada
+    elemento; con el caserón encendido, manda la casilla individual.
+    """
+    ocultos_l = set(mallas_apagadas)
+    ocultos_w = set(pozos_apagados)
+    for hid in sondajes_apagados:
+        ocultos_w.add(f"DH::{hid}")
+    if caserones_apagados:
+        for name, lay in layers.items():
+            if (lay.caseron or SIN_CASERON) in caserones_apagados:
+                ocultos_l.add(name)
+        for wn, w in wells.items():
+            if (getattr(w, "caseron", None) or SIN_CASERON) in caserones_apagados:
+                ocultos_w.add(wn)
+        for hid, dh in drillholes.items():
+            if (_caseron_de_sondaje(dh) or SIN_CASERON) in caserones_apagados:
+                ocultos_w.add(f"DH::{hid}")
+    return ocultos_l, ocultos_w
+
+
+def _fila_malla(name, layer, i, caseron_opts, lito_opts):
+    _lito = layer_role_ids(layer).get("litologia")
+    _a = attr_registry.get(_lito or "")
+    badge = (dbc.Badge(_lito, color="success", className="ms-1") if _a
+             else dbc.Badge("sin atributo", color="secondary", className="ms-1"))
+    hijos = [html.Div([
+        dbc.Checkbox(id={"type": "vis-layer", "index": name}, value=True,
+                     style={"display": "inline-block", "marginRight": "6px"}),
+        html.Small([html.Span("●", style={"color": PALETTE[i % len(PALETTE)],
+                                          "marginRight": "4px"}),
+                    name, badge], style={"fontSize": "11px"}),
+    ], style={"display": "flex", "alignItems": "center"})]
+    if caseron_opts:
+        hijos.append(dbc.Row([
+            dbc.Col(dcc.Dropdown(id={"type": "caseron-sel", "index": name},
+                                 options=caseron_opts, value=layer.caseron,
+                                 placeholder="Caserón…", clearable=True,
+                                 style={"fontSize": "10px"}), width=6),
+            dbc.Col(dcc.Dropdown(id={"type": "lito-alias", "index": name},
+                                 options=lito_opts, value=layer.lito_alias,
+                                 placeholder="Litología (alias)…", clearable=True,
+                                 style={"fontSize": "10px"}), width=6),
+        ], className="g-1", style={"marginTop": "3px"}))
+    return dbc.ListGroupItem(hijos, style={"padding": "4px 8px",
+                                           "background": "transparent",
+                                           "border": "none"})
+
+
+def _fila_pozo(wn, well):
+    badge = ""
+    if well.origin == "fallback_hole": badge = " ⚠ collar por hermano"
+    elif well.origin == "tolerancia":
+        badge = f" ⚠ collar aproximado (err {well.asignacion_err_pct}%)"
+    elif well.origin == "manual": badge = " ✎ DQ asignado a mano"
+    return dbc.ListGroupItem([html.Div([
+        dbc.Checkbox(id={"type": "vis-well", "index": wn}, value=True,
+                     style={"display": "inline-block", "marginRight": "6px"}),
+        html.Small([html.Span("○", style={"color": "#5DCAA5", "marginRight": "4px"}), wn,
+                    html.Span(badge, style={"color": "#F39C12", "fontSize": "10px",
+                                            "marginLeft": "4px"})],
+                   style={"fontSize": "11px"}),
+        dbc.Button("📊", id={"type": "open-well-report", "index": wn}, size="sm",
+                   color="link", style={"fontSize": "12px", "padding": "0 0 0 8px",
+                                        "marginLeft": "auto"}),
+    ], style={"display": "flex", "alignItems": "center"})],
+        style={"padding": "2px 8px", "background": "transparent", "border": "none"})
+
+
+def _fila_sondaje(hid, dh):
+    col = ("#2ecc71" if dh.estado == "intersecta" else
+           "#f1c40f" if dh.estado == "cercano" else "#7f8c8d")
+    extra = f" · {dh.estado}" if dh.estado else ""
+    return dbc.ListGroupItem([html.Div([
+        dbc.Checkbox(id={"type": "vis-dh", "index": hid}, value=True,
+                     style={"display": "inline-block", "marginRight": "6px"}),
+        html.Small([html.Span("▬", style={"color": col, "marginRight": "4px"}), hid,
+                    html.Span(extra, style={"color": "#888", "fontSize": "10px"})],
+                   style={"fontSize": "11px"}),
+    ], style={"display": "flex", "alignItems": "center"})],
+        style={"padding": "2px 8px", "background": "transparent", "border": "none"})
+
+
+def _carpeta(titulo, hijos, item_id):
+    """Carpeta plegable. Sin hijos no se dibuja: una carpeta vacía es ruido."""
+    if not hijos:
+        return None
+    return dbc.AccordionItem(dbc.ListGroup(hijos, flush=True),
+                             title=titulo, item_id=item_id)
+
 
 def _layer_tree():
-    items = []
+    """
+    Árbol por CASERÓN. Antes era una lista plana: con 619 pozos y 23 mallas de
+    tres caserones, encontrar un abanico ahí es imposible y apagar un caserón
+    entero para mirar otro, también.
+
+    Cada caserón es una carpeta que se prende y apaga completa, y dentro trae
+    tiros —agrupados por ABANICO, automáticamente desde el plan_id del DQ—,
+    litología, estructuras y sondajes.
+    """
     caseron_opts = [{"label": c, "value": c}
                     for c in sorted({w.caseron for w in wells.values() if w.caseron})]
     lito_opts = [{"label": a.id, "value": a.id}
                  for a in attr_registry.values() if a.rol == "litologia"]
+
+    # Reparto por caserón. Nada se pierde: lo que no tiene caserón asignado va
+    # a su propia carpeta en vez de desaparecer del árbol.
+    por_cas: Dict[str, Dict] = {}
+
+    def bolsa(cas):
+        return por_cas.setdefault(cas or SIN_CASERON,
+                                  {"mallas": [], "pozos": [], "sondajes": []})
+
     for i, (name, layer) in enumerate(layers.items()):
-        # La UCS ya no se pide ni se muestra por capa: es propiedad del
-        # atributo canónico y se ve en el panel de vocabulario.
-        _lito = layer_role_ids(layer).get("litologia")
-        _a = attr_registry.get(_lito or "")
-        ucs_badge = (dbc.Badge(_lito, color="success", className="ms-1") if _a
-                     else dbc.Badge("sin atributo", color="secondary", className="ms-1"))
-        band_badge = None
-        layer_children = [
-            html.Div([
-                dbc.Checkbox(id={"type":"vis-layer","index":name}, value=True,
-                             style={"display":"inline-block","marginRight":"6px"}),
-                html.Small([html.Span("●",style={"color":PALETTE[i%len(PALETTE)],"marginRight":"4px"}),
-                            f"{layer.kind[:4]}: ", name, ucs_badge, band_badge], style={"fontSize":"11px"}),
-            ], style={"display":"flex","alignItems":"center"}),
-        ]
-        # Etiquetado caserón×litología. Ids pattern-matching (contenido
-        # regenerado) → nunca ids fijos.
-        if caseron_opts:
-            layer_children.append(dbc.Row([
-                dbc.Col(dcc.Dropdown(id={"type":"caseron-sel","index":name}, options=caseron_opts,
-                        value=layer.caseron, placeholder="Caserón…", clearable=True,
-                        style={"fontSize":"10px"}), width=6),
-                dbc.Col(dcc.Dropdown(id={"type":"lito-alias","index":name}, options=lito_opts,
-                        value=layer.lito_alias, placeholder="Litología (alias)…", clearable=True,
-                        style={"fontSize":"10px"}), width=6),
-            ], className="g-1", style={"marginTop":"3px"}))
-        items.append(dbc.ListGroupItem(layer_children,
-            style={"padding":"5px 8px","background":"transparent","border":"none","borderBottom":"1px solid #222"}))
-    for wn, well in wells.items():
-        badge = ""
-        if well.origin == "fallback_hole": badge = " ⚠ collar por fallback"
-        elif well.origin == "no_dq": badge = " ⚠ sin DQ (ficticio)"
-        elif well.origin == "ambiguous": badge = " ⚠ ambiguo (asignar DQ)"
-        elif well.origin == "manual": badge = " ✎ DQ asignado manualmente"
-        row = html.Div([
-            dbc.Checkbox(id={"type":"vis-well","index":wn}, value=True,
-                         style={"display":"inline-block","marginRight":"6px"}),
-            html.Small([html.Span("○",style={"color":"#5DCAA5","marginRight":"4px"}), wn,
-                        html.Span(badge, style={"color":"#F39C12","fontSize":"10px","marginLeft":"4px"})],
-                       style={"fontSize":"11px"}),
-            dbc.Button("📊", id={"type":"open-well-report","index":wn}, size="sm",
-                       color="link", style={"fontSize":"12px","padding":"0 0 0 8px","marginLeft":"auto"}),
-        ], style={"display":"flex","alignItems":"center"})
-        item_children = [row]
-        # Pozos ambiguos: dropdown de reasignación manual del DQ×hole (id
-        # pattern-matching, sin ids fijos, para sobrevivir a la regeneración
-        # del árbol). Al elegir se reinterpola y el origin pasa a "manual".
-        if well.origin == "ambiguous" and well.dq_candidates:
-            opts = [{"label": f"{_plan_short(c['plan_id'])} / hole {c['hole_id']} (err {c['err_pct']}%)",
-                     "value": i} for i, c in enumerate(well.dq_candidates)]
-            item_children.append(dcc.Dropdown(
-                id={"type":"assign-dq","index":wn}, options=opts,
-                placeholder="Asignar DQ×hole…", clearable=False,
-                style={"fontSize":"10px","marginTop":"4px"}))
-        items.append(dbc.ListGroupItem(
-            item_children,
-            style={"padding":"3px 8px","background":"transparent","border":"none","borderBottom":"1px solid #1a1a1a"}))
-    return dbc.ListGroup(items, flush=True) if items else \
-           html.Small("Sin datos.", style={"color":"#444","fontSize":"10px"})
+        bolsa(layer.caseron)["mallas"].append((i, name, layer))
+    for wn, w in wells.items():
+        bolsa(getattr(w, "caseron", None))["pozos"].append((wn, w))
+    for hid, dh in drillholes.items():
+        bolsa(_caseron_de_sondaje(dh))["sondajes"].append((hid, dh))
+
+    if not por_cas:
+        return html.Small("Sin datos.", style={"color": "#444", "fontSize": "10px"})
+
+    # El caserón sin asignar va último: es la excepción, no el encabezado.
+    orden = sorted(por_cas, key=lambda c: (c == SIN_CASERON, c))
+    items = []
+    for cas in orden:
+        d = por_cas[cas]
+        litos = [_fila_malla(name, lay, i, caseron_opts, lito_opts)
+                 for i, name, lay in d["mallas"] if lay.kind == "litologia"]
+        estrs = [_fila_malla(name, lay, i, caseron_opts, lito_opts)
+                 for i, name, lay in d["mallas"] if lay.kind != "litologia"]
+
+        por_abanico: Dict[str, list] = {}
+        for wn, w in d["pozos"]:
+            por_abanico.setdefault(_abanico_de_pozo(w), []).append((wn, w))
+        abanicos = [
+            _carpeta(f"{ab} ({len(lst)})",
+                     [_fila_pozo(wn, w) for wn, w in sorted(lst)],
+                     f"{cas}::ab::{ab}")
+            for ab, lst in sorted(por_abanico.items())]
+        tiros = ([dbc.Accordion([a for a in abanicos if a], start_collapsed=True,
+                                flush=True, always_open=True)]
+                 if abanicos else [])
+
+        sondajes = [_fila_sondaje(hid, dh) for hid, dh in sorted(d["sondajes"])]
+
+        sub = [c for c in (
+            _carpeta(f"Tiros ({len(d['pozos'])})", tiros, f"{cas}::tiros"),
+            _carpeta(f"Litología ({len(litos)})", litos, f"{cas}::lito"),
+            _carpeta(f"Estructuras ({len(estrs)})", estrs, f"{cas}::estr"),
+            _carpeta(f"Sondajes ({len(sondajes)})", sondajes, f"{cas}::son"),
+        ) if c is not None]
+
+        cabecera = html.Div([
+            dbc.Checkbox(id={"type": "vis-caseron", "index": cas}, value=True,
+                         style={"display": "inline-block", "marginRight": "6px"}),
+            html.Small(html.B(cas), style={"fontSize": "11px"}),
+            html.Small(f"  {len(d['pozos'])} tiros · {len(d['mallas'])} mallas"
+                       f" · {len(d['sondajes'])} sondajes",
+                       style={"color": "#888", "fontSize": "10px", "marginLeft": "6px"}),
+        ], style={"display": "flex", "alignItems": "center",
+                  "padding": "4px 2px", "borderTop": "1px solid #222"})
+        items.append(html.Div([
+            cabecera,
+            dbc.Accordion(sub, start_collapsed=True, flush=True, always_open=True),
+        ]))
+    return html.Div(items)
+
 
 @app.callback(
     Output("refresh","data",allow_duplicate=True),
