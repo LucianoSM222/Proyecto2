@@ -2898,7 +2898,18 @@ def merge_dq_siblings(dq_list: List[Dict]) -> Tuple[Dict[str, Dict], Dict]:
             previo = destino["tiros"].get(hid)
             if previo is not None:
                 d = _collar_dist(previo, t)
-                if d > 1e-3:
+                if d is None:
+                    # No se pudo medir: se declara como conflicto INDETERMINADO
+                    # en vez de darlo por coincidente, que es lo que hacía el
+                    # 0,0 de antes.
+                    conflictos.append({
+                        "plan_id": pid, "hole_id": hid, "dist_m": None,
+                        "motivo": ("collar ausente o ilegible en alguna de las "
+                                   "revisiones: no se pudo comparar"),
+                        "gana": f'{dq.get("fname","?")} ({dq.get("fecha","sin fecha")})',
+                        "pierde": f'{procedencia.get((pid, hid), {}).get("fname","?")}',
+                    })
+                elif d > 1e-3:
                     antes = procedencia.get((pid, hid), {})
                     conflictos.append({
                         "plan_id": pid, "hole_id": hid, "dist_m": round(d, 3),
@@ -2911,10 +2922,15 @@ def merge_dq_siblings(dq_list: List[Dict]) -> Tuple[Dict[str, Dict], Dict]:
         destino["fecha"] = dq.get("fecha", "")
         destino["fname"] = dq.get("fname", "")
 
-    grandes = [c for c in conflictos if c["dist_m"] > DQ_MERGE_WARN_M]
+    # Un conflicto sin distancia medible se avisa SIEMPRE: no poder comparar es
+    # al menos tan grave como una diferencia grande.
+    grandes = [c for c in conflictos
+               if c["dist_m"] is None or c["dist_m"] > DQ_MERGE_WARN_M]
     for c in grandes[:20]:
+        cuanto = ("NO SE PUDO MEDIR (" + c.get("motivo", "collar ilegible") + ")"
+                  if c["dist_m"] is None else f'{c["dist_m"]:g} m')
         log_warn(f'DQ "{c["plan_id"]}" tiro {c["hole_id"]}: el collar se desplaza '
-                 f'{c["dist_m"]:g} m entre revisiones. Se usa {c["gana"]}, se descarta '
+                 f'{cuanto} entre revisiones. Se usa {c["gana"]}, se descarta '
                  f'{c["pierde"]}. Verifica cuál corresponde al pozo perforado.')
     if len(grandes) > 20:
         log_warn(f'DQ: {len(grandes)-20} desplazamiento(s) grande(s) más, no listados.')
@@ -2932,13 +2948,22 @@ def merge_dq_siblings(dq_list: List[Dict]) -> Tuple[Dict[str, Dict], Dict]:
     return merged, reporte
 
 
-def _collar_dist(a: Dict, b: Dict) -> float:
-    """Distancia entre los collares de dos versiones del mismo tiro."""
+def _collar_dist(a: Dict, b: Dict) -> Optional[float]:
+    """
+    Distancia entre los collares de dos versiones del mismo tiro, o None si no
+    se puede calcular.
+
+    Devolvía 0,0 ante cualquier excepción, que es EXACTAMENTE la respuesta
+    tranquilizadora —«las dos revisiones están en el mismo sitio»— justo cuando
+    el dato está roto. El resultado se compara contra DQ_MERGE_WARN_M, así que
+    un collar ausente o malformado apagaba el aviso de conflicto en vez de
+    dispararlo. Ahora devuelve None y el llamador lo declara.
+    """
     try:
         ca, cb = a["collar"], b["collar"]
         return float(np.sqrt(sum((ca[k] - cb[k]) ** 2 for k in ("este", "norte", "cota"))))
     except Exception:
-        return 0.0
+        return None
 
 def parse_mw(path, fname):
     """
@@ -8313,9 +8338,22 @@ def _litologias_sin_ancla() -> List[Dict]:
 
 
 def _puntos_de_litologia(lito: str) -> List:
+    """
+    Puntos de una litología utilizables para la relación SE↔UCS.
+
+    Se exige ROP ≥ ROP_MIN_FISICA. Sin ese filtro entran mediciones con ROP
+    tendiendo a cero, y como SE = (PP+RP+AP)/ROP eso produce valores de hasta
+    3,5e11 bar·min/m: no son una medición, son una división por casi cero. Con
+    ellos dentro, en el estrato bajo de PP más del 16% de los puntos son
+    absurdos, la σ robusta de SE explota a 3,3e10, y el mapeo sobre la banda
+    devuelve el valor central para TODOS los puntos —el defecto se ve como
+    p10 = p90 = ancla—. El reporte de coherencia SE↔UCS ya filtraba así; esta
+    ruta no, y era una incoherencia entre dos caminos que leen lo mismo.
+    """
     return [p for p in all_points()
             if p.lito == lito and p.entrenable
             and p.se is not None and np.isfinite(p.se)
+            and p.vel is not None and np.isfinite(p.vel) and p.vel >= ROP_MIN_FISICA
             and (p.di is None or p.di <= di_threshold)]
 
 
@@ -8338,7 +8376,7 @@ def _se_mediana_por_estrato(lito: str) -> Optional[float]:
     if not medianas:
         v = [p.se for p in pts]
         return float(np.median(v)) if len(v) >= 30 else None
-    return float(np.mean(medianas))
+    return float(np.median(medianas))
 
 
 def _ajustar_curva_se_ucs(pares: List[Tuple[float, float]]) -> Optional[Dict]:
@@ -8417,6 +8455,22 @@ def leave_one_lithology_out(metodo: str = "relacion") -> Dict:
                     motivo = (f"EXTRAPOLACIÓN: SE={se_fuera:.0f} cae fuera del "
                               f"rango de calibración [{min(ses):.0f}, {max(ses):.0f}] "
                               f"cubierto por {len(cal)} ancla(s).")
+        elif metodo == "banda":
+            # La banda de la litología EXCLUIDA no se puede usar: predecirla
+            # con su propia banda acertaría por construcción y la vara no
+            # valdría nada. Se ajusta la curva con las demás y se predice el
+            # centro; la dispersión describe la roca, no ubica su centro.
+            cal = [(_se_mediana_por_estrato(k), v) for k, v in entrena.items()]
+            curva = _ajustar_curva_se_ucs(cal)
+            se_lito = _se_escala_lito(fuera)
+            if curva is None or se_lito is None:
+                pred, motivo = None, "no se pudo ajustar la curva sin esa litología"
+            else:
+                pred = _aplicar_curva(curva, se_lito[0])
+                ses = [a for a, _ in cal]
+                if se_lito[0] < min(ses) or se_lito[0] > max(ses):
+                    motivo = (f"EXTRAPOLACIÓN: SE={se_lito[0]:.0f} fuera del rango "
+                              f"de calibración [{min(ses):.0f}, {max(ses):.0f}].")
         elif metodo == "ml":
             pred, motivo = _ml_predice_litologia_fuera(fuera, entrena)
         else:
@@ -8490,7 +8544,7 @@ def compare_ucs_methods() -> Dict:
     """
     salida = []
     for met, preds in (("linea_base", []), ("relacion", ["se"]),
-                       ("ml", list(ML_FEATURES_SIN_SE))):
+                       ("banda", ["se"]), ("ml", list(ML_FEATURES_SIN_SE))):
         r = leave_one_lithology_out(met)
         fila = {"metodo": met, "predictoras": preds, "status": r["status"]}
         if r["status"] == "ok":
@@ -8502,6 +8556,12 @@ def compare_ucs_methods() -> Dict:
             fila["motivo"] = r.get("motivo")
         if met == "ml":
             fila["motivo_sin_se"] = MOTIVO_SIN_SE
+        if met == "banda":
+            fila["nota"] = ("Da un valor POR PUNTO dentro de la banda de su "
+                            "unidad. La vara mide el centro, así que este "
+                            "número no premia la dispersión: son dos bienes "
+                            "distintos.")
+            fila["motivo_sin_ml"] = MOTIVO_BANDA_SIN_ML
         salida.append(fila)
     con_num = [m for m in salida if m.get("mae_mpa") is not None]
     if not con_num:
@@ -8612,6 +8672,212 @@ def predict_ucs_relacion() -> Dict:
                    if vara.get("mae_mpa") is not None
                    else "; sin vara: se necesitan tres litologías con ancla")
                 + ". Sin acote a la banda de la unidad: solo a 0–450 MPa.")}
+
+
+# ─── UCS POR BANDA: la distribución de SE mapeada sobre la banda de la unidad ─
+# El planteo es del autor: entrenar contra un valor específico hace que el
+# modelo aprenda el número, cuando la realidad es que dentro de una misma
+# litología hay un RANGO de UCS, y que a veces se escapa de la banda por
+# alteración. Mapear la distribución de SE sobre la banda le devuelve variación
+# real al objetivo, que es lo que la auditoría señaló como el defecto de fondo
+# (varianza intra-dominio 7e-22: no había nada que aprender).
+#
+#     z(p)   = (SE(p) − SE_mediana_lito) / σ_SE_lito
+#     UCS(p) = UCS_central_lito + z(p) · σ_UCS_lito
+
+MOTIVO_BANDA_SIN_ML = (
+    "El ML NO usa la etiqueta por banda. Esa etiqueta es f(SE), y aunque SE "
+    "está fuera de sus predictoras, PP+RP+AP y ROP siguen dentro y determinan "
+    "SE exactamente (SE = (PP+RP+AP)/ROP, error de reconstrucción 3,5e-07). El "
+    "bosque aprendería f y sería una copia peor de la relación directa: es "
+    "circularidad lavada a través de la identidad. El ML se queda con la "
+    "etiqueta central, que es una pregunta distinta y legítima.")
+
+
+def ucs_escala(attr) -> Dict:
+    """
+    σ de UCS de una litología: cuánto varía la roca DENTRO de la unidad.
+
+    Cadena declarada, de lo medido a lo derivado. Importa el orden: para Bht
+    conviven una banda de CONFIANZA (100-145, del ajuste Hoek-Brown) y una
+    DISPERSIÓN observada (64,5-296,9, el scatter real de las probetas). La
+    primera describe cuán bien se conoce la media; la segunda, cuánto varía la
+    roca. La que corresponde acá es la dispersión: usar la de confianza
+    aplastaría la variación real a un quinto.
+    """
+    if attr is None:
+        return {"status": "sin_atributo",
+                "motivo": "No hay atributo del que tomar la banda."}
+    central = attr.ucs_ancla()
+    if central is None:
+        return {"status": "sin_ancla",
+                "motivo": (f"«{attr.id}» no tiene ancla de UCS: sin valor central "
+                           "no hay nada que escalar.")}
+    if attr.ucs_cv is not None and attr.ucs_cv > 0:
+        return {"status": "ok", "central": central,
+                "sigma": float(central * attr.ucs_cv), "derivada": False,
+                "fuente": f"coeficiente de variación documentado ({attr.ucs_cv:g})"}
+    if attr.ucs_sd is not None and attr.ucs_sd > 0:
+        return {"status": "ok", "central": central, "sigma": float(attr.ucs_sd),
+                "derivada": False,
+                "fuente": f"desviación estándar documentada ({attr.ucs_sd:g} MPa)"}
+    if attr.dispersion_min is not None and attr.dispersion_max is not None:
+        # ±2σ cubre el rango observado: convención declarada, no una medición.
+        sig = (attr.dispersion_max - attr.dispersion_min) / 4.0
+        return {"status": "ok", "central": central, "sigma": float(sig),
+                "derivada": False,
+                "fuente": (f"dispersión observada {attr.dispersion_min:g}-"
+                           f"{attr.dispersion_max:g} MPa, tomada como ±2σ")}
+    if attr.ucs_min is not None and attr.ucs_max is not None:
+        sig = (attr.ucs_max - attr.ucs_min) / 4.0
+        return {"status": "ok", "central": central, "sigma": float(sig),
+                "derivada": False,
+                "fuente": (f"banda {attr.ucs_min:g}-{attr.ucs_max:g} MPa como "
+                           "±2σ. OJO: si es banda de confianza y no dispersión "
+                           "observada, subestima la variación real de la roca.")}
+    # Nada documentado: se deriva del CV mediano de las unidades que sí lo
+    # tienen, y se MARCA como derivada. Un ancho inventado que no se declare
+    # es indistinguible de uno medido.
+    cvs = []
+    for a in attr_registry.values():
+        if a.rol != "litologia" or a is attr:
+            continue
+        e = _cv_de(a)
+        if e is not None:
+            cvs.append(e)
+    if not cvs:
+        return {"status": "sin_banda",
+                "motivo": (f"«{attr.id}» no documenta banda ni dispersión, y no "
+                           "hay otra litología de la que derivar el ancho.")}
+    cv = float(np.median(cvs))
+    return {"status": "ok", "central": central, "sigma": float(central * cv),
+            "derivada": True,
+            "fuente": (f"DERIVADA del CV mediano de las otras litologías "
+                       f"({cv:.2f}) por falta de banda propia. No salió de "
+                       f"probetas de «{attr.id}».")}
+
+
+def _cv_de(attr) -> Optional[float]:
+    """CV de una litología, si se puede establecer sin derivarlo."""
+    c = attr.ucs_ancla()
+    if c is None or c <= 0:
+        return None
+    if attr.ucs_cv is not None and attr.ucs_cv > 0:
+        return float(attr.ucs_cv)
+    if attr.ucs_sd is not None and attr.ucs_sd > 0:
+        return float(attr.ucs_sd / c)
+    if attr.dispersion_min is not None and attr.dispersion_max is not None:
+        return float((attr.dispersion_max - attr.dispersion_min) / 4.0 / c)
+    if attr.ucs_min is not None and attr.ucs_max is not None:
+        return float((attr.ucs_max - attr.ucs_min) / 4.0 / c)
+    return None
+
+
+def _se_escala_lito(lito: str) -> Optional[Tuple[float, float]]:
+    """(SE mediana, σ robusta de SE) de una litología, controlando por PP."""
+    pts = _puntos_de_litologia(lito)
+    if len(pts) < 30:
+        return None
+    med, sig = [], []
+    for lo, hi in PP_ESTRATOS:
+        v = np.array([p.se for p in pts if p.pp is not None and lo <= p.pp < hi])
+        if v.size >= 30:
+            med.append(float(np.median(v)))
+            # σ robusta: la mitad del rango p16-p84. Con las colas del MWD, la
+            # desviación estándar la infla un outlier suelto.
+            sig.append(float((np.percentile(v, 84) - np.percentile(v, 16)) / 2.0))
+    if not med:
+        v = np.array([p.se for p in pts])
+        med = [float(np.median(v))]
+        sig = [float((np.percentile(v, 84) - np.percentile(v, 16)) / 2.0)]
+    # Mediana y no media al combinar estratos: un estrato con pocos puntos y
+    # colas sucias arrastraba el promedio y con él toda la escala.
+    s = float(np.median(sig))
+    return float(np.median(med)), (s if s > 1e-9 else 1.0)
+
+
+def predict_ucs_banda() -> Dict:
+    """
+    UCS por punto mapeando la distribución de SE sobre la banda de su unidad.
+
+    Un punto en la SE mediana de su litología recibe el valor central; uno con
+    SE extrema se va lejos y PUEDE salirse de la banda. No se acota: salirse es
+    la señal de alteración que se quiere ver. El único límite es el físico.
+
+    Un punto sin litología no tiene banda: cae a la curva global SE↔UCS, que es
+    el caso de los tiros piloto en un caserón todavía sin modelo litológico.
+    """
+    global ucs_modelo_vigente, ucs_modelo_meta
+    anclas = _anclas_por_litologia()
+    escalas: Dict[str, Dict] = {}
+    derivadas, sin_escala = [], []
+    for lito in anclas:
+        a = attr_registry.get(lito)
+        esc = ucs_escala(a)
+        se = _se_escala_lito(lito)
+        if esc["status"] != "ok" or se is None:
+            sin_escala.append({"litologia": lito,
+                               "motivo": esc.get("motivo") or
+                                         "sin puntos MWD suficientes para su SE"})
+            continue
+        esc["se_mediana"], esc["se_sigma"] = se
+        # El ancla del dominio manda sobre la del atributo: es la que el
+        # usuario eligió con ucs.estadistica_ml.
+        esc["central"] = float(anclas[lito])
+        escalas[lito] = esc
+        if esc.get("derivada"):
+            derivadas.append(lito)
+    if not escalas:
+        return {"status": "sin_datos",
+                "motivo": ("Ninguna litología tiene a la vez ancla de UCS, banda "
+                           "y puntos MWD suficientes."),
+                "sin_escala": sin_escala}
+
+    # Curva global para los puntos sin litología.
+    pares = [(e["se_mediana"], e["central"]) for e in escalas.values()]
+    curva = _ajustar_curva_se_ucs(pares) if len(pares) >= 2 else None
+
+    lo_f, hi_f = UCS_CONFIG["physical_min"], UCS_CONFIG["physical_max"]
+    n, n_sin_banda = 0, 0
+    for p in all_points():
+        if p.se is None or not np.isfinite(p.se):
+            p.ucs_ml = None; p.banda_check = None; p.ucs_modelo = None
+            continue
+        esc = escalas.get(p.lito) if p.lito else None
+        if esc is not None:
+            z = (float(p.se) - esc["se_mediana"]) / esc["se_sigma"]
+            val = esc["central"] + z * esc["sigma"]
+        elif curva is not None:
+            val = _aplicar_curva(curva, float(p.se))
+            n_sin_banda += 1
+        else:
+            p.ucs_ml = None; p.banda_check = None; p.ucs_modelo = None
+            continue
+        p.ucs_ml = round(float(np.clip(val, lo_f, hi_f)), 1)
+        p.ucs_ml_p10 = p.ucs_ml_p90 = None
+        p.ucs_modelo = "banda"
+        _marcar_banda(p)
+        n += 1
+    vara = leave_one_lithology_out("banda")
+    ucs_modelo_vigente = "banda"
+    ucs_modelo_meta = {"n_anclas": len(escalas), "forma": "banda por litología",
+                       "mae_mpa": vara.get("mae_mpa")}
+    return {"status": "ok", "n_puntos": n, "n_sin_banda": n_sin_banda,
+            "escalas": {k: {"central": round(v["central"], 1),
+                            "sigma": round(v["sigma"], 1),
+                            "derivada": v["derivada"], "fuente": v["fuente"]}
+                        for k, v in sorted(escalas.items())},
+            "derivadas": derivadas, "sin_escala": sin_escala, "vara": vara,
+            "advertencia_ml": MOTIVO_BANDA_SIN_ML,
+            "procedencia": (
+                f"UCS por BANDA: la distribución de SE de cada litología mapeada "
+                f"sobre su banda de UCS, con {len(escalas)} unidad(es)"
+                + (f"; {len(derivadas)} con ancho DERIVADO ({', '.join(derivadas)}), "
+                   "no medido" if derivadas else "")
+                + (f"; error dejando-una-fuera {vara['mae_mpa']:g} MPa"
+                   if vara.get("mae_mpa") is not None else "")
+                + ". Sin acote a la banda: un punto puede salirse, y salirse es "
+                  "la señal de alteración.")}
 
 
 def predict_all_wells():
