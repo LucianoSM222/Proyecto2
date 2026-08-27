@@ -12311,6 +12311,87 @@ def do_preview_cross(n, ref):
     n_dom = sum(1 for p in all_pts if p.dominio)
     return ref+1, f"✅ Cruce ejecutado: {n_dom}/{len(all_pts)} pts dentro de alguna malla, {n_ucs} con UCS asignado.", True
 
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  CARGA DE XML IREDES (DQ + MW). RESTAURADO.                             ║
+# ║                                                                          ║
+# ║  Este callback se perdió entero al sacar los callbacks del Excel         ║
+# ║  calibrador y del geomecánico: el borrado se llevó por delante 119       ║
+# ║  líneas de más. El componente dcc.Upload("up-xml") seguía en el layout y ║
+# ║  el botón seguía abriendo el selector de archivos, así que la interfaz   ║
+# ║  se veía intacta — pero nadie recibía los archivos y no cargaba ningún   ║
+# ║  pozo MWD, que es la función central de la plataforma.                  ║
+# ║                                                                          ║
+# ║  Un dcc.Upload sin callback que lo consuma no da error: falla en         ║
+# ║  silencio. test_carga_mwd.py verifica ahora que todo dcc.Upload del      ║
+# ║  layout tenga quien lo escuche.                                         ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+@app.callback(
+    Output("refresh","data",allow_duplicate=True),
+    Output("toast","children",allow_duplicate=True),
+    Output("toast","is_open",allow_duplicate=True),
+    Input("up-xml","contents"), State("up-xml","filename"),
+    State("refresh","data"), prevent_initial_call=True,
+)
+def on_xml(contents_list, filenames, ref):
+    if not contents_list: return no_update, no_update, no_update
+    dq_list, mw_by_hole, errs = [], {}, []
+    for content, fname in zip(contents_list, filenames):
+        try:
+            _, b64 = content.split(",", 1)
+            raw = base64.b64decode(b64)
+            with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as f:
+                f.write(raw); tmp = f.name
+            try:
+                root = ET.parse(tmp).getroot()
+                root_tag = root.tag
+            except: root_tag = ""
+            if is_dq(fname, root_tag):
+                # Se ACUMULAN los DQ, no se indexan por plan_id: varios
+                # archivos pueden ser revisiones del mismo abanico y cada
+                # una traer tiros distintos. La fusión (y el reporte de sus
+                # desacuerdos) ocurre después, en merge_dq_siblings.
+                dq_list.append(parse_dq(tmp, fname))
+            else:
+                mw = parse_mw(tmp, fname)
+                key = f"{mw['plan_id']}_H{mw['hole_id'] or 'X'}"
+                mw_by_hole.setdefault(key, []).append(mw)
+            os.unlink(tmp)
+        except Exception as e:
+            errs.append(f"{fname}: {e}")
+    dq_results, dq_rep = merge_dq_siblings(dq_list)
+    # La decisión sobre collares aproximados se toma UNA vez, en el perfil de
+    # faena, y vale para toda la carga: no se pregunta pozo por pozo.
+    counts = match_and_place_wells(
+        dq_results, mw_by_hole,
+        asignar_por_tolerancia=bool(get_param("carga.asignar_por_tolerancia")),
+        tolerancia_err_pct=float(get_param("carga.tolerancia_err_pct")))
+    if wells:
+        wz_state['step1']['xml_loaded'] = True
+    parts = [f"✅ {len(mw_by_hole)} pozos MWD"]
+    if counts["matched"]:   parts.append(f"{counts['matched']} matcheados")
+    if counts["fallback"]:  parts.append(f"{counts['fallback']} por hermano ⚠")
+    if counts.get("tolerancia"):
+        parts.append(f"{counts['tolerancia']} por tolerancia ⚠ (posición aproximada)")
+    n_desc = (counts.get("descartados_sin_posicion", 0)
+              + counts.get("descartados_sin_registro", 0))
+    if n_desc:
+        parts.append(f"{n_desc} descartados ⚠ "
+                     f"({counts.get('descartados_sin_posicion', 0)} sin posición, "
+                     f"{counts.get('descartados_sin_registro', 0)} sin registro útil)")
+    if counts.get("fuera_sitio"):
+        parts.append(f"🚫 {counts['fuera_sitio']} FUERA DEL SITIO {active_site()['id']} "
+                     f"(no cargados — ver advertencias)")
+    if dq_rep["n_archivos"] > dq_rep["n_planes"]:
+        parts.append(f"{dq_rep['n_archivos']} DQ → {dq_rep['n_planes']} planes "
+                     f"({dq_rep['n_tiros']} tiros)")
+    if dq_rep["conflictos"]:
+        parts.append(f"{len(dq_rep['conflictos'])} tiro(s) con coordenadas distintas "
+                     f"entre revisiones ⚠")
+    if errs: parts.append(f"Err: {'; '.join(errs)}")
+    return ref+1, " · ".join(parts), True
+
+
 for btn_id, upload_id in [("btn-dxf","up-dxf"), ("btn-xml","up-xml"),
                           ("btn-drillhole","up-drillhole")]:
     app.clientside_callback(
