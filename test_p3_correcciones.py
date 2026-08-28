@@ -264,11 +264,27 @@ def t35_selector_variable_perfil():
 
 
 def t36_histograma_se_recortado():
-    section("3.6 — Histograma de SE recortado en la vista (P1–P99)")
+    """
+    (B5) SE ahora vive bajo DOS recortes distintos, y este test los separa:
+
+      · FÍSICO (SE_MAX_REPORTE=1000): un punto con ROP≈0 —el equipo lavando
+        el bit, no perforando— dispara la SE a valores sin sentido. Ese
+        punto se DESCARTA de verdad del histograma y del perfil: no es un
+        percentil de la distribución, es un techo trazable a la física de
+        la fórmula. Antes de este arreglo, un solo punto así (se vieron
+        hasta 3,5e11 bar·min/m sobre datos reales) aplastaba la escala de
+        todo el gráfico.
+      · DE VISTA (P1–P99): sobre lo que SÍ es físicamente válido, el eje se
+        recorta para que unos pocos puntos extremos —pero reales— no
+        aplasten la lectura del grueso de la distribución. Este SÍ es
+        solo de vista: los datos no se filtran ni se borran.
+    """
+    section("3.6 — SE: techo físico + recorte de vista (P1–P99)")
     reset()
     pts = [mk_point(i, "Kfa", se=5.0, pp=5.0) for i in range(50)]
+    pts.append(mk_point(50, "Kfa", se=900.0, pp=900.0))     # válido, extremo de vista
     pts.append(mk_point(51, "Kfa", se=0.0001, pp=0.0001))
-    pts.append(mk_point(52, "Kfa", se=5000.0, pp=5000.0))
+    pts.append(mk_point(52, "Kfa", se=5000.0, pp=5000.0))   # ROP≈0: descartado de verdad
     gw.wells["P0"] = FakeWell(pts)
 
     fig = gw.build_well_report_figure("P0", hist_vars=["se", "pp"], profile_var="di")
@@ -276,21 +292,29 @@ def t36_histograma_se_recortado():
     xa_pp = list(fig.select_xaxes(row=2, col=2))[0]
     check(xa_se.range is not None, "la vista del histograma de SE queda recortada a un rango")
     if xa_se.range is not None:
-        check(xa_se.range[0] > 0.0001 and xa_se.range[1] < 5000.0,
-              "el recorte de SE excluye los extremos (P1/P99), no el rango completo",
-              xa_se.range)
+        check(xa_se.range[0] > 0.0001 and xa_se.range[1] <= 900.0,
+              "el recorte de vista opera sobre lo físicamente válido, no "
+              "sobre el punto de 5000 que ya se descartó antes", xa_se.range)
     check(xa_pp.range is None,
           "una variable fuera de REPORT_HIST_CLIP_VARS (pp) NO se recorta")
 
-    n_se_data = len([p for p in pts if p.se is not None])
     hist_trace = [t for t in fig.data if t.type == "histogram" and
                   t.name == gw.REPORT_VARS["se"]][0]
-    check(len(hist_trace.x) == n_se_data,
-          "el recorte es solo de VISTA: los datos del histograma no se filtran ni se borran")
+    n_se_fisicamente_valido = len([p for p in pts if p.se is not None
+                                   and p.se <= gw.SE_MAX_REPORTE])
+    check(len(hist_trace.x) == n_se_fisicamente_valido,
+          "el histograma trae los puntos físicamente válidos (con el de "
+          "5000 ya afuera), y el recorte P1-P99 sobre ESOS es solo de "
+          "vista: no borra ninguno más", (len(hist_trace.x), n_se_fisicamente_valido))
+    check(5000.0 not in hist_trace.x,
+          "el punto con ROP≈0 no aparece ni disfrazado dentro del rango "
+          "recortado: está fuera del histograma, no solo fuera del eje visible")
 
     titulo_se = fig.layout.annotations[1].text if len(fig.layout.annotations) > 1 else ""
     check("P1" in titulo_se and "P99" in titulo_se or "P1–P99" in titulo_se,
           "el subtítulo del histograma de SE declara el recorte de vista", titulo_se)
+    check("1000" in titulo_se or f"{gw.SE_MAX_REPORTE:g}" in titulo_se,
+          "y declara también el techo físico, por separado del de vista", titulo_se)
     reset()
 
 
@@ -303,18 +327,20 @@ def t37_pesos_di_configurables():
           "el resumen declara que está en valores por defecto", resumen)
 
     gw.wells["P0"] = FakeWell([mk_point(i, "Kfa") for i in range(5)])
-    ref, w, thr, wpp, wpd, wpf, wpr, msg, ok = gw.do_di_reset(1, 0)
+    ref, w, thr, wpp, wpd, wpf, wpr, wpa, msg, ok = gw.do_di_reset(1, 0)
     # do_di_reset solo restaura; probemos primero un cambio real vía do_di.
-    ref, toast, opened = gw.do_di(1, "10", "1.2", "0.4", "0.3", "0.2", "0.1", 0)
+    # Quinta casilla (avance): las cinco presiones son candidatas del DI, no
+    # solo cuatro — el descarte lo decide la calibración, no el formulario.
+    ref, toast, opened = gw.do_di(1, "10", "1.2", "0.4", "0.3", "0.2", "0.1", "0", 0)
     check(gw.di_config["window"] == 10 and gw.di_threshold == 1.2,
           "do_di aplica ventana y umbral nuevos", (gw.di_config["window"], gw.di_threshold))
-    check(gw.di_config["weights"] == {"pp": 0.4, "pd": 0.3, "pf": 0.2, "pr": 0.1},
-          "do_di aplica los cuatro pesos nuevos", gw.di_config["weights"])
+    check(gw.di_config["weights"] == {"pp": 0.4, "pd": 0.3, "pf": 0.2, "pr": 0.1, "pa": 0.0},
+          "do_di aplica los cinco pesos nuevos, avance incluido", gw.di_config["weights"])
     check(not gw.di_config_is_default(), "tras el cambio, la configuración ya no es la de fábrica")
 
     # Valor no numérico: se rechaza SIN tocar la configuración vigente.
     prev = dict(gw.di_config["weights"]); prev_thr = gw.di_threshold
-    ref2, toast2, ok2 = gw.do_di(1, "10", "abc", "0.4", "0.3", "0.2", "0.1", 0)
+    ref2, toast2, ok2 = gw.do_di(1, "10", "abc", "0.4", "0.3", "0.2", "0.1", "0", 0)
     check(ref2 is gw.no_update if hasattr(gw, "no_update") else True,
           "un umbral inválido no dispara refresh (best-effort)")
     check(gw.di_threshold == prev_thr and gw.di_config["weights"] == prev,
@@ -323,17 +349,25 @@ def t37_pesos_di_configurables():
           toast2)
 
     # Peso 0 explícito debe aceptarse (no confundirse con "vacío").
-    ref3, toast3, ok3 = gw.do_di(1, "10", "1.2", "0", "0.3", "0.2", "0.1", 0)
+    ref3, toast3, ok3 = gw.do_di(1, "10", "1.2", "0", "0.3", "0.2", "0.1", "0", 0)
     check(gw.di_config["weights"]["pp"] == 0.0,
           "un peso 0 explícito se acepta (no se sustituye en silencio)")
 
-    ref4, w4, thr4, wpp4, wpd4, wpf4, wpr4, msg4, ok4 = gw.do_di_reset(1, 0)
+    # El avance SÍ puede pesar: la quinta candidata no queda descartada de
+    # antemano por el formulario, solo por la calibración.
+    ref3b, toast3b, ok3b = gw.do_di(1, "10", "1.2", "0.2", "0.2", "0.1", "0.2", "0.3", 0)
+    check(gw.di_config["weights"]["pa"] == 0.3,
+          "un peso de avance explícito se aplica igual que los otros cuatro",
+          gw.di_config["weights"])
+
+    ref4, w4, thr4, wpp4, wpd4, wpf4, wpr4, wpa4, msg4, ok4 = gw.do_di_reset(1, 0)
     check(gw.di_config_is_default(), "do_di_reset vuelve a los valores de Fernández et al. 2023")
-    check((w4, thr4, wpp4, wpd4, wpf4, wpr4) ==
+    check((w4, thr4, wpp4, wpd4, wpf4, wpr4, wpa4) ==
           (gw.DI_DEFAULTS["window"], gw.DI_DEFAULTS["threshold"],
            gw.DI_DEFAULTS["weights"]["pp"], gw.DI_DEFAULTS["weights"]["pd"],
-           gw.DI_DEFAULTS["weights"]["pf"], gw.DI_DEFAULTS["weights"]["pr"]),
-          "do_di_reset empuja los valores por defecto de vuelta a los 6 inputs de la UI")
+           gw.DI_DEFAULTS["weights"]["pf"], gw.DI_DEFAULTS["weights"]["pr"], 0.0),
+          "do_di_reset empuja los valores por defecto de vuelta a los 7 inputs "
+          "de la UI, avance en 0")
     reset()
 
 

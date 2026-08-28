@@ -55,7 +55,6 @@ DECISIONES_DE_FAENA = {
     "DRILLHOLE_NEAR_DISTANCE_M":  "sondajes.radio_cercania",
     "DRILLHOLE_TRACE_STEP_M":     "sondajes.paso_desurvey",
     "DQ_MERGE_WARN_M":            "carga.aviso_desplazamiento_dq",
-    "PARSE_BUDGET_S":             "carga.presupuesto_parseo",
     "BORDE_MALLA_M":              "mallas.borde",
     "VAL_MAX_OFFSET_M":           "mallas.offset_maximo",
     "VAL_MIN_WELLS":              "mallas.pozos_minimos",
@@ -64,7 +63,6 @@ DECISIONES_DE_FAENA = {
     "MULTICOLLINEARITY_THRESHOLD": "ml.umbral_colinealidad",
     "COMPARISON_MAX_N":           "ml.submuestreo_comparacion",
     "COMPARISON_SEED":            "ml.semilla",
-    "MAX_VIZ_POINTS":             "visor.puntos_maximos",
     "CAL_N_MUESTRAS":             "calibracion.n_muestras",
     "CAL_MIN_SONDAJES":           "calibracion.sondajes_minimos",
     "CAL_SEMILLA":                "calibracion.semilla",
@@ -83,6 +81,13 @@ CONVENCIONES_INTOCABLES = [
     "DI_VARIANTE_CONVENCION",
     "ATTR_ROLES",
     "CAL_PARAMS",             # las cinco presiones candidatas
+    # Estas TRES estuvieron en el perfil y salieron: el autor pidió que lo
+    # que "normalmente funciona así" se fije y se oculte, en vez de ofrecer
+    # un campo editable para algo que no varía por faena. Las tres ya lo
+    # decían en su propia procedencia antes de salir del registro:
+    "RQD_TRAMO_MIN_M",        # definición de Deere (10 cm), no una elección
+    "MAX_VIZ_POINTS",         # "depende de la máquina, no del yacimiento"
+    "PARSE_BUDGET_S",         # "depende de la máquina, no del yacimiento"
 ]
 
 
@@ -124,6 +129,12 @@ def las_convenciones_siguen_siendo_constantes():
     section("Universalidad — lo que es convención NO se vuelve configurable")
     for c in CONVENCIONES_INTOCABLES:
         check(hasattr(gw, c), f"{c} existe", c)
+    # Las tres que salieron del perfil no pueden quedar como parámetro
+    # editable Y como constante a la vez: eso sería el mismo número con dos
+    # fuentes de verdad, que es justo lo que "fijar y ocultar" evita.
+    for pid in ("rqd.tramo_min_m", "visor.puntos_maximos", "carga.presupuesto_parseo"):
+        check(pid not in gw.param_registry,
+              f"«{pid}» ya no es un parámetro del perfil", pid)
     check(gw.MWD_VAL_ORDER == ("LT", "ROP", "PP", "FP", "DP", "RP", "FLP"),
           "el orden de los campos Val es el de CLAUDE.md", gw.MWD_VAL_ORDER)
     check(len(gw.MWD_VAL_ORDER) == 7, "exactamente 7", len(gw.MWD_VAL_ORDER))

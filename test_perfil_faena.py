@@ -74,12 +74,19 @@ def los_parametros_que_importan_estan():
         "bloques.radio_v_m", "bloques.anisotropia_z", "bloques.min_muestras",
         "abanico.eps_m", "abanico.factor_dispersion",
         "disc.ventana_m", "disc.caida_rel", "disc.radio_etiqueta_m",
-        "rqd.tramo_min_m", "rqd.radio_max_m",
+        "rqd.radio_max_m",
         "pp.min_bar", "pp.max_bar",
         "rop.min_fisica", "ucs.min_fisico", "ucs.max_fisico",
     ]
     faltan = [e for e in esperados if e not in gw.param_registry]
     check(not faltan, "están todos los que discutimos", faltan)
+    # rqd.tramo_min_m NO es uno de estos: es la DEFINICIÓN de Deere —10 cm—,
+    # no una elección de faena. Estuvo acá y el autor pidió sacarlo: "si
+    # realmente es algo que normalmente funciona así, se fija el valor y se
+    # oculta". test_universalidad.py fija que sigue siendo constante.
+    check("rqd.tramo_min_m" not in gw.param_registry,
+          "y el tramo mínimo de Deere NO es uno de ellos: es la definición, "
+          "no algo que una faena nueva tenga que decidir")
 
 
 def leer_y_escribir():

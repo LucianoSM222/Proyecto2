@@ -135,6 +135,14 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | B4 | Pantalla de calibración · siglas cruzadas · un solo lugar | — | ✅ |
 | B5 | Velocidad de la interfaz · medida, no estimada | — | ✅ |
 | B6 | SE sin estratificar · reporte de semillas | — | ✅ |
+| C1 | Tres constantes de vuelta desde el perfil (Deere, visor, parseo) | — | ✅ |
+| C2 | Guardar/Cargar proyecto responden de verdad | — | ✅ |
+| C3 | SE≥1000 fuera del reporte por pozo (ROP≈0, lavado del bit) | — | ✅ |
+| C4 | Calibración antes del cálculo · transfiere a las casillas · avance en P3-3.7 | — | ✅ |
+| C5 | `min_puntos` de RQD, control que no controlaba | — | ✅ |
+| C6 | Visor 3D: mallas recortadas a la vista, 52→13 MB por caserón | — | ✅ |
+| C7 | KeyError en r2_train con el modelo Banda | — | ✅ |
+| C8 | Aviso de tronadura dinámico · fuente de UCS · exportar DXF con atributos | — | ✅ |
 
 Hallazgos que condicionan la interpretación, no defectos pendientes:
 
@@ -226,6 +234,32 @@ Dos botones en la barra, y ninguno calcula nada hasta que se lo pide:
   UCS —qué tan competente—. Un bloque SIN soporte de datos no se pinta de un
   color intermedio: queda fuera del sólido. Lleva su advertencia de qué NO es:
   aproximación de apoyo, no modelo geológico validado.
+
+  La advertencia sobre el DI es DINÁMICA (`_tronadura_advertencia_di`), no un
+  texto fijo: antes decía siempre "el DI no está calibrado en puntos de RQD",
+  pero el sólido se pinta con `p.di`, que sale de la variante REALMENTE
+  activa. Con una variante calibrada activa esa frase quedaba falsa —el aviso
+  decía una cosa, los pesos que coloreaban el sólido decían otra—. Ahora
+  nombra la variante activa y, si es calibrada, trae su veredicto de
+  validación real.
+
+  `tronadura_ucs_fuente()` / `set_tronadura_ucs_fuente()` eligen entre la UCS
+  de matriz y la cruda (`ucs_matriz` / `ucs_ml`) para colorear el sólido. Qué
+  MODELO corrió —banda, relación, ml— se sigue decidiendo en el Paso 4; esto
+  elige cuál de sus dos salidas se usa acá.
+
+  `exportar_bloques_dxf()` saca el sólido como .dxf: un punto por bloque en
+  Este/Norte/Cota, con XDATA (appid `MWD_GEOMECH`) llevando UCS_MPA, DI,
+  LITOLOGIA, CONFIANZA, BANDA y CASERON. Un bloque sin soporte no se exporta,
+  igual que no se dibuja.
+
+  LO QUE QUEDA ABIERTO: que el sólido interpolado por IDW no capte una falla
+  que el DI puntual sí capta es un problema de RESOLUCIÓN del modelo de
+  bloques —el radio de búsqueda promedia sobre una estructura delgada—, no de
+  qué variante de DI corre. No se tocó en esta pasada; requiere investigar
+  con los datos reales cuánto hay que apretar `bloques.radio_h_m`/`radio_v_m`
+  antes de que valga la pena, o si hace falta una vista de puntos crudos
+  aparte de la interpolada.
 - 📄 **reportes** (`REPORTES`, `reportes_disponibles`, `generar_reporte`): los
   diez reportes en un listado. Armar la lista NO corre ninguno —solo mira si
   hay con qué— y el que hoy no puede correr dice qué falta. `reportes_nuevos()`
@@ -264,7 +298,7 @@ N del modelo, y eso es peor que esperar un segundo.
 
 ## Perfil de faena
 
-Los parámetros de operación viven en `param_registry` (62 en diecinueve
+Los parámetros de operación viven en `param_registry` (59 en diecinueve
 secciones), no en el código: `get_param` / `set_param` / `reset_param`, con
 validación y procedencia declarada. Se editan desde la PANTALLA del perfil
 (botón ⚙ de la barra, `_perfil_panel_body`), no solo desde código;
@@ -272,6 +306,17 @@ validación y procedencia declarada. Se editan desde la PANTALLA del perfil
 los demás. `export_site_profile()` e `import_site_profile()` en JSON es lo que
 recibe una faena nueva. Hoy NINGUNO está protegido; el mecanismo
 (`ParametroProtegido`) sigue disponible para la faena que quiera congelar algo.
+
+No todo lo que llegó a ser parámetro merecía quedarse. Tres salieron de vuelta
+a constante: `rqd.tramo_min_m` (RQD_TRAMO_MIN_M, 0,10 m) es la DEFINICIÓN de
+Deere, no una elección — su propia procedencia ya decía "cambiarla deja de ser
+RQD" y seguía siendo un campo editable. `visor.puntos_maximos`
+(MAX_VIZ_POINTS) y `carga.presupuesto_parseo` (PARSE_BUDGET_S) decían en su
+propia procedencia "depende de la máquina, no del yacimiento" y también
+seguían ahí. La regla, en palabras del autor: si algo normalmente funciona
+así en cualquier faena, se fija el valor y se oculta — un campo editable para
+un número que nunca cambia es la misma clase de "simplificar para volver a
+complicar" que ya se vio con los seis parámetros del DI.
 
 Un parámetro del perfil NUNCA se usa como valor por defecto de argumento
 (`def f(r=RADIO)`): Python los congela al importar y el número dejaría de

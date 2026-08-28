@@ -12,7 +12,7 @@
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
-import os, sys, json, time, base64, tempfile, re, warnings, threading, traceback, math, hashlib, collections
+import os, sys, json, time, base64, tempfile, re, warnings, threading, traceback, math, hashlib, collections, io
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Tuple, Set
@@ -3937,11 +3937,10 @@ def seed_param_registry(force: bool = False):
                "mediana de los que difieren es 1,3 m, con 34 casos sobre 20 m. "
                "Otra faena replanifica con otra holgura.", 0.1, 100.0,
                "DQ_MERGE_WARN_M"),
-        _param("carga.presupuesto_parseo", "Carga de datos",
-               "Presupuesto de parseo por lote", 12.0, "float", "s",
-               "Corta el parseo de un lote grande para que la interfaz no se "
-               "quede colgada. Depende de la máquina que corra la plataforma, "
-               "no del yacimiento.", 1.0, 600.0, "PARSE_BUDGET_S"),
+        # carga.presupuesto_parseo SALIÓ del perfil por la misma razón que
+        # visor.puntos_maximos: su procedencia decía "depende de la máquina
+        # que corra la plataforma, no del yacimiento" y seguía siendo un
+        # parámetro de faena. PARSE_BUDGET_S es constante del módulo.
         # ── Sondajes ─────────────────────────────────────────────────────────
         _param("sondajes.radio_cercania", "Sondajes",
                "Radio para considerar un sondaje cercano", 25.0, "float", "m",
@@ -4022,11 +4021,11 @@ def seed_param_registry(force: bool = False):
                "Los seteos recomendados salen solo de tiros de producción. Un "
                "tiro corto tiene sus parámetros dominados por el emboquillado y "
                "la maniobra.", 0.0, 200.0),
-        _param("visor.puntos_maximos", "Visor 3D",
-               "Puntos máximos dibujados", 5000, "int", "puntos",
-               "Se recorta la VISTA, nunca la población que usan los cálculos. "
-               "Depende de la máquina, no del yacimiento.", 100, 500000,
-               "MAX_VIZ_POINTS"),
+        # visor.puntos_maximos SALIÓ del perfil: su propia procedencia decía
+        # "depende de la máquina, no del yacimiento" y seguía siendo un campo
+        # editable en la pantalla igual — exactamente lo que el autor señaló
+        # como simplificar para volver a complicar. MAX_VIZ_POINTS es una
+        # constante del módulo, junto a MAX_VIZ_TRIANGULOS_POR_MALLA.
         # ── Modelo de bloques ────────────────────────────────────────────────
         _param("bloques.pozos_minimos", "Modelo de bloques",
                "Pozos distintos mínimos por bloque", 1, "int", "pozos",
@@ -4118,10 +4117,12 @@ def seed_param_registry(force: bool = False):
                "correspondencia deja de ser creíble.",
                0.5, 100.0, "DISC_RADIO_ETIQUETA_M"),
         # ── RQD ──────────────────────────────────────────────────────────────
-        _param("rqd.tramo_min_m", "RQD", "Tramo mínimo de Deere", 0.10, "float",
-               "m", "Definición de Deere: tramos continuos de 10 cm o más sin "
-               "discontinuidad. Es la definición, no una elección; cambiarla "
-               "deja de ser RQD.", 0.01, 1.0, "RQD_TRAMO_MIN_M"),
+        # rqd.tramo_min_m SALIÓ del perfil, por decisión del autor: es la
+        # DEFINICIÓN de Deere —tramos continuos de 10 cm o más sin
+        # discontinuidad—, no una elección de faena. Su propia procedencia ya
+        # decía "cambiarla deja de ser RQD" y sin embargo seguía siendo un
+        # campo editable: exactamente el "simplificar para volver a
+        # complicar" que el autor señaló. RQD_TRAMO_MIN_M es constante.
         _param("rqd.radio_max_m", "RQD", "Radio de propagación del RQD",
                10.0, "float", "m", "Sobre los datos de MPC la distancia mediana "
                "de un punto MWD al intervalo de RQD más cercano son 26,1 m: el "
@@ -7027,6 +7028,14 @@ def rqd_calibration_pairs(radio_m: Optional[float] = None,
     si el punto más cercano está más lejos que eso, el intervalo no tiene par.
     """
     radio_m = get_param("rqd.radio_max_m") if radio_m is None else radio_m
+    # Viajaba como parámetro sin aplicarse nunca en este cuerpo: el filtro
+    # real, adentro de _tramo_di_de_pozo, era un `< 2` fijo. Intervalos con
+    # apenas 2 o 3 puntos MWD cerca contaban como "par" igual que uno con 150,
+    # inflando n_pares en la tabla de sensibilidad del radio y ensuciando la
+    # calibración con RQD_MWD medido sobre casi nada.
+    min_puntos = (get_param("rqd.min_puntos_intervalo")
+                  if min_puntos is None else min_puntos)
+    min_puntos = max(2, int(min_puntos))
     nombre_var = variante or DI_VARIANTE_CONVENCION
     v = di_variantes.get(nombre_var)
     if v is None:
@@ -7069,7 +7078,7 @@ def rqd_calibration_pairs(radio_m: Optional[float] = None,
         largo_centro = w.points[i].largo
         media = max(iv["largo_m"], 0.2) / 2.0
         tramo = _tramo_di_de_pozo(w, nombre_var if variante is not None else None,
-                                  largo_centro, media)
+                                  largo_centro, media, min_puntos)
         if tramo is None:
             sin_par += 1; continue
         largos, di_vals = tramo
@@ -7106,10 +7115,14 @@ def rqd_calibration_pairs(radio_m: Optional[float] = None,
 
 
 def _tramo_di_de_pozo(well, variante: Optional[str], largo_centro: float,
-                      media_m: float):
+                      media_m: float, min_puntos: int = 2):
     """
     (largos, di) del tramo de un pozo centrado en `largo_centro`, de media
     longitud `media_m`, ordenado. None si no alcanza para medir nada.
+
+    `min_puntos`: bajo esto el RQD_MWD del tramo es ruido de unos pocos
+    registros («rqd.min_puntos_intervalo»). El piso estructural es 2 —hace
+    falta al menos un par para ordenar—, no una elección de faena.
     """
     perfil = well.di_variantes.get(variante) if variante else None
     largos, valores = [], []
@@ -7125,7 +7138,7 @@ def _tramo_di_de_pozo(well, variante: Optional[str], largo_centro: float,
                 continue
             valores.append(float(p.di))
         largos.append(p.largo)
-    if len(largos) < 2:
+    if len(largos) < max(2, int(min_puntos)):
         return None
     a = np.array(largos, dtype=np.float64)
     b = np.array(valores, dtype=np.float64)
@@ -7284,7 +7297,17 @@ def _preparar_intervalos_calibracion(radio_m: float, min_puntos: int):
     Intervalos de RQD con sus vecinos MWD ya indexados por pozo. Se calcula UNA
     vez y se reutiliza en cada evaluación de pesos: es lo que vuelve viable la
     búsqueda.
+
+    `min_puntos` viajaba como parámetro sin que ESTA función lo aplicara
+    nunca: el filtro real era un `< 2` fijo, así que «rqd.min_puntos_intervalo»
+    —30 por defecto, «bajo esto el RQD_MWD de un intervalo es ruido»— no
+    protegía nada. Intervalos con apenas 2 o 3 puntos MWD cerca entraban a la
+    calibración igual que uno con 150, y esos pares ruidosos podían mover el
+    óptimo del símplex de pesos lejos de la señal real. Corregido: el piso es
+    `min_puntos`, con 2 como mínimo estructural (hace falta al menos un par de
+    puntos para ordenar un tramo).
     """
+    piso = max(2, int(min_puntos))
     intervalos = _intervalos_rqd_sondaje()
     if not intervalos:
         return [], []
@@ -7311,7 +7334,7 @@ def _preparar_intervalos_calibracion(radio_m: float, min_puntos: int):
         # solo cambian los valores de DI, nunca el orden ni la pertenencia.
         idxs = [j for j, p in enumerate(w.points)
                 if p.entrenable and abs(p.largo - largo_centro) <= media]
-        if len(idxs) < 2:
+        if len(idxs) < piso:
             continue
         arr = np.array(idxs, dtype=np.int64)
         largos = np.array([w.points[j].largo for j in arr], dtype=np.float64)
@@ -9912,6 +9935,14 @@ def explorar_repositorio(raiz: str) -> Dict:
     return out
 
 
+# Por debajo de esto se ofrece TAMBIÉN por descarga del navegador, no solo a
+# disco: el guardado a disco solo es visible si el usuario sabe encontrar esa
+# ruta, y para un proyecto chico eso es fricción sin motivo. Mismo orden de
+# magnitud que KIT_AVISO_MB — es el punto donde dcc.send_bytes empezó a fallar
+# en pruebas con proyectos reales.
+PROYECTO_DESCARGA_MAX_MB = 20.0
+
+
 def guardar_proyecto_en(path: str) -> Dict:
     """
     Guarda el proyecto en una RUTA del disco y declara qué guardó y cuánto
@@ -10346,14 +10377,39 @@ REPORT_VARS = {
 # extremos cuando ROP tiende a cero (P_percusión+P_rotación+P_avance)/ROP.
 REPORT_HIST_CLIP_VARS = {"se"}
 
+# Límite FÍSICO de SE en los reportes por pozo, distinto del recorte de vista
+# de arriba. Cuando ROP tiende a cero el equipo está rotando el bit para
+# LAVADO, no perforando —esto pasa siempre, con cualquier faena—, y
+# SE=(PP+RP+AP)/ROP se dispara a valores sin sentido físico (hasta 3,5e11
+# bar·min/m sobre datos reales). No es un percentil de la distribución —eso
+# lo prohíbe CLAUDE.md—: es un techo trazable a la física de la fórmula,
+# igual categoría que ROP_MIN_FISICA. Se aplica SOLO a la vista de reportes
+# por pozo (histograma, perfil, estadísticas); no toca p.se, no toca
+# p.entrenable, no toca el entrenamiento —eso ya lo protege ROP_MIN_FISICA
+# aguas abajo, con su propio criterio.
+SE_MAX_REPORTE = 1000.0        # bar·min/m
+
+
+def _se_valida_reporte(p) -> bool:
+    """SE utilizable en un reporte por pozo: finita y bajo el techo físico."""
+    return (p.se is not None and np.isfinite(p.se) and p.se <= SE_MAX_REPORTE)
+
 def well_basic_stats(well_name):
-    """Estadísticas descriptivas básicas de un pozo: media, mediana, std, min, max por variable."""
+    """
+    Estadísticas descriptivas básicas de un pozo: media, mediana, std, min,
+    max por variable. SE queda bajo SE_MAX_REPORTE: sin el techo, un solo
+    registro con ROP≈0 (lavado del bit, no perforación) manda el máximo a
+    valores sin sentido físico y arrastra con él media y desviación.
+    """
     well = wells.get(well_name)
     if not well or not well.points: return {}
     stats = {}
     for k, label in REPORT_VARS.items():
-        vals = np.array([getattr(p, k) for p in well.points
-                         if getattr(p, k, None) is not None and np.isfinite(getattr(p, k))])
+        if k == "se":
+            vals = np.array([p.se for p in well.points if _se_valida_reporte(p)])
+        else:
+            vals = np.array([getattr(p, k) for p in well.points
+                             if getattr(p, k, None) is not None and np.isfinite(getattr(p, k))])
         if vals.size == 0: continue
         stats[k] = {
             "label": label, "media": float(np.mean(vals)), "mediana": float(np.median(vals)),
@@ -10373,6 +10429,14 @@ def build_well_report_figure(well_name, hist_vars=None, profile_var="di"):
     aplasta cuando ROP tiende a cero) se recorta EN LA VISTA a los percentiles
     1-99 — los datos no se filtran ni se borran, solo cambia el rango visible
     del eje, y el subtítulo lo declara.
+
+    (B5) SE, además, queda bajo el techo FÍSICO de SE_MAX_REPORTE en TODO el
+    reporte —perfil e histograma—, no solo en el rango del eje. Con ROP≈0 el
+    equipo está lavando el bit, no perforando; eso pasa siempre, y sin este
+    techo un solo registro dispara la SE a valores sin sentido y aplasta la
+    escala de todo el gráfico. Es un límite físico trazable (misma categoría
+    que ROP_MIN_FISICA), no un percentil: el punto se declara excluido y
+    queda un hueco en el perfil, no una sustitución silenciosa.
     """
     well = wells.get(well_name)
     if not well or not well.points:
@@ -10388,9 +10452,13 @@ def build_well_report_figure(well_name, hist_vars=None, profile_var="di"):
     hist_titles = []
     for v in hist_vars:
         t = f"Histograma {REPORT_VARS[v]}"
-        if v in REPORT_HIST_CLIP_VARS: t += " (vista: P1–P99)"
+        if v == "se": t += f" (SE≤{SE_MAX_REPORTE:g}, vista: P1–P99)"
+        elif v in REPORT_HIST_CLIP_VARS: t += " (vista: P1–P99)"
         hist_titles.append(t)
-    titles = [f"{REPORT_VARS[profile_var]} vs. Profundidad"] + hist_titles
+    titulo_perfil = f"{REPORT_VARS[profile_var]} vs. Profundidad"
+    if profile_var == "se":
+        titulo_perfil += f" (SE≤{SE_MAX_REPORTE:g})"
+    titles = [titulo_perfil] + hist_titles
     fig = make_subplots(
         rows=2 if n_hist else 1, cols=max(n_hist,1),
         specs=specs, subplot_titles=titles,
@@ -10398,7 +10466,12 @@ def build_well_report_figure(well_name, hist_vars=None, profile_var="di"):
     )
 
     largos = [p.largo for p in well.points]
-    prof_vals = [getattr(p, profile_var, None) for p in well.points]
+    if profile_var == "se":
+        # None, no se omite el punto: así el hueco queda en su profundidad
+        # real y la línea no conecta por encima del vacío.
+        prof_vals = [p.se if _se_valida_reporte(p) else None for p in well.points]
+    else:
+        prof_vals = [getattr(p, profile_var, None) for p in well.points]
     fig.add_trace(go.Scatter(x=largos, y=prof_vals, mode="lines", name=REPORT_VARS[profile_var],
                               line=dict(color="#3B8BD4", width=1.5)), row=1, col=1)
     if profile_var == "di":
@@ -10408,8 +10481,11 @@ def build_well_report_figure(well_name, hist_vars=None, profile_var="di"):
     fig.update_yaxes(title_text=REPORT_VARS[profile_var], row=1, col=1)
 
     for i, v in enumerate(hist_vars):
-        vals = [getattr(p, v) for p in well.points
-                if getattr(p, v, None) is not None and np.isfinite(getattr(p, v))]
+        if v == "se":
+            vals = [p.se for p in well.points if _se_valida_reporte(p)]
+        else:
+            vals = [getattr(p, v) for p in well.points
+                    if getattr(p, v, None) is not None and np.isfinite(getattr(p, v))]
         fig.add_trace(go.Histogram(x=vals, marker_color=PALETTE[i % len(PALETTE)],
                                      name=REPORT_VARS[v], nbinsx=30), row=2, col=i+1)
         fig.update_xaxes(title_text=REPORT_VARS[v], row=2, col=i+1)
@@ -10431,6 +10507,12 @@ def build_well_report_figure(well_name, hist_vars=None, profile_var="di"):
 # puntos como marcadores — se recorta la VISTA, nunca la población que usan
 # los cálculos.
 MAX_VIZ_POINTS = 5000
+
+# (B5) Tope de triángulos POR MALLA en la vista 3D. Medido sobre PCS_1043 real:
+# la malla «Lavas» sola trae 83.460 triángulos, y el caserón completo 316.880 —
+# 52 MB de JSON en la figura—. Es geometría de rendering, no una decisión de
+# faena: no vive en el perfil, igual que MAX_VIZ_POINTS.
+MAX_VIZ_TRIANGULOS_POR_MALLA = 12000
 
 def _submuestrear_indices(n: int, max_n: int) -> List[int]:
     """
@@ -10455,6 +10537,17 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
     proporcionalmente entre pozos (uno con más metraje aporta más puntos a
     la vista). well.points NUNCA se toca — el recorte vive solo en las
     listas locales que arma esta función para dibujar.
+
+    (B5) Las MALLAS DXF también se recortan, y esto es lo que de verdad
+    bloqueaba el visor: medido sobre PCS_1043 real, un solo caserón trae
+    316.880 triángulos —83.460 solo en «Lavas»— y la figura completa pesa
+    52 MB de JSON. Con los cuatro caserones del proyecto eso multiplica; un
+    navegador (más aún dentro de un iframe de Colab) se cuelga tratando de
+    subir esa geometría a WebGL. MAX_VIZ_TRIANGULOS_POR_MALLA aplica el mismo
+    submuestreo espaciado que ya usan los puntos MWD —determinista, nunca
+    aleatorio— triángulo por triángulo dentro de cada malla. La malla real
+    (`layer.triangles`) no se toca, igual que well.points: el recorte vive
+    solo en lo que se dibuja.
     """
     hidden_layers = hidden_layers or set()
     hidden_wells  = hidden_wells or set()
@@ -10477,8 +10570,17 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
         else:
             cat_map = {c: PALETTE[i%len(PALETTE)] for i,c in enumerate(all_cats)}
     for idx, (name, layer) in enumerate(layers.items()):
-        tris = layer.triangles
-        if len(tris) == 0: continue
+        tris_full = layer.triangles
+        n_tris_full = len(tris_full)
+        if n_tris_full == 0: continue
+        # (B5) Recorte SOLO de la vista, idéntico en técnica al de los puntos
+        # MWD: índices espaciados, nunca al azar, para no perder la forma
+        # general del sólido. layer.triangles NUNCA se toca.
+        if n_tris_full > MAX_VIZ_TRIANGULOS_POR_MALLA:
+            idx_tris = _submuestrear_indices(n_tris_full, MAX_VIZ_TRIANGULOS_POR_MALLA)
+            tris = tris_full[idx_tris]
+        else:
+            tris = tris_full
         x = tris[:,:,0].ravel(); y = tris[:,:,1].ravel(); z = tris[:,:,2].ravel()
         ii = list(range(0, len(tris)*3, 3))
         jj = list(range(1, len(tris)*3, 3))
@@ -10488,9 +10590,16 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
         _a = attr_registry.get(_lito or "")
         _u = _a.ucs_ancla(modo=get_param("ucs.estadistica_ml")) if _a else None
         ucs_txt = f"UCS={_u:g} MPa ({_lito})" if _u is not None else "sin banda de UCS"
+        if len(tris) < n_tris_full:
+            ucs_txt += f" · mostrando {len(tris):,}/{n_tris_full:,} triángulos".replace(",", ".")
         col = PALETTE[idx % len(PALETTE)]
+        # `text` como STRING único, no una lista de una copia por triángulo:
+        # con 80.000+ triángulos por malla, repetir el mismo texto 80.000
+        # veces en el JSON de la figura era, por sí solo, varios MB regalados
+        # sin decir nada distinto. hoverinfo="name+text" lo aplica igual a
+        # toda la traza.
         fig.add_trace(go.Mesh3d(x=x,y=y,z=z,i=ii,j=jj,k=kk,opacity=0.28,name=name,color=col,
-            hoverinfo="name+text",text=[f"{name} | {ucs_txt}"]*len(ii),
+            hoverinfo="name+text",text=f"{name} | {ucs_txt}",
             showlegend=True,legendgroup="dxf",
             visible=True if name not in hidden_layers else "legendonly"))
     n_dibujados = 0
@@ -11424,6 +11533,7 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
     dcc.Store(id="rep-abierto"),
     dcc.Download(id="dl-reporte"),
     dcc.Download(id="dl-perfil"),
+    dcc.Download(id="dl-tronadura-dxf"),
 ])
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -11790,22 +11900,67 @@ def _rqd_radio_panel_body():
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 TRONADURA_ADVERTENCIA = (
-    "Es una APROXIMACIÓN de apoyo, no un modelo geológico validado. La UCS "
-    "sale de la respuesta de perforación calibrada contra las anclas de "
-    "laboratorio disponibles, y el DI es un índice relativo de fracturamiento "
-    "que no está calibrado en puntos de RQD. Sirve para ordenar sectores y "
-    "anticipar dónde mirar; no reemplaza al testigo.")
+    "Es una APROXIMACIÓN de apoyo, no un modelo geológico validado. Sirve "
+    "para ordenar sectores y anticipar dónde mirar; no reemplaza al testigo.")
+
+
+def _tronadura_advertencia_di() -> str:
+    """
+    La mitad de la advertencia que habla del DI, construida contra la
+    variante REALMENTE activa. Antes era un texto fijo que decía "el DI no
+    está calibrado en puntos de RQD" sin condición — y el sólido se pinta con
+    p.di, que sale de la variante activa: si esa variante SÍ está calibrada
+    contra el testigo, la frase quedaba falsa. Ahí nacía la incoherencia:
+    el aviso decía una cosa y los pesos que de verdad coloreaban el sólido
+    decían otra.
+    """
+    nombre = di_activo()
+    if nombre == DI_VARIANTE_CONVENCION:
+        return ("El DI usa los pesos de convención de Fernández et al. 2023 "
+                "(PP=0,35 · DP=0,25 · FP=0,20 · RP=0,20), NO calibrados contra "
+                "el testigo de esta faena.")
+    v = di_variantes.get(nombre)
+    if v is None:
+        return (f'El DI corre con la variante «{nombre}», que ya no está '
+                "registrada: no se puede describir su procedencia.")
+    veredicto = v.get("notas") or ""
+    return (f'El DI usa la variante calibrada «{nombre}» contra el RQD de los '
+            f"sondajes de esta faena — pesos {v.get('weights')}. {veredicto}")
 
 _bloques_cache: Dict[str, object] = {"firma": None, "rep": None}
+
+# Qué campo de UCS alimenta el sólido: "ucs_matriz" (con las discontinuidades
+# ya restadas) o "ucs_ml" (la predicción cruda del modelo vigente). Elegir
+# ENTRE MODELOS de UCS (banda / relación / ml) se decide en el Paso 4 —cuál
+# corrió es lo que queda en p.ucs_ml—; esto elige DENTRO de ese resultado.
+UCS_FUENTES_TRONADURA = {
+    "ucs_matriz": "UCS de la matriz (sin discontinuidades)",
+    "ucs_ml": "UCS predicha cruda",
+}
+_tronadura_ucs_fuente: str = "ucs_matriz"
+
+
+def tronadura_ucs_fuente() -> str:
+    return _tronadura_ucs_fuente
+
+
+def set_tronadura_ucs_fuente(fuente: str) -> str:
+    if fuente not in UCS_FUENTES_TRONADURA:
+        raise ValueError(f'Fuente de UCS desconocida: "{fuente}". '
+                         f"Opciones: {sorted(UCS_FUENTES_TRONADURA)}.")
+    global _tronadura_ucs_fuente
+    _tronadura_ucs_fuente = fuente
+    return fuente
 
 
 def _bloques_vigentes() -> Dict:
     """Modelo de bloques, cacheado contra la firma de los puntos."""
     firma = (_firma_puntos(), get_param("bloques.tamano_m"),
-             get_param("bloques.holgura_m"), ucs_modelo_vigente)
+             get_param("bloques.holgura_m"), ucs_modelo_vigente,
+             di_activo(), _tronadura_ucs_fuente)
     if _bloques_cache["firma"] == firma:
         return _bloques_cache["rep"]
-    rep = interpolate_block_model()
+    rep = interpolate_block_model(fuente=_tronadura_ucs_fuente)
     _bloques_cache["firma"] = firma
     _bloques_cache["rep"] = rep
     return rep
@@ -11841,7 +11996,8 @@ def tronadura_resumen(rep: Optional[Dict] = None) -> Dict:
             "ucs_p90": round(float(np.percentile(ucss, 90)), 1) if ucss else None,
             "por_banda": dict(sorted(por_banda.items(), key=lambda kv: -kv[1])),
             "modelo_ucs": ucs_model_summary(),
-            "advertencia": TRONADURA_ADVERTENCIA}
+            "advertencia": TRONADURA_ADVERTENCIA,
+            "advertencia_di": _tronadura_advertencia_di()}
 
 
 def build_bloques_figure(variable: str = "di"):
@@ -12075,34 +12231,41 @@ def _render_reporte(rid: str):
     ])
 
 
-def _tronadura_panel_body(variable: str = "di"):
-    """Pantalla de soporte a tronadura: el sólido y las cifras que se leen antes de cargar."""
+def _tronadura_cifras_body():
+    """Las tarjetas y advertencias del panel de tronadura, sin el sólido."""
     r = tronadura_resumen()
     if r["status"] != "ok":
-        cifras = html.Div(r.get("motivo", ""),
-                          style={"fontSize": "11px", "color": "#F39C12"})
-    else:
-        def tarjeta(titulo, valor, nota=""):
-            return dbc.Col(html.Div([
-                html.Small(titulo, style={"color": "#888", "fontSize": "9px",
-                                          "display": "block"}),
-                html.Div(valor, style={"fontSize": "17px", "fontWeight": "bold"}),
-                html.Small(nota, style={"color": "#666", "fontSize": "9px"}),
-            ], style={"padding": "8px 12px", "border": "1px solid #333"}), width="auto")
-        cifras = html.Div([
-            dbc.Row([
-                tarjeta("Volumen modelado", f"{r['volumen_m3']:,.0f} m³".replace(",", "."),
-                        f"{r['n_bloques']:,} bloques de {r['lado_m']:g} m".replace(",", ".")),
-                tarjeta("Fracturado", f"{r['pct_fracturado']:.1f} %",
-                        f"DI sobre {r['umbral_di']:g}"),
-                tarjeta("UCS mediana", f"{r['ucs_mediana']:.0f} MPa",
-                        f"p10 {r['ucs_p10']:.0f} · p90 {r['ucs_p90']:.0f}"),
-            ], className="g-2"),
-            html.Small(r["modelo_ucs"], style={"color": "#5DCAA5", "fontSize": "9px",
-                                               "display": "block", "marginTop": "8px"}),
-            html.Small(r["advertencia"], style={"color": "#F39C12", "fontSize": "9px",
+        return html.Div(r.get("motivo", ""),
+                        style={"fontSize": "11px", "color": "#F39C12"})
+
+    def tarjeta(titulo, valor, nota=""):
+        return dbc.Col(html.Div([
+            html.Small(titulo, style={"color": "#888", "fontSize": "9px",
+                                      "display": "block"}),
+            html.Div(valor, style={"fontSize": "17px", "fontWeight": "bold"}),
+            html.Small(nota, style={"color": "#666", "fontSize": "9px"}),
+        ], style={"padding": "8px 12px", "border": "1px solid #333"}), width="auto")
+    return html.Div([
+        dbc.Row([
+            tarjeta("Volumen modelado", f"{r['volumen_m3']:,.0f} m³".replace(",", "."),
+                    f"{r['n_bloques']:,} bloques de {r['lado_m']:g} m".replace(",", ".")),
+            tarjeta("Fracturado", f"{r['pct_fracturado']:.1f} %",
+                    f"DI sobre {r['umbral_di']:g}"),
+            tarjeta("UCS mediana", f"{r['ucs_mediana']:.0f} MPa",
+                    f"p10 {r['ucs_p10']:.0f} · p90 {r['ucs_p90']:.0f}"),
+        ], className="g-2"),
+        html.Small(r["modelo_ucs"], style={"color": "#5DCAA5", "fontSize": "9px",
+                                           "display": "block", "marginTop": "8px"}),
+        html.Small(r["advertencia_di"], style={"color": "#5DCAA5", "fontSize": "9px",
                                                 "display": "block", "marginTop": "4px"}),
-        ])
+        html.Small(r["advertencia"], style={"color": "#F39C12", "fontSize": "9px",
+                                            "display": "block", "marginTop": "4px"}),
+    ])
+
+
+def _tronadura_panel_body(variable: str = "di"):
+    """Pantalla de soporte a tronadura: el sólido y las cifras que se leen antes de cargar."""
+    cifras = _tronadura_cifras_body()
     return html.Div([
         dbc.Row([
             dbc.Col(dcc.Dropdown(
@@ -12110,14 +12273,70 @@ def _tronadura_panel_body(variable: str = "di"):
                 options=[{"label": "DI — dónde está quebrada la roca", "value": "di"},
                          {"label": "UCS — qué tan competente es", "value": "ucs"}],
                 style={"fontSize": "10px", "width": "320px"}), width="auto"),
+            # Elegir DENTRO del resultado vigente (matriz vs. cruda). Qué
+            # MODELO corrió —banda, relación, ml— se decide en el Paso 4;
+            # acá solo se elige cuál de sus dos salidas colorea el sólido.
+            dbc.Col(dcc.Dropdown(
+                id="tronadura-ucs-fuente", value=_tronadura_ucs_fuente, clearable=False,
+                options=[{"label": v, "value": k}
+                         for k, v in UCS_FUENTES_TRONADURA.items()],
+                style={"fontSize": "10px", "width": "260px"}), width="auto"),
             dbc.Col(dbc.Button("Recalcular sólido", id="btn-tronadura-calc",
                                size="sm", color="primary"), width="auto"),
+            dbc.Col(dbc.Button("⬇ Exportar DXF", id="btn-tronadura-dxf",
+                               size="sm", color="info", outline=True), width="auto"),
         ], className="g-2 align-items-center", style={"marginBottom": "8px"}),
-        cifras,
+        html.Div(cifras, id="tronadura-cifras"),
         dcc.Graph(id="tronadura-fig", figure=build_bloques_figure(variable),
                   style={"height": "62vh"},
                   config={"displaylogo": False}),
     ])
+
+
+def exportar_bloques_dxf(rep: Optional[Dict] = None) -> Dict:
+    """
+    El modelo de bloques como .dxf: un punto por bloque, en Este/Norte/Cota
+    (la convención de ejes del proyecto), con XDATA por bloque —UCS, DI,
+    litología, confianza— para que un software de planificación minera lo
+    lea como malla de atributos, no solo como geometría muda.
+
+    Un bloque SIN soporte de datos no se exporta: la lista `rep["bloques"]`
+    que llega acá ya viene filtrada a los que tienen ucs o di —los vacíos
+    quedaron fuera del sólido antes, y quedan fuera del archivo también.
+    """
+    rep = rep if rep is not None else _bloques_vigentes()
+    if rep.get("status") != "ok":
+        return {"status": rep.get("status", "sin_datos"),
+                "motivo": rep.get("motivo") or "No hay modelo de bloques que exportar."}
+    bl = [b for b in rep["bloques"] if b.get("ucs") is not None or b.get("di") is not None]
+    if not bl:
+        return {"status": "sin_datos",
+                "motivo": "Ningún bloque tiene soporte de datos suficiente."}
+    doc = ezdxf.new("R2010")
+    doc.appids.add("MWD_GEOMECH")
+    msp = doc.modelspace()
+    capa_di = "GEOMECH_DI"; capa_ucs = "GEOMECH_UCS"
+    doc.layers.add(capa_di, color=1)   # rojo: fracturamiento
+    doc.layers.add(capa_ucs, color=3)  # verde: resistencia
+    for b in bl:
+        pt = msp.add_point((b["x"], b["y"], b["z"]), dxfattribs={
+            "layer": capa_ucs if b.get("ucs") is not None else capa_di})
+        xdata = [
+            (1000, f"UCS_MPA={b['ucs']:.2f}" if b.get("ucs") is not None else "UCS_MPA=NA"),
+            (1000, f"DI={b['di']:.4f}" if b.get("di") is not None else "DI=NA"),
+            (1000, f"LITOLOGIA={b.get('lito') or 'NA'}"),
+            (1000, f"CONFIANZA={b['confianza']:.4f}" if b.get("confianza") is not None else "CONFIANZA=NA"),
+            (1000, f"BANDA={b.get('banda') or 'NA'}"),
+            (1000, f"CASERON={b.get('caseron') or 'NA'}"),
+        ]
+        pt.set_xdata("MWD_GEOMECH", xdata)
+    buf = io.StringIO()
+    doc.write(buf)
+    texto = buf.getvalue()
+    return {"status": "ok", "n_bloques": len(bl), "dxf": texto,
+            "nota": ("Un punto por bloque, en Este/Norte/Cota, con XDATA "
+                     "(appid MWD_GEOMECH) llevando UCS_MPA, DI, LITOLOGIA, "
+                     "CONFIANZA, BANDA y CASERON. " + TRONADURA_ADVERTENCIA)}
 
 
 def _perfil_panel_body(menu: str = None, avanzados: bool = False):
@@ -12479,15 +12698,40 @@ def toggle_tronadura_modal(open_c, close_c, is_open):
 
 
 @app.callback(Output("tronadura-fig", "figure"),
+              Output("tronadura-cifras", "children"),
               Input("tronadura-var", "value"),
+              Input("tronadura-ucs-fuente", "value"),
               Input("btn-tronadura-calc", "n_clicks"),
               prevent_initial_call=True)
-def on_tronadura_var(variable, n):
-    if callback_context.triggered_id == "btn-tronadura-calc":
+def on_tronadura_var(variable, fuente, n):
+    trig = callback_context.triggered_id
+    if trig == "tronadura-ucs-fuente":
+        # Cambiar DE DÓNDE sale la UCS (matriz / cruda) es un cambio real del
+        # sólido, no solo del color: fuerza el mismo recálculo que el botón.
+        set_tronadura_ucs_fuente(fuente or "ucs_matriz")
+        _bloques_cache["firma"] = None
+    elif trig == "btn-tronadura-calc":
         if not _disparo_real():
-            return no_update
+            return no_update, no_update
         _bloques_cache["firma"] = None      # forzar recálculo
-    return build_bloques_figure(variable or "di")
+    return build_bloques_figure(variable or "di"), _tronadura_cifras_body()
+
+
+@app.callback(Output("dl-tronadura-dxf", "data"),
+              Output("toast", "children", allow_duplicate=True),
+              Output("toast", "is_open", allow_duplicate=True),
+              Input("btn-tronadura-dxf", "n_clicks"),
+              prevent_initial_call=True)
+def on_tronadura_dxf(n):
+    if not _disparo_real():
+        return no_update, no_update, no_update
+    rep = exportar_bloques_dxf()
+    if rep["status"] != "ok":
+        return no_update, f"⚠ {rep.get('motivo')}", True
+    nombre = export_filename("bloques_geomech", "dxf")
+    return (dcc.send_string(rep["dxf"], nombre),
+            f"✅ {rep['n_bloques']:,} bloque(s) exportados a {nombre}.".replace(",", "."),
+            True)
 
 
 @app.callback(Output("reportes-modal", "is_open"),
@@ -13757,7 +14001,15 @@ def on_xml(contents_list, filenames, ref):
 
 
 for btn_id, upload_id in [("btn-dxf","up-dxf"), ("btn-xml","up-xml"),
-                          ("btn-drillhole","up-drillhole")]:
+                          ("btn-drillhole","up-drillhole"),
+                          # "Cargar proyecto" quedó FUERA de esta lista al
+                          # escribirse: solo tenía un callback Python que
+                          # revelaba el Upload (display:block) sin clickearlo.
+                          # Ese Upload vive lejos del botón, con children vacío
+                          # — visualmente nada pasaba. Con la entrada acá abre
+                          # el selector de archivos nativo, igual que los otros
+                          # tres, y trigger_load_project() sobra.
+                          ("btn-load-project","up-project")]:
     app.clientside_callback(
         f"""function(n){{if(n){{var e=document.querySelector('#{upload_id} input[type=file]');if(e)e.click();}}return window.dash_clientside.no_update;}}""",
         Output(btn_id,"n_clicks"), Input(btn_id,"n_clicks"), prevent_initial_call=True,
@@ -13863,9 +14115,10 @@ def on_assign_dq(values, ids, ref):
     State("di-window","value"), State("di-thresh","value"),
     State("di-w-pp","value"), State("di-w-pd","value"),
     State("di-w-pf","value"), State("di-w-pr","value"),
+    State("di-w-pa","value"),
     State("refresh","data"), prevent_initial_call=True,
 )
-def do_di(n, window, thresh, w_pp, w_pd, w_pf, w_pr, ref):
+def do_di(n, window, thresh, w_pp, w_pd, w_pf, w_pr, w_pa, ref):
     """
     (P3-3.7) Pesos y umbral del DI, configurables desde la interfaz. `or
     default` habría sustituido en silencio un 0 explícito (peso desactivado)
@@ -13886,7 +14139,8 @@ def do_di(n, window, thresh, w_pp, w_pd, w_pf, w_pr, ref):
         return x, None
     campos = [(window, "Ventana", 3), (thresh, "Umbral", 0.0),
              (w_pp, "Peso PP", 0.0), (w_pd, "Peso DP", 0.0),
-             (w_pf, "Peso FP", 0.0), (w_pr, "Peso RP", 0.0)]
+             (w_pf, "Peso FP", 0.0), (w_pr, "Peso RP", 0.0),
+             (w_pa, "Peso avance", 0.0)]
     valores, errores = [], []
     for v, etq, lo in campos:
         x, e = _num(v, etq, lo)
@@ -13894,18 +14148,21 @@ def do_di(n, window, thresh, w_pp, w_pd, w_pf, w_pr, ref):
         if e: errores.append(e)
     if errores:
         return no_update, "🚫 " + " · ".join(errores), True
-    window_v, thresh_v, wpp, wpd, wpf, wpr = valores
-    suma = wpp + wpd + wpf + wpr
+    window_v, thresh_v, wpp, wpd, wpf, wpr, wpa = valores
+    suma = wpp + wpd + wpf + wpr + wpa
     aviso_suma = ""
     if abs(suma - 1.0) > 0.02:
         aviso_suma = (f" ⚠ los pesos ingresados suman {suma:.3f} (no 1,0); "
                       "se normalizaron a 1 para la variante.")
     # El panel NO escribe sobre la convención: resuelve a qué variante
     # corresponde lo ingresado y la activa. Si son los valores de el autor,
-    # vuelve a la convención sola.
+    # vuelve a la convención sola. Las cinco presiones entran, incluido el
+    # avance: antes solo se leían cuatro, y una variante calibrada con peso
+    # de avance lo perdía en silencio en cuanto alguien tocaba «Calcular DI».
     try:
         activa = aplicar_di_config(window=int(window_v), threshold=float(thresh_v),
-                                   weights={"pp": wpp, "pd": wpd, "pf": wpf, "pr": wpr})
+                                   weights={"pp": wpp, "pd": wpd, "pf": wpf,
+                                            "pr": wpr, "pa": wpa})
     except (ValueError, TypeError) as e:
         return no_update, f"🚫 {e}", True
     compute_di()
@@ -13923,6 +14180,7 @@ def do_di(n, window, thresh, w_pp, w_pd, w_pf, w_pr, ref):
     Output("di-window","value"), Output("di-thresh","value"),
     Output("di-w-pp","value"), Output("di-w-pd","value"),
     Output("di-w-pf","value"), Output("di-w-pr","value"),
+    Output("di-w-pa","value"),
     Output("toast","children",allow_duplicate=True),
     Output("toast","is_open",allow_duplicate=True),
     Input("btn-di-reset","n_clicks"),
@@ -13931,10 +14189,11 @@ def do_di(n, window, thresh, w_pp, w_pd, w_pf, w_pr, ref):
 def do_di_reset(n, ref):
     """Restaura ventana, umbral y pesos a los valores por defecto. Solo
     cambia la configuración; no recalcula el DI hasta que se pulse Calcular."""
-    if not n: return (no_update,)*8
+    if not n: return (no_update,)*9
     activar_di(DI_VARIANTE_CONVENCION)
     w = di_config["weights"]
     return (ref+1, di_config["window"], di_threshold, w["pp"], w["pd"], w["pf"], w["pr"],
+           w.get("pa", 0.0),
            "↺ Configuración DI restaurada a los valores por defecto Pulsa «Calcular DI» "
            "para recalcular con estos valores.", True)
 
@@ -13970,6 +14229,13 @@ def do_di_sensitivity(n_clicks_list, well_sel_list, out_ids):
 @app.callback(
     Output("cal-output", "children"),
     Output("refresh", "data", allow_duplicate=True),
+    Output("di-window", "value", allow_duplicate=True),
+    Output("di-thresh", "value", allow_duplicate=True),
+    Output("di-w-pp", "value", allow_duplicate=True),
+    Output("di-w-pd", "value", allow_duplicate=True),
+    Output("di-w-pf", "value", allow_duplicate=True),
+    Output("di-w-pr", "value", allow_duplicate=True),
+    Output("di-w-pa", "value", allow_duplicate=True),
     Input("btn-calibrar-di", "n_clicks"),
     State("cal-params", "value"),
     State("cal-muestras", "value"),
@@ -13982,17 +14248,21 @@ def do_calibrar_di(n, params, muestras, semilla, ref):
     (Auditoría) La búsqueda de pesos por varianza móvil, desde la pantalla.
 
     Registra una VARIANTE; la de convención queda intacta. No la activa sola:
-    qué DI corre lo decide quien mira el veredicto, no el hecho de haber
-    calibrado.
+    qué DI corre lo decide quien mira el veredicto — pero sus números SÍ se
+    transfieren directo a las casillas de «Configuración», que es donde se
+    revisan y se aplican con «Calcular DI». Antes el resultado quedaba solo
+    en esta tabla: cerrar el acordeón o navegar a otro paso lo perdía, y
+    quien quería usarlo tenía que copiar los números a mano.
     """
+    SIN_ESCRIBIR = (no_update,) * 7   # ventana, umbral, pp, pd, pf, pr, pa
     if not _disparo_real():
-        return no_update, no_update
+        return (no_update, no_update) + SIN_ESCRIBIR
     elegidos = tuple(p for p in CAL_PARAMS if p in (params or []))
     if len(elegidos) < 2:
         return (dbc.Alert("Elige al menos dos presiones candidatas: con una sola "
                           "no hay pesos que repartir.", color="warning",
                           style={"fontSize": "11px", "padding": "6px 10px"}),
-                no_update)
+                no_update) + SIN_ESCRIBIR
     try:
         rep = calibrate_di_weights(params=elegidos,
                                    n_muestras=muestras, seed=semilla)
@@ -14000,10 +14270,20 @@ def do_calibrar_di(n, params, muestras, semilla, ref):
         return (dbc.Alert(f"La calibración falló: {type(e).__name__}: {e}",
                           color="danger",
                           style={"fontSize": "11px", "padding": "6px 10px"}),
-                no_update)
+                no_update) + SIN_ESCRIBIR
     salida = _render_calibracion(rep)
     # El refresco solo cuando hay variante nueva que mostrar en los selectores.
-    return salida, ((ref or 0) + 1 if rep.get("variante") else no_update)
+    refresco = (ref or 0) + 1 if rep.get("variante") else no_update
+    if rep.get("status") != "ok":
+        return (salida, refresco) + SIN_ESCRIBIR
+    pesos = rep["pesos"]
+    # Las presiones que NO se marcaron como candidatas se escriben en 0: los
+    # números que quedan en las casillas tienen que describir el vector que
+    # de verdad se calibró, no arrastrar un valor viejo de una prueba anterior.
+    campos = (rep["window"], rep["umbral"],
+             pesos.get("pp", 0.0), pesos.get("pd", 0.0), pesos.get("pf", 0.0),
+             pesos.get("pr", 0.0), pesos.get("pa", 0.0))
+    return (salida, refresco) + campos
 
 @app.callback(
     Output("ml-task-poll","disabled"),
@@ -14059,6 +14339,48 @@ def do_ml(n, ucs_min_v, ucs_max_v, modelo):
     th.start()
     return False, no_update, no_update  # habilita el Interval de polling
 
+
+def _render_ml_result_no_bosque(result: Dict):
+    """
+    Tarjeta de resultado para banda y relación directa: NO hay R² in-sample ni
+    CV agrupada porque no hay bosque que entrenar — el valor por punto sale de
+    mapear la distribución de SE, no de ajustar un modelo. `result` es lo que
+    devuelve predict_ucs_banda()/predict_ucs_relacion().
+    """
+    vara = result.get("vara") or {}
+    tarjetas = [("Puntos con UCS", f"{result.get('n_puntos', 0):,}".replace(",", "."))]
+    if vara.get("mae_mpa") is not None:
+        tarjetas.append(("Error dejando-1-fuera", f"{vara['mae_mpa']:g} MPa"))
+    if result.get("n_anclas") is not None:
+        tarjetas.append(("Anclas de litología", str(result["n_anclas"])))
+    elif result.get("escalas") is not None:
+        tarjetas.append(("Unidades con banda", str(len(result["escalas"]))))
+    badges = html.Div([
+        dbc.Row([
+            dbc.Col(dbc.Card(dbc.CardBody([
+                html.Div(str(v), style={"fontSize": "17px", "fontWeight": 700}),
+                html.Small(k, style={"color": "#aaa", "fontSize": "10px"})],
+                style={"padding": "6px 10px"}), color="dark"), width="auto")
+            for k, v in tarjetas
+        ], className="g-1 mt-2"),
+        dbc.Alert([
+            html.Small([
+                "Este modelo no entrena un bosque aleatorio: no hay R² "
+                "in-sample ni CV agrupada que reportar. El valor de cada "
+                "punto sale de mapear su energía específica sobre la banda "
+                "(o la curva) calibrada con las anclas de litología, y su "
+                "vara es el error dejando-una-litología-fuera de arriba.",
+            ] + ([html.Br(), html.Br(),
+                  f"⚠ {', '.join(result['derivadas'])}: ancho de banda derivado, "
+                  "no medido."] if result.get("derivadas") else [])
+              + ([html.Br(), html.Br(), f"⚠ {result['motivo']}"]
+                 if result.get("status") not in (None, "ok") else []),
+            style={"color": "#aaa", "lineHeight": "1.5"})
+        ], color="dark", style={"fontSize": "10px", "padding": "6px 10px", "marginTop": "6px"}),
+    ])
+    return badges
+
+
 @app.callback(
     Output("ml-progress-bar","value"), Output("ml-progress-bar","label"),
     Output("ml-stage-label","children"), Output("ml-log-box","children"),
@@ -14093,6 +14415,16 @@ def poll_ml_task(_, ref):
     if error:
         return progress, f"{progress}%", stage, log_box, True, no_update, \
                dbc.Alert(error, color="warning"), f"⚠ {error}", True
+
+    # `result` no siempre trae la forma del bosque aleatorio (r2_train,
+    # rmse_train, cv_r2_mean...): banda y relación devuelven la forma de
+    # predict_ucs_banda()/predict_ucs_relacion() (n_puntos, escalas, vara),
+    # que no tiene esas claves. Leerlas sin mirar cuál corrió era el
+    # KeyError('r2_train') reportado al correr Banda.
+    if "r2_train" not in result:
+        badges = _render_ml_result_no_bosque(result)
+        msg = f"✅ {result.get('n_puntos', 0):,} punto(s) con UCS.".replace(",", ".")
+        return progress, f"{progress}%", stage, log_box, True, ref+1, badges, msg, True
 
     # (T6c) CV agrupada por pozo: si se omitió (< 3 pozos), mostrar el motivo
     # en vez de un "—" mudo, para que quede claro por qué falta la métrica.
@@ -14264,10 +14596,15 @@ def on_export_confirm(n, pending):
     if kind == "proyecto":
         if not wells:
             return no_update, no_update, no_update, False, "⚠ No hay datos cargados para guardar.", True
-        # A DISCO, no al navegador. Con cuatro caserones el .gwz pesa decenas
-        # de MB; leerlo entero en memoria y mandarlo por dcc.send_bytes triplica
-        # el consumo y en Colab la descarga falla sin decir nada. Guardar a una
-        # ruta esquiva el transporte completo.
+        # SIEMPRE a disco primero: es lo único garantizado. Con proyectos de
+        # decenas de MB, leer el archivo entero para mandarlo por
+        # dcc.send_bytes triplica el consumo y la descarga del navegador
+        # falla sin avisar — guardar a disco esquiva ese transporte.
+        #
+        # Pero solo declarar la ruta del servidor no es "guardar" para quien
+        # usa la interfaz: si nadie sabe encontrar esa ruta —typicamente el
+        # caso en Colab—, el botón parece no responder. Por eso, cuando el
+        # archivo es chico, se ofrece TAMBIÉN por descarga real del navegador.
         destino = (get_param("repo.ruta_proyecto") or "").strip()
         if not destino:
             destino = os.path.join(os.getcwd(), fname)
@@ -14277,9 +14614,19 @@ def on_export_confirm(n, pending):
         if rep["status"] != "ok":
             return (no_update, no_update, no_update, False,
                     f"❌ No se pudo guardar: {rep.get('motivo')}", True)
-        return (no_update, no_update, no_update, False,
-                f"✅ Proyecto guardado en {rep['ruta']} — {rep['n_pozos']} pozos, "
-                f"{rep['n_puntos']:,} puntos, {rep['tamano_MB']:g} MB.".replace(",", "."),
+        descarga = no_update
+        nota_descarga = ""
+        if rep["tamano_MB"] <= PROYECTO_DESCARGA_MAX_MB:
+            descarga = dcc.send_file(rep["ruta"], filename=fname)
+        else:
+            nota_descarga = (f" Sin descarga automática: {rep['tamano_MB']:g} MB "
+                             f"supera los {PROYECTO_DESCARGA_MAX_MB:g} MB que el "
+                             "navegador soporta con confianza — recupéralo desde "
+                             "la ruta.")
+        return (no_update, descarga, no_update, False,
+                (f"✅ Proyecto guardado en {rep['ruta']} — {rep['n_pozos']} pozos, "
+                 f"{rep['n_puntos']:,} puntos, {rep['tamano_MB']:g} MB."
+                 .replace(",", ".")) + nota_descarga,
                 True)
     if kind == "kit":
         if not wells:
@@ -14391,13 +14738,9 @@ def on_load_project(content, fname, ref):
     except Exception as e:
         return no_update, f"❌ Error al cargar: {e}", True
 
-@app.callback(
-    Output("up-project","style"),
-    Input("btn-load-project","n_clicks"),
-    prevent_initial_call=True,
-)
-def trigger_load_project(n):
-    return {"display":"block"} if n else no_update
+# "trigger_load_project" (Output up-project.style) se sacó: revelaba el
+# Upload sin clickearlo, que era el defecto. El clientside callback de arriba
+# lo reemplaza con el mismo patrón que btn-dxf/btn-xml/btn-drillhole.
 
 # ─── T11: callbacks de exportar kit Cap.5 ─────────────────────────────────────
 # (P3-3.3) "Exportar kit" (btn-kit-cap5) ahora pasa por el diálogo de
@@ -14787,7 +15130,10 @@ def _di_calibracion_card():
             "Busca sobre el símplex de pesos la combinación cuyo RQD_MWD ordena "
             "los tramos como los ordena el testigo, y la valida dejando UN "
             "SONDAJE fuera. La variante de convención no se toca: el resultado "
-            "se registra aparte para poder comparar.",
+            "se registra aparte para poder comparar, y sus números se escriben "
+            "directo en las casillas de «Configuración» de más abajo — no queda "
+            "solo en esta tabla. Nada se activa solo: para que el DI corra con "
+            "estos pesos hay que revisar el veredicto y pulsar «Calcular DI».",
             style={"color": "#aaa", "display": "block", "marginBottom": "8px"}),
         estado_radio,
         html.Small("Presiones candidatas — qué presión sobra lo decide la "
@@ -14877,6 +15223,11 @@ def _step3():
             html.Small("Pesos los valores por defecto: PP=0.35, DP=0.25, FP=0.20, RP=0.20",
                        style={"color":"#666"}),
         ]),
+        # La calibración va ANTES de la configuración: es movvar contra el
+        # testigo, el mismo método de Fernández, y sus pesos son los que se
+        # esperaría ver ya puestos en las casillas de abajo antes de tocarlas
+        # a mano. Ponerla después invertía el orden en que se decide.
+        _di_calibracion_card(),
         card("Configuración", [
             html.Small(di_config_summary(), style={
                 "color": "#2ECC71" if di_config_is_default() else "#F39C12",
@@ -14897,29 +15248,39 @@ def _step3():
                                     color="secondary", outline=True, size="sm",
                                     className="mt-3"), width=3),
             ], className="g-2 mb-2"),
-            html.Small("Pesos (P3-3.7):", style={"color":"#aaa","display":"block","marginBottom":"4px"}),
+            html.Small("Pesos (P3-3.7) — las cinco presiones candidatas, la "
+                       "misma magnitud que evalúa la calibración de arriba:",
+                       style={"color":"#aaa","display":"block","marginBottom":"4px"}),
             dbc.Row([
                 dbc.Col([html.Small("Percusión (PP)", style={"color":"#666","display":"block"}),
                           dbc.Input(id="di-w-pp", type="number", value=di_config["weights"]["pp"],
-                                     step=0.01, size="sm", style={"fontSize":"11px"})], width=3),
+                                     step=0.01, size="sm", style={"fontSize":"11px"})], width=2),
                 dbc.Col([html.Small("Dámper (DP)", style={"color":"#666","display":"block"}),
                           dbc.Input(id="di-w-pd", type="number", value=di_config["weights"]["pd"],
-                                     step=0.01, size="sm", style={"fontSize":"11px"})], width=3),
+                                     step=0.01, size="sm", style={"fontSize":"11px"})], width=2),
                 # Rotulado "FP" hasta ahora, que en IREDES es la sigla de la
                 # presión de AVANCE. Esta entrada escribe `pf`, que es FLP, la
                 # de barrido. La sigla estaba puesta sobre la variable de al
                 # lado; el número nunca cambió.
                 dbc.Col([html.Small("Barrido (FLP)", style={"color":"#666","display":"block"}),
                           dbc.Input(id="di-w-pf", type="number", value=di_config["weights"]["pf"],
-                                     step=0.01, size="sm", style={"fontSize":"11px"})], width=3),
+                                     step=0.01, size="sm", style={"fontSize":"11px"})], width=2),
                 dbc.Col([html.Small("Rotación (RP)", style={"color":"#666","display":"block"}),
                           dbc.Input(id="di-w-pr", type="number", value=di_config["weights"]["pr"],
-                                     step=0.01, size="sm", style={"fontSize":"11px"})], width=3),
+                                     step=0.01, size="sm", style={"fontSize":"11px"})], width=2),
+                # QUINTA casilla: antes el avance no tenía dónde escribirse
+                # acá, así que una variante calibrada que le diera peso lo
+                # perdía en silencio en cuanto alguien volvía a pulsar
+                # «Calcular DI». Ahora participa como las otras cuatro.
+                dbc.Col([html.Small("Avance (FP/AP)", style={"color":"#666","display":"block"}),
+                          dbc.Input(id="di-w-pa", type="number",
+                                     value=di_config["weights"].get("pa", 0.0),
+                                     step=0.01, size="sm", style={"fontSize":"11px"})], width=2),
             ], className="g-2"),
             html.Small(
-                "La presión de AVANCE (FP/AP) no participa de estos cuatro pesos: "
-                "entra como quinta candidata en la calibración contra el testigo, "
-                "más abajo, que es donde se decide si sobra.",
+                "Qué presión sobra lo decide la calibración contra el testigo, "
+                "no un descarte previo: el avance viene en 0 en la convención "
+                "de Fernández, pero una variante calibrada puede darle peso.",
                 style={"color":"#666","fontSize":"10px","display":"block",
                        "marginTop":"6px"}),
         ]),
@@ -14927,7 +15288,6 @@ def _step3():
                   className="mb-2") if n_di else None,
         _di_sensitivity_card(),
         _di_rqd_card(),
-        _di_calibracion_card(),
         dbc.Row([
             dbc.Col(dbc.Button("← Atrás", id={"type":"pill","index":2}, color="secondary", outline=True, size="sm"), width="auto"),
             dbc.Col(dbc.Button("Siguiente → ML", id={"type":"pill","index":4}, color="info", size="sm",
