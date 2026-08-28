@@ -196,8 +196,37 @@ Hallazgos que condicionan la interpretación, no defectos pendientes:
   +0,12 (10 m) y +0,17 (25 m), con pliegues que van de -0,21 a +0,83. Con
   cuatro o cinco sondajes la calibración no puede asentarse. La restricción
   que manda es la cantidad de sondajes con RQD, no la elección de pesos.
+- EL VISOR "SE ATRAPA" — causa raíz encontrada, no arreglada. `app.run()`
+  corre el servidor de desarrollo de Flask SIN `threaded=True`: atiende UNA
+  sola petición HTTP a la vez. Cada acción de la interfaz dispara una cadena
+  de ~10 callbacks encadenados (badges, árbol de capas, figura 3D, etc.), así
+  que si uno tarda —cargar un proyecto, reclasificar, armar la vista 3D—
+  TODOS los demás, incluido un simple clic en "Siguiente →", quedan en cola
+  detrás. Medido en vivo (navegador real vía Playwright) sobre un proyecto
+  chico de prueba (125 pozos, 157.195 puntos): un clic tardó **5 s** en
+  responder. Con los datasets reales del proyecto (cuatro caserones, más de
+  un millón de puntos) esto es sustancialmente peor — es la "trampa" que se
+  reportó.
 
-Hoja de ruta, prompts por sesión y criterio de modelo: `docs/roadmap_ejecucion.md`.
+  NO es un arreglo de una línea. Se probó `threaded=True` para permitir
+  peticiones concurrentes, y **crashea de verdad**, dos veces reproducido:
+  `RuntimeError: dictionary changed size during iteration` en
+  `_step2()` → `all_points()` → `for w in wells.values()`, porque un
+  callback todavía está ESCRIBIENDO en `wells` (la carga del proyecto,
+  agregando pozos uno a uno) mientras OTRO callback, en un hilo distinto, ya
+  está LEYENDO el mismo diccionario para dibujar el paso siguiente. `wells`,
+  `layers`, `domains` y el resto del estado global no tienen ningún candado.
+
+  El arreglo correcto no es un candado global —eso solo devolvería el
+  problema del principio, porque casi todo callback toca ese estado, así que
+  serializar todo con un lock es indistinguible de no tener hilos—, sino
+  mover las operaciones PESADAS Y SÍNCRONAS (cargar un .gwz, cargar DXF/XML)
+  al MISMO patrón de hilo de fondo + `dcc.Interval` de sondeo que ya usa el
+  entrenamiento ML (`task_lock`, `task_state`, `run_ml_task`): así el
+  callback que atiende el clic del usuario vuelve de inmediato, sin bloquear
+  el único hilo del servidor, y las demás peticiones no hacen cola detrás de
+  una carga larga. Es una decisión de arquitectura, no una corrección
+  puntual — se dejó documentada en vez de aplicada a medias.
 Documento maestro completo (respaldo): `docs/MWD_GeoMech_Documento_Maestro.md`.
 
 ## Fuentes de datos
