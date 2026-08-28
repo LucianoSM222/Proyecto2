@@ -5397,19 +5397,23 @@ def disagreement_vs_mesh_edge(fuente: str = "sondajes", capas=None) -> Dict:
         return {"status": "sin_datos",
                 "motivo": "No hay puntos con predicción y fuente de contraste.",
                 "terminologia": TERMINOLOGIA_C}
-    disc = [(p, pr, re) for p, pr, re, _ in pares if pr != re]
+    # `real` y no `re`: ese nombre es el MÓDULO de expresiones regulares, y
+    # usarlo de variable de bucle lo tapa dentro de esta función. Hoy no se
+    # usa regex acá, así que funciona; el día que alguien agregue una, falla
+    # con un error que no se parece en nada a su causa.
+    disc = [(p, pr, real) for p, pr, real, _ in pares if pr != real]
     if not disc:
         return {"status": "sin_desacuerdos", "n_pares": len(pares),
                 "terminologia": TERMINOLOGIA_C}
     dists, interior = [], []
-    for p, pr, re in disc:
+    for p, pr, real in disc:
         d = distancia_a_borde_malla(p.este, p.norte, p.cota, p.capa_lito) if p.capa_lito else None
         if d is None: continue
         dists.append(d)
         if d > BORDE_MALLA_M:
             interior.append({"este": round(p.este, 2), "norte": round(p.norte, 2),
                              "cota": round(p.cota, 2), "d_borde_m": round(d, 2),
-                             "predicha": pr, "contraste": re, "capa": p.capa_lito})
+                             "predicha": pr, "contraste": real, "capa": p.capa_lito})
     if not dists:
         return {"status": "sin_datos",
                 "motivo": "Los puntos discordantes no tienen capa de litología asociada.",
@@ -13527,9 +13531,17 @@ def _layer_tree():
 )
 def on_layer_meta(caseron_vals, alias_vals, caseron_ids, alias_ids, ref):
     """
-    Asigna caserón / alias de litología a las capas DXF y autocompleta su banda
-    UCS desde el Excel geomecánico. Ids pattern-matching → sobrevive a la
-    regeneración del árbol; no toca la figura 3D (eso es de render_viewport).
+    Asigna caserón / alias de litología a las capas DXF. Ids pattern-matching →
+    sobrevive a la regeneración del árbol; no toca la figura 3D (eso es de
+    render_viewport).
+
+    YA NO AUTOCOMPLETA NINGUNA BANDA DE UCS. La autocompletaba desde el Excel
+    geomecánico, con apply_layer_band(), y esa función se fue con el Excel: la
+    banda es propiedad del ATRIBUTO y el registro de atributos es su única
+    fuente. Lo que quedó fue la LLAMADA, sin la función y leyendo campos que
+    la capa tampoco tiene ya (ucs_lo, ucs_hi): asignar un caserón desde el
+    árbol reventaba con NameError. Python no lo delata al importar, así que
+    estuvo ahí hasta que alguien pasó por la línea.
     """
     ctx = callback_context
     if not ctx.triggered: return no_update, no_update, no_update
@@ -13547,14 +13559,8 @@ def on_layer_meta(caseron_vals, alias_vals, caseron_ids, alias_ids, ref):
             layers[name].lito_alias = val or None; changed = True
     if not changed:
         return no_update, no_update, no_update
-    filled = []
-    for name, layer in layers.items():
-        if layer.caseron and apply_layer_band(layer):
-            filled.append(f"{name}→{layer.ucs_lo:.0f}–{layer.ucs_hi:.0f}")
     build_domain_index()
-    if filled:
-        return ref+1, "✅ Banda autocompletada: " + ", ".join(filled), True
-    return ref+1, "Caserón/litología actualizado (sin banda coincidente).", True
+    return ref + 1, "✔ Caserón/litología actualizado en las capas.", True
 
 @app.callback(
     Output("active-step","data"),

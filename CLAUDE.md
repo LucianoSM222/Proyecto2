@@ -301,3 +301,13 @@ cada una y se usa en todas las pantallas.
 
 `python3 -m pytest -q` en la raíz. Las suites que dependen de fixtures no
 versionados se OMITEN, no fallan (`test_support.py`). Verde = 0 fallidas.
+
+`test_nombres_definidos.py` pasa pyflakes sobre TODOS los .py y falla si
+alguno usa un nombre que no existe. Python resuelve nombres al ejecutar, no al
+importar: una llamada a una función borrada importa sin quejarse y solo
+revienta cuando alguien pasa por esa línea. Así murieron `on_xml` (carga de
+MWD entera) y `apply_layer_band` (asignar caserón a una capa), las dos en el
+commit que sacó el Excel geomecánico, y así quedaron tres tests fantasma en el
+runner de `test_geomech.py` —bajo pytest ese bloque no corre, de modo que la
+suite seguía verde mintiendo—. Requiere `pip install pyflakes`; sin él la
+suite se OMITE en vez de pasar.

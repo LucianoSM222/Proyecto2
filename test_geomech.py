@@ -1,22 +1,20 @@
 """
-test_geomech.py — Validación de T2 (etiquetado caserón×litología + predicción
-con intervalo) y T3 (verificación de banda) para geomech_wizard.
+test_geomech.py — Predicción de UCS con intervalo, sobre los archivos reales.
 
-Cubre:
-  · parse_geomech_excel sobre un XLSX geomecánico: ≥40 registros, imprime 3
-    ejemplos con sus bandas parseadas. Usa el archivo real si la variable de
-    entorno GEOMECH_XLSX (o ./test_data/geomecanica_de_caserones.xlsx) existe;
-    si no, genera un fixture sintético con el MISMO formato documentado
-    (hoja BUDGET_S_2026_V02, encabezados en fila índice 2, datos desde la 3,
-    columnas 2/3/23/24/25/26/27), incluyendo una fila Metandesitas UCS "100 - 267".
-  · End-to-end con los archivos reales (DXF + DQ + MW): clasificación 1437/1743,
-    DI 1743, banda de Metandesitas desde Excel (mid=183.5), entrenamiento y
-    verificación p10 <= ucs_ml <= p90 en TODOS los puntos.
-  · band_consistency() sobre un caso sintético construido a mano que produce
-    las tres categorías: compatible / incompatible / ambiguo.
+Cubre UNA cosa: que el intervalo p10/p90 de la predicción contenga al valor
+predicho en TODOS los puntos y no sea degenerado (ancho > 0 en al menos uno).
 
-Rutas: GEOMECH_DQ / GEOMECH_MW / GEOMECH_DXF / GEOMECH_XLSX (env) o ./test_data
-o la carpeta de subida de la sesión.
+QUÉ SE FUE Y POR QUÉ. Este archivo tenía tres tests más —parse_geomech_excel,
+el end-to-end con banda de Metandesitas desde Excel, y band_consistency()—
+que se fueron con el Excel geomecánico cuando el proyecto pasó a UNA sola
+fuente de UCS: el registro de atributos. Lo que NO se fue con ellos fue la
+lista del runner de abajo, que siguió nombrándolos: `python3 test_geomech.py`
+reventaba con NameError, y bajo pytest ese bloque no corre, así que la suite
+seguía verde mintiendo. test_nombres_definidos.py existe para que eso no
+vuelva a pasar sin que nadie se entere.
+
+Rutas: GEOMECH_DQ / GEOMECH_MW / GEOMECH_DXF (env) o ./test_data o la carpeta
+de subida de la sesión.
 """
 
 import os, sys, glob
@@ -119,16 +117,14 @@ def test_interval_widens():
 
 if __name__ == "__main__":
     print("=" * 72)
-    print("  test_geomech.py — validación T2 (bandas + intervalo) y T3 (consistencia)")
+    print("  test_geomech.py — predicción de UCS con intervalo p10/p90")
     print("=" * 72)
     print(f"  DQ  : {DQ_PATH}")
     print(f"  MW  : {MW_PATH}")
     print(f"  DXF : {DXF_PATH}")
-    print(f"  XLSX: {XLSX_PATH or '(sintético)'}")
     print("-" * 72)
     ok = True; n_skip = 0
-    for fn in (test_parse_geomech, test_end_to_end_bands,
-               test_band_consistency_categories, test_interval_widens):
+    for fn in (test_interval_widens,):
         try:
             fn()
         except SkipTest as e:
