@@ -27,7 +27,7 @@ from sklearn.neighbors import KNeighborsRegressor
 from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
-from sklearn.model_selection import cross_val_score, cross_val_predict, cross_validate, GroupKFold, LeaveOneGroupOut
+from sklearn.model_selection import cross_val_score, cross_validate, GroupKFold, LeaveOneGroupOut
 from sklearn.inspection import permutation_importance
 from sklearn.cluster import DBSCAN
 import plotly.graph_objects as go
@@ -4380,7 +4380,9 @@ def reset_param(pid: str):
 
 def _sincronizar_globales_derivados():
     """Globales que no son un parámetro suelto sino una combinación de varios."""
-    global IDW_ANISOTROPIA, UCS_CONFIG, PP_ESTRATOS
+    # UCS_CONFIG no va en el global: se MUTA en sitio (sus claves), nunca se
+    # reasigna, así que declararlo global no hacía nada.
+    global IDW_ANISOTROPIA, PP_ESTRATOS
     IDW_ANISOTROPIA = (1.0, 1.0, float(param_registry["bloques.anisotropia_z"]["valor"]))
     UCS_CONFIG["physical_min"] = float(param_registry["ucs.min_fisico"]["valor"])
     UCS_CONFIG["physical_max"] = float(param_registry["ucs.max_fisico"]["valor"])
@@ -7943,7 +7945,13 @@ def interpolate_block_model(bloque_m: Optional[float] = None,
 
     ax, ay, az = anisotropia
     bloques, n_vacios, n_fuera = [], 0, 0
-    pozos_arr = np.array(m["pozo"])
+    # El pozo de cada muestra se guarda CODIFICADO a entero, no como texto: su
+    # única lectura es contar cuántos pozos distintos aportan a un bloque, y
+    # hacerlo sobre códigos enteros con np.unique es vectorizado, mientras que
+    # recorrer el arreglo de strings en Python creaba un escalar de numpy por
+    # muestra y por bloque —10,2 s de 44,9 s, el mayor costo aislado del
+    # interpolador—.
+    pozos_nombres, pozos_cod = np.unique(np.array(m["pozo"]), return_inverse=True)
     caseron_arr = np.array(m["caseron"])
     por_caseron: Dict[str, Dict] = {}
 
@@ -7972,34 +7980,50 @@ def interpolate_block_model(bloque_m: Optional[float] = None,
       cubos: Dict[Tuple[int, int], list] = {}
       for idx, (i, j) in enumerate(map(tuple, ij)):
           cubos.setdefault((i, j), []).append(gidx[idx])
+      # Cada celda se convierte a numpy UNA vez, al construir el índice. Antes
+      # se guardaban listas de Python y cada bloque en planta rearmaba
+      # `np.array(vecinos)` con la unión de su vecindario: como los vecindarios
+      # se traslapan, la misma muestra se reconvertía muchas veces (6,8 s de
+      # 44,9 s en 2.045 llamadas). np.concatenate respeta el mismo orden que
+      # el extend que reemplaza, así que `vec` sale idéntico.
+      cubos = {k: np.asarray(v, dtype=np.int64) for k, v in cubos.items()}
 
+      # La holgura puede superar el lado de la celda del índice: se barre el
+      # vecindario necesario para no perder tiros de borde. Depende solo de
+      # radio/holgura/celda, los tres invariantes del recorrido: se calcula UNA
+      # vez y no una por cada bloque en planta.
+      rad_celdas = int(np.ceil(max(radio_h_m, holgura_m) / celda))
       for x in ejes[0]:
           ci = int(np.floor(x / celda))
           for y in ejes[1]:
               cj = int(np.floor(y / celda))
-              vecinos = []
-              # La holgura puede superar el lado de la celda del índice: se
-              # barre el vecindario necesario para no perder tiros de borde.
-              rad_celdas = int(np.ceil(max(radio_h_m, holgura_m) / celda))
+              partes = []
               for di_ in range(-rad_celdas, rad_celdas + 1):
                   for dj_ in range(-rad_celdas, rad_celdas + 1):
-                      vecinos.extend(cubos.get((ci + di_, cj + dj_), ()))
-              if not vecinos:
+                      c = cubos.get((ci + di_, cj + dj_))
+                      if c is not None: partes.append(c)
+              if not partes:
                   n_fuera += len(ejes[2]); continue
-              vec = np.array(vecinos)
+              vec = partes[0] if len(partes) == 1 else np.concatenate(partes)
               sub_all = P[vec]
               dh_all = np.hypot(sub_all[:, 0] - x, sub_all[:, 1] - y)
               # Dominio: ¿hay algún tiro dentro de la holgura, en planta?
               en_dom = dh_all <= holgura_m
               if not en_dom.any():
                   n_fuera += len(ejes[2]); continue
-              sub_dom, dh_dom = sub_all[en_dom], dh_all[en_dom]
+              # Solo la COTA de las muestras en dominio entra al bucle de z:
+              # `dh_all[en_dom]` se calculaba y no se leía nunca —su única
+              # lectura era `dh_dom <= holgura_m`, que es todo-verdadero por
+              # construcción, porque en_dom ES esa misma condición—, así que
+              # esa comparación y su AND se evaluaban sobre el arreglo entero
+              # una vez POR BLOQUE en cota sin poder cambiar el resultado.
+              z_dom = sub_all[en_dom][:, 2]
               en_h = dh_all <= radio_h_m
-              vec, sub, dh = vec[en_h], sub_all[en_h], dh_all[en_h]
+              # dh_all[en_h] tampoco se leía: se descarta en vez de reservarlo.
+              vec, sub = vec[en_h], sub_all[en_h]
               for z in ejes[2]:
                   # Fuera del dominio en cota: el bloque no pertenece al modelo.
-                  if not np.any((dh_dom <= holgura_m)
-                                & (np.abs(sub_dom[:, 2] - z) <= holgura_m)):
+                  if not np.any(np.abs(z_dom - z) <= holgura_m):
                       n_fuera += 1; continue
                   if sub.shape[0] == 0:
                       n_vacios += 1; continue
@@ -8009,7 +8033,7 @@ def interpolate_block_model(bloque_m: Optional[float] = None,
                   if n_sel < min_muestras:
                       n_vacios += 1; continue
                   idxs = vec[sel]
-                  if len({pozos_arr[i] for i in idxs}) < min_pozos:
+                  if len(np.unique(pozos_cod[idxs])) < min_pozos:
                       n_vacios += 1; continue
                   # Distancia anisotrópica: la separación vertical se multiplica
                   # por az antes de entrar al peso.
@@ -10363,7 +10387,9 @@ def _build_kit_zip():
     memoria documenta. Ahora hay un solo kit y el ZIP es su empaque.
     """
     with tempfile.TemporaryDirectory() as td:
-        rep = build_chapter5_kit(td)
+        # El valor de retorno no se usa: lo que importa son los archivos que
+        # deja en `td`, que es lo que el ZIP empaqueta a continuación.
+        build_chapter5_kit(td)
         buf = _io.BytesIO()
         with _zipfile.ZipFile(buf, "w", _zipfile.ZIP_DEFLATED) as zf:
             for nombre in sorted(os.listdir(td)):
@@ -10680,9 +10706,13 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
         else:
             tris = tris_full
         x = tris[:,:,0].ravel(); y = tris[:,:,1].ravel(); z = tris[:,:,2].ravel()
-        ii = list(range(0, len(tris)*3, 3))
-        jj = list(range(1, len(tris)*3, 3))
-        kk = list(range(2, len(tris)*3, 3))
+        # np.arange y no list(range(...)): Plotly VALIDA elemento por elemento
+        # toda lista de Python que recibe, y con 12.000 triángulos por malla
+        # eran 36.000 índices por malla pasando uno a uno por el validador.
+        # Un ndarray lo toma por el camino rápido, sin recorrerlo.
+        ii = np.arange(0, len(tris)*3, 3)
+        jj = np.arange(1, len(tris)*3, 3)
+        kk = np.arange(2, len(tris)*3, 3)
         # La UCS de una malla es la de su ATRIBUTO: la capa ya no la lleva.
         _lito = layer_role_ids(layer).get("litologia")
         _a = attr_registry.get(_lito or "")
@@ -10730,7 +10760,12 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
         else:
             pts = pts_full
         is_visible = True if not oculto else "legendonly"
-        xs = [p.este for p in pts]; ys = [p.norte for p in pts]; zs = [p.cota for p in pts]
+        # Mismo motivo que ii/jj/kk: como ndarray, Plotly no valida punto a
+        # punto las tres coordenadas de cada pozo.
+        _n = len(pts)
+        xs = np.fromiter((p.este for p in pts), np.float64, _n)
+        ys = np.fromiter((p.norte for p in pts), np.float64, _n)
+        zs = np.fromiter((p.cota for p in pts), np.float64, _n)
         # collar — se acumula y se dibuja todo junto al final del bucle.
         # Un pozo oculto no aporta el suyo: no se dibuja, no debe contarse.
         if is_visible is True:
@@ -14540,7 +14575,6 @@ def _render_ml_result_no_bosque(result: Dict):
 )
 def poll_ml_task(_, ref):
     with task_lock:
-        running = task_state["running"]
         progress = task_state["progress"]
         stage = task_state["stage"]
         log_lines = list(task_state["log"])
@@ -14964,17 +14998,49 @@ def update_well_report(well_name, hist_vars, profile_var):
     return fig, table
 
 # ─── RENDERERS ────────────────────────────────────────────────────────────────
+# La envolvente del MWD son SEIS números, pero calcularla materializaba un
+# arreglo de un millón de filas —1,1 s— en CADA visita al Paso 1, que es la
+# primera pantalla que se abre. Mismo defecto que ya se corrigió en el embudo
+# del Paso 4: armar toda la matriz para mostrar unas pocas cifras.
+#
+# La firma incluye los COLLARES además de _firma_puntos(): reasignar el DQ de
+# un pozo lo mueve de sitio sin cambiar cuántos pozos ni cuántos puntos hay, y
+# un diagnóstico de posición que no se enterara de eso sería justamente el
+# dato desactualizado en silencio que este proyecto no admite.
+_calce_cache: Dict[str, object] = {"firma": None, "valor": None}
+
+
+def _bbox_mwd():
+    """Envolvente (min, max) de los puntos MWD, cacheada contra su firma."""
+    firma = (_firma_puntos(),
+             tuple((wn, (w.collar or {}).get("este"), (w.collar or {}).get("norte"),
+                    (w.collar or {}).get("cota")) for wn, w in sorted(wells.items())))
+    if _calce_cache["firma"] == firma:
+        return _calce_cache["valor"]
+    pts = list(all_points())
+    if not pts:
+        _calce_cache["firma"] = firma; _calce_cache["valor"] = None
+        return None
+    n = len(pts)
+    # np.fromiter por eje: evita construir un millón de listas de tres
+    # elementos solo para tirarlas después de leer su mínimo y su máximo.
+    coords = np.empty((n, 3), dtype=np.float64)
+    coords[:, 0] = np.fromiter((p.este for p in pts), np.float64, n)
+    coords[:, 1] = np.fromiter((p.norte for p in pts), np.float64, n)
+    coords[:, 2] = np.fromiter((p.cota for p in pts), np.float64, n)
+    coords = coords[np.all(np.isfinite(coords), axis=1)]
+    valor = None if coords.size == 0 else (coords.min(0), coords.max(0))
+    _calce_cache["firma"] = firma; _calce_cache["valor"] = valor
+    return valor
+
+
 def _diagnostico_calce():
     if not layers or not wells: return None
     dxf_bmin = np.min([l.bbox_min for l in layers.values()], axis=0)
     dxf_bmax = np.max([l.bbox_max for l in layers.values()], axis=0)
-    pts = list(all_points())
-    if not pts: return None
-    coords = np.array([[p.este, p.norte, p.cota] for p in pts])
-    valid = np.all(np.isfinite(coords), axis=1)
-    coords = coords[valid]
-    if coords.size == 0: return None
-    p_bmin = coords.min(0); p_bmax = coords.max(0)
+    bbox = _bbox_mwd()
+    if bbox is None: return None
+    p_bmin, p_bmax = bbox
     overlap = np.all(p_bmax >= dxf_bmin) and np.all(p_bmin <= dxf_bmax)
     if overlap:
         return dbc.Alert([

@@ -296,6 +296,22 @@ el orden de los cuatro caserones:
 | Paso 3 | 663 ms | 318 ms | recorre el generador en vez de materializar |
 | Vista 3D | 1.157 ms | 713 ms | cada pozo declaraba SU barra de color (600 barras idénticas apiladas) y cada collar era su propia traza |
 
+Auditoría final, cronometrada sobre PCS_1043+PCC_0042 reales (601.324 puntos,
+463 pozos, 17 mallas). Los tres cambios preservan el resultado EXACTO —
+comprobado por huella del JSON/de los bloques y comparación valor a valor:
+
+| | antes | ahora | qué era |
+|---|---|---|---|
+| Paso 1 | 1.870 ms · 2.326 ms (2ª) | 467 ms · **2 ms (2ª)** | `_diagnostico_calce()` materializaba un arreglo de un millón de filas EN CADA VISITA para mostrar seis números en un banner. `_bbox_mwd()` lo cachea contra la firma de puntos MÁS la de collares —reasignar el DQ de un pozo lo mueve sin cambiar cuántos hay— y el camino frío usa `np.fromiter` por eje |
+| Vista 3D | 1.152 ms | 569 ms | Plotly VALIDA elemento por elemento toda lista de Python que recibe: `ii/jj/kk` de cada malla eran 36.000 índices por malla pasando uno a uno por el validador (896.328 llamadas a `to_scalar_or_list`). Como ndarray toma el camino rápido |
+| Modelo de bloques | 41,3 s | 23,5 s | contar pozos distintos por bloque recorría un arreglo de strings en Python (10,2 s), y cada bloque en planta rearmaba `np.array(vecinos)` desde listas (6,8 s). Códigos enteros + `np.unique`, y celdas del índice convertidas a numpy UNA vez |
+
+Lo que NO se tocó: los 22 s que quedan del modelo de bloques son el algoritmo
+en sí —25 celdas de vecindario por bloque con el perfil real, no un
+vecindario patológico—. Bajarlo más exige vectorizar el bucle de cota, que
+cambia el orden de las sumas y con él los últimos bits de la UCS
+interpolada: no vale el riesgo por un reporte que se corre una vez.
+
 `_training_funnel(..., solo_conteos=True)` da los mismos conteos sin la matriz;
 NO borra la procedencia (`_prov_capas`/`_prov_caserones`/`_prov_ucs`), porque un
 pase de conteos que la limpiara dejaría muda a la guardia de circularidad.

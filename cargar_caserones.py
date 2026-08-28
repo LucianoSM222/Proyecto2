@@ -16,7 +16,7 @@ Cada caserón se resuelve así:
         subcarpeta "Litología*" -> rol litologia · "Estructuras*" -> estructura
 """
 
-import os, sys, glob, time, argparse, collections
+import os, sys, glob, time, argparse
 from typing import Dict, List
 
 HERE = os.path.dirname(os.path.abspath(__file__))
