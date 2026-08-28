@@ -15,7 +15,7 @@
 import os, sys, json, time, base64, tempfile, re, warnings, threading, traceback, math, hashlib, collections
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, Set
 from xml.etree import ElementTree as ET
 
 import numpy as np
@@ -3821,7 +3821,9 @@ MENUS_PERFIL = {
     "Geometría": ["Validación de mallas", "Plano del abanico", "Modelo de bloques"],
     "Roca": ["UCS", "Etiqueta de UCS", "Límites físicos", "Percusión (PP)",
              "Presión de percusión", "Litología"],
-    "Fracturamiento": ["RQD", "Calibración DI↔RQD", "Discriminador", "DI"],
+    # "DI" salió: sus seis parámetros ya no viven en el perfil —se escribían
+    # acá y no los usaba nadie— y el menú los muestra en vivo, solo lectura.
+    "Fracturamiento": ["RQD", "Calibración DI↔RQD", "Discriminador"],
     "Modelo": ["Modelo de aprendizaje", "Visor 3D", "Recomendación de seteos"],
 }
 
@@ -4179,19 +4181,17 @@ def seed_param_registry(force: bool = False):
                "silencioso jamás.", 0.0, 1000.0),
         _param("ucs.max_fisico", "Límites físicos", "UCS máxima", 450.0, "float",
                "MPa", "Límite físico declarado en CLAUDE.md.", 0.0, 1000.0),
-        # ── Convención inmutable ─────────────────────────────────────────────
-        _param("di.ventana", "DI", "Ventana del DI", 14, "int", "registros",
-               "Valor por defecto del proyecto.", 3, 200),
-        _param("di.umbral", "DI", "Umbral del DI", 1.5, "float", "—",
-               "Valor por defecto del proyecto.", 0.01, 20.0),
-        _param("di.peso_pp", "DI", "Peso de PP", 0.35, "float", "—",
-               "Valor por defecto del proyecto.", 0.0, 1.0),
-        _param("di.peso_dp", "DI", "Peso de DP", 0.25, "float", "—",
-               "Valor por defecto del proyecto.", 0.0, 1.0),
-        _param("di.peso_fp", "DI", "Peso de FP", 0.2, "float", "—",
-               "Valor por defecto del proyecto.", 0.0, 1.0),
-        _param("di.peso_rp", "DI", "Peso de RP", 0.2, "float", "—",
-               "Valor por defecto del proyecto.", 0.0, 1.0),
+        # ── Los seis del DI NO viven acá ──────────────────────────────────────
+        # Estuvieron en el registro y eran un control que no controlaba nada:
+        # la pantalla del perfil aceptaba el número, lo daba por aplicado, y el
+        # DI seguía corriendo con los suyos. `di_config` y `di_threshold` se
+        # escriben SOLO desde activar_di(), y lo que hay que activar es una
+        # VARIANTE, no un parámetro suelto de la faena.
+        #
+        # Además se pedían dos veces: acá y en el panel del Paso 3. Ahora la
+        # ventana, el umbral y los cuatro pesos se escriben en un solo lugar
+        # —el Paso 3, o la calibración contra el testigo— y el perfil los
+        # MUESTRA en vivo, sin ofrecer editarlos.
     ]
     for p in P:
         param_registry[p["id"]] = p
@@ -11001,6 +11001,14 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
                    style={"padding":"0","textDecoration":"none","marginRight":"10px"}),
         # (PF-UI) Acceso al perfil de faena desde la barra: es lo que otra mina
         # ajusta primero, y estaba solo disponible llamando set_param() a mano.
+        dbc.Button(dbc.Badge("💥 tronadura", color="danger",
+                             style={"fontSize":"10px"}),
+                   id="btn-open-tronadura", color="link", size="sm",
+                   style={"padding":"0","textDecoration":"none","marginRight":"10px"}),
+        dbc.Button(dbc.Badge("📄 reportes", color="info",
+                             style={"fontSize":"10px"}),
+                   id="btn-open-reportes", color="link", size="sm",
+                   style={"padding":"0","textDecoration":"none","marginRight":"10px"}),
         dbc.Button(html.Span(id="perfil-badge"), id="btn-open-perfil",
                    color="link", size="sm",
                    style={"padding":"0","textDecoration":"none","marginRight":"10px"}),
@@ -11127,11 +11135,34 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
     # pantalla. Sin esto el registro existía pero solo se alcanzaba llamando
     # set_param() a mano, que para quien usa la plataforma es lo mismo que
     # tenerlos clavados en el código.
+    # Soporte a tronadura: el sólido por DI y por UCS. Es la herramienta que
+    # usa quien arma la tronadura, y hasta ahora el modelo de bloques solo
+    # alimentaba el kit del capítulo.
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("Soporte a tronadura — fracturamiento y resistencia")),
+        dbc.ModalBody(id="tronadura-body", style={"maxHeight":"84vh","overflowY":"auto"}),
+        dbc.ModalFooter(dbc.Button("Cerrar", id="close-tronadura", size="sm",
+                                   color="secondary")),
+    ], id="tronadura-modal", size="xl", is_open=False, scrollable=True),
     dbc.Modal([
         dbc.ModalHeader(dbc.ModalTitle("Perfil de faena — parámetros de operación")),
         dbc.ModalBody(id="perfil-modal-body", style={"maxHeight": "75vh", "overflowY": "auto"}),
         dbc.ModalFooter(dbc.Button("Cerrar", id="close-perfil", size="sm", color="secondary")),
     ], id="perfil-modal", size="xl", is_open=False, scrollable=True),
+    # Centro de reportes: el listado vive detrás de UN botón y cada reporte se
+    # corre cuando se pide. Antes cada análisis se lanzaba encima del usuario
+    # apenas cambiaba un dato, que es exactamente lo que hacía lenta la sesión.
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("Reportes — se abre el que pidas")),
+        dbc.ModalBody(id="reportes-body", style={"maxHeight":"84vh","overflowY":"auto"}),
+        dbc.ModalFooter([
+            dbc.Button("Descargar el abierto", id="btn-dl-reporte", size="sm",
+                       color="primary", outline=True),
+            dbc.Button("Cerrar", id="close-reportes", size="sm", color="secondary"),
+        ]),
+    ], id="reportes-modal", size="xl", is_open=False, scrollable=True),
+    dcc.Store(id="rep-abierto"),
+    dcc.Download(id="dl-reporte"),
     dcc.Download(id="dl-perfil"),
 ])
 
@@ -11379,6 +11410,40 @@ def _perfil_protegido(p: Dict):
     ])
 
 
+def _di_vigente_body():
+    """
+    El DI que está corriendo, en el perfil, SOLO PARA MIRAR.
+
+    Estos seis números se pedían dos veces —acá y en el Paso 3— y la copia de
+    acá no escribía nada: la pantalla aceptaba el valor, lo daba por aplicado y
+    el DI seguía con los suyos. Un control que no controla es peor que no
+    tenerlo. Ahora se escriben en un solo lugar y acá se ven.
+    """
+    conf = di_variantes.get(di_activo()) or {}
+    pesos = conf.get("weights") or di_config["weights"]
+    filas = [html.Tr([
+        html.Td(CAL_ETIQUETAS.get(k, k), style={"fontSize": "10px"}),
+        html.Td(f"{v:.2f}", className="text-end", style={"fontSize": "10px"}),
+    ]) for k, v in sorted(pesos.items(), key=lambda kv: -kv[1])]
+    return html.Div([
+        html.Small("Índice de discontinuidad que está corriendo",
+                   style={"fontWeight": "bold", "fontSize": "11px"}),
+        html.Div([
+            "Variante ", html.B(di_activo()),
+            f" · ventana {conf.get('window', di_config['window'])}"
+            f" · umbral {conf.get('threshold', di_threshold):g}",
+        ], style={"fontSize": "10px", "color": "#aaa", "margin": "6px 0"}),
+        dbc.Table(html.Tbody(filas), bordered=False, size="sm",
+                  style={"marginBottom": "4px"}),
+        html.Small(
+            "Solo lectura. La ventana, el umbral y los pesos se escriben en el "
+            "Paso 3, o los busca la calibración contra el testigo; cambiarlos "
+            "crea una variante y la de convención queda intacta. Tenerlos "
+            "también acá significaba escribirlos en un lugar que no los usaba.",
+            style={"fontSize": "10px", "color": "#888"}),
+    ])
+
+
 def _rqd_radio_panel_body():
     """
     (Auditoría) Pantalla del radio de asignación del RQD.
@@ -11448,6 +11513,346 @@ def _rqd_radio_panel_body():
             style={"fontSize": "10px", "marginTop": "8px",
                    "color": "#2ECC71" if t.get("radio_confirmado") is not None
                             else "#F39C12"}),
+    ])
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  SOPORTE A TRONADURA                                                     ║
+# ║                                                                          ║
+# ║  Lo que mira quien arma la tronadura, y solo eso: DÓNDE está quebrada la ║
+# ║  roca (DI) y QUÉ TAN COMPETENTE es (UCS). El modelo de bloques ya         ║
+# ║  calculaba ambas, pero solo alimentaba el kit del capítulo: no había      ║
+# ║  pantalla desde la cual pedirlo. Un cálculo al que no se llega desde la  ║
+# ║  interfaz, para el usuario, no existe.                                   ║
+# ║                                                                          ║
+# ║  Un bloque SIN soporte de datos no se pinta. En tronadura un hueco       ║
+# ║  rellenado de "roca competente" es una decisión tomada sobre nada.        ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+TRONADURA_ADVERTENCIA = (
+    "Es una APROXIMACIÓN de apoyo, no un modelo geológico validado. La UCS "
+    "sale de la respuesta de perforación calibrada contra las anclas de "
+    "laboratorio disponibles, y el DI es un índice relativo de fracturamiento "
+    "que no está calibrado en puntos de RQD. Sirve para ordenar sectores y "
+    "anticipar dónde mirar; no reemplaza al testigo.")
+
+_bloques_cache: Dict[str, object] = {"firma": None, "rep": None}
+
+
+def _bloques_vigentes() -> Dict:
+    """Modelo de bloques, cacheado contra la firma de los puntos."""
+    firma = (_firma_puntos(), get_param("bloques.tamano_m"),
+             get_param("bloques.holgura_m"), ucs_modelo_vigente)
+    if _bloques_cache["firma"] == firma:
+        return _bloques_cache["rep"]
+    rep = interpolate_block_model()
+    _bloques_cache["firma"] = firma
+    _bloques_cache["rep"] = rep
+    return rep
+
+
+def tronadura_resumen(rep: Optional[Dict] = None) -> Dict:
+    """Las cifras que se leen antes de cargar: cuánto, qué tan fracturado, qué tan duro."""
+    rep = rep if rep is not None else _bloques_vigentes()
+    if rep.get("status") != "ok":
+        return {"status": rep.get("status", "sin_datos"),
+                "motivo": rep.get("motivo") or "No hay modelo de bloques."}
+    bl = [b for b in rep["bloques"] if b.get("ucs") is not None or b.get("di") is not None]
+    if not bl:
+        return {"status": "sin_datos",
+                "motivo": "Ningún bloque tiene soporte de datos suficiente."}
+    lado = float(rep.get("bloque_m") or get_param("bloques.tamano_m"))
+    dis = [b["di"] for b in bl if b.get("di") is not None]
+    ucss = [b["ucs"] for b in bl if b.get("ucs") is not None]
+    por_banda: Dict[str, int] = {}
+    for b in bl:
+        if b.get("banda"):
+            por_banda[b["banda"]] = por_banda.get(b["banda"], 0) + 1
+    return {"status": "ok",
+            "n_bloques": len(bl),
+            "volumen_m3": round(len(bl) * lado ** 3, 1),
+            "lado_m": lado,
+            "umbral_di": di_threshold,
+            "pct_fracturado": (round(100.0 * sum(1 for d in dis if d > di_threshold)
+                                     / len(dis), 1) if dis else 0.0),
+            "di_mediana": round(float(np.median(dis)), 2) if dis else None,
+            "ucs_mediana": round(float(np.median(ucss)), 1) if ucss else None,
+            "ucs_p10": round(float(np.percentile(ucss, 10)), 1) if ucss else None,
+            "ucs_p90": round(float(np.percentile(ucss, 90)), 1) if ucss else None,
+            "por_banda": dict(sorted(por_banda.items(), key=lambda kv: -kv[1])),
+            "modelo_ucs": ucs_model_summary(),
+            "advertencia": TRONADURA_ADVERTENCIA}
+
+
+def build_bloques_figure(variable: str = "di"):
+    """
+    Sólido de bloques coloreado por DI o por UCS.
+
+    Los bloques sin valor NO se dibujan: quedan como hueco, que es la verdad.
+    """
+    fig = go.Figure()
+    rep = _bloques_vigentes()
+    if rep.get("status") != "ok":
+        fig.update_layout(
+            paper_bgcolor="#0d0d1a", plot_bgcolor="#0d0d1a",
+            annotations=[dict(text=(rep.get("motivo") or "Sin modelo de bloques.")[:110],
+                              showarrow=False, font=dict(size=12, color="#F39C12"))],
+            margin=dict(l=0, r=0, t=24, b=0))
+        return fig
+    campo = "di" if variable == "di" else "ucs"
+    bl = [b for b in rep["bloques"] if b.get(campo) is not None]
+    n_vacios = len(rep["bloques"]) - len(bl)
+    if not bl:
+        fig.update_layout(
+            paper_bgcolor="#0d0d1a",
+            annotations=[dict(text=f"Ningún bloque tiene {campo.upper()}.",
+                              showarrow=False, font=dict(size=12, color="#F39C12"))])
+        return fig
+    lado = float(rep.get("bloque_m") or get_param("bloques.tamano_m"))
+    vals = [b[campo] for b in bl]
+    if campo == "di":
+        escala, titulo = "Inferno", "DI — fracturamiento"
+        cmin, cmax = 0.0, max(3.0, float(np.percentile(vals, 98)))
+    else:
+        escala, titulo = "Viridis", "UCS — resistencia [MPa]"
+        cmin, cmax = float(np.percentile(vals, 2)), float(np.percentile(vals, 98))
+    fig.add_trace(go.Scatter3d(
+        x=[b["x"] for b in bl], y=[b["y"] for b in bl], z=[b["z"] for b in bl],
+        mode="markers", name=titulo,
+        marker=dict(size=max(3, min(12, lado * 1.6)), symbol="square",
+                    color=vals, colorscale=escala, cmin=cmin, cmax=cmax,
+                    opacity=0.85, showscale=True,
+                    colorbar=dict(title=dict(text=titulo, font=dict(size=10)),
+                                  thickness=12, len=0.6)),
+        customdata=[[b.get("ucs"), b.get("di"), b.get("banda") or "—",
+                     b.get("confianza"), b.get("lito") or "—"] for b in bl],
+        hovertemplate=("UCS %{customdata[0]:.0f} MPa · DI %{customdata[1]:.2f}<br>"
+                       "%{customdata[2]} · confianza %{customdata[3]:.2f}<br>"
+                       "%{customdata[4]}<extra></extra>")))
+    sub = f"{len(bl):,} bloque(s) de {lado:g} m".replace(",", ".")
+    if n_vacios:
+        sub += (f" · {n_vacios:,} sin soporte de datos, NO dibujados"
+                .replace(",", "."))
+    fig.update_layout(
+        paper_bgcolor="#0d0d1a",
+        title=dict(text=f"{titulo} — {sub}", font=dict(size=11, color="#aaa"),
+                   x=0.01, xanchor="left"),
+        scene=dict(
+            xaxis=dict(title=dict(text="Este (UTM m)", font=dict(size=10)), gridcolor="#222"),
+            yaxis=dict(title=dict(text="Norte (UTM m)", font=dict(size=10)), gridcolor="#222"),
+            zaxis=dict(title=dict(text="Cota (m.s.n.m.)", font=dict(size=10)), gridcolor="#222"),
+            bgcolor="#070711", aspectmode="data",
+            camera=dict(eye=dict(x=1.6, y=1.6, z=0.9))),
+        margin=dict(l=0, r=0, t=26, b=0), uirevision="tronadura")
+    return fig
+
+
+# ─── CENTRO DE REPORTES ──────────────────────────────────────────────────────
+# Los reportes ya no se lanzan encima del usuario: se listan, se dice cuáles
+# están disponibles y cuáles no —con el motivo—, y se abre el que se pida. Un
+# reporte que se calcula solo cada vez que cambia algo es una ventana que
+# interrumpe y una espera que nadie pidió.
+
+REPORTES: Tuple[Dict, ...] = (
+    {"id": "tronadura", "titulo": "Soporte a tronadura",
+     "que": "Sólido por DI y por UCS: dónde está quebrada la roca y qué tan "
+            "competente es.", "gen": "tronadura_resumen"},
+    {"id": "ucs_metodos", "titulo": "Comparación de modelos de UCS",
+     "que": "Línea base, relación directa, banda y bosque aleatorio bajo la "
+            "misma vara: error en MPa dejando una litología fuera.",
+     "gen": "compare_ucs_methods"},
+    {"id": "coherencia", "titulo": "Coherencia SE ↔ UCS",
+     "que": "Si la energía específica ordena las litologías como su resistencia "
+            "de laboratorio, controlando por estrato de percusión.",
+     "gen": "se_ucs_coherence_report"},
+    {"id": "variables", "titulo": "Justificación de variables",
+     "que": "Correlación entre predictoras, importancia, y comparación con y "
+            "sin SE.", "gen": "variable_justification_report"},
+    {"id": "di_calidad", "titulo": "Qué tan bien describe el DI al macizo",
+     "que": "Apartamiento en PUNTOS DE RQD entre lo que calcula el MWD y lo que "
+            "midió el testigo.", "gen": "di_quality_indicator"},
+    {"id": "radio_rqd", "titulo": "Sensibilidad del radio de RQD",
+     "que": "Cuántos pares de calibración sobreviven a cada radio, y a cuántos "
+            "sondajes se alcanza.", "gen": "rqd_radius_sensitivity"},
+    {"id": "bloques", "titulo": "Modelo de bloques",
+     "que": "Resumen por banda de resistencia y cobertura del modelo.",
+     "gen": "block_model_summary"},
+    {"id": "perfil", "titulo": "Perfil de faena",
+     "que": "Qué parámetros se movieron de su defecto y con qué procedencia.",
+     "gen": "site_profile_report"},
+    {"id": "composicion", "titulo": "Composición del entrenamiento",
+     "que": "El embudo: cuántos puntos entran, cuántos sobreviven a cada filtro "
+            "y por qué.", "gen": "training_composition_report"},
+)
+
+
+def reportes_disponibles() -> List[Dict]:
+    """
+    Qué reportes se pueden ver AHORA y cuáles no, con el motivo. No los calcula:
+    solo mira si hay con qué. Calcularlos todos para pintar una lista sería la
+    lentitud que se está tratando de sacar.
+    """
+    hay_pozos = bool(wells)
+    hay_dominios = bool(domains)
+    hay_sondajes = bool(drillholes)
+    hay_ucs = any(p.ucs_ml is not None for w in wells.values() for p in w.points)
+    requisitos = {
+        "tronadura": (hay_ucs, "Falta correr un modelo de UCS (paso 4)."),
+        "ucs_metodos": (hay_dominios, "Falta cruzar la geometría (paso 4)."),
+        "coherencia": (hay_dominios, "Falta cruzar la geometría (paso 4)."),
+        "variables": (hay_dominios, "Falta cruzar la geometría (paso 4)."),
+        "di_calidad": (hay_sondajes, "No hay sondajes con RQD cargados."),
+        "radio_rqd": (hay_sondajes, "No hay sondajes con RQD cargados."),
+        "bloques": (hay_ucs, "Falta correr un modelo de UCS (paso 4)."),
+        "perfil": (True, ""),
+        "composicion": (hay_pozos, "No hay pozos cargados."),
+    }
+    out = []
+    for r in REPORTES:
+        ok, motivo = requisitos.get(r["id"], (True, ""))
+        out.append({**r, "disponible": bool(ok),
+                    "motivo": "" if ok else motivo})
+    return out
+
+
+def generar_reporte(rid: str) -> Dict:
+    """Corre UN reporte, el que se pidió. Nunca todos."""
+    ficha = next((r for r in REPORTES if r["id"] == rid), None)
+    if ficha is None:
+        return {"status": "error", "motivo": f'No existe el reporte "{rid}".'}
+    fn = globals().get(ficha["gen"])
+    if fn is None:
+        return {"status": "error",
+                "motivo": f'El generador "{ficha["gen"]}" no existe en este build.'}
+    try:
+        return {"status": "ok", "titulo": ficha["titulo"], "datos": fn()}
+    except Exception as e:
+        return {"status": "error",
+                "motivo": f"{type(e).__name__}: {e}"}
+
+
+_reportes_vistos: Set[str] = set()
+
+
+def reportes_nuevos() -> List[str]:
+    """
+    Cuáles se HABILITARON desde la última vez que se miró el listado. Es el
+    aviso que se pidió —«notificar que se habilitó si se cambiaron los datos»—
+    y se calcula solo al abrir el panel: ponerlo en un badge de la barra
+    costaría un recorrido de todos los puntos en cada refresco, que es
+    justamente la lentitud que este panel viene a sacar.
+    """
+    ahora = {r["id"] for r in reportes_disponibles() if r["disponible"]}
+    return sorted(ahora - _reportes_vistos)
+
+
+def _marcar_reportes_vistos() -> None:
+    _reportes_vistos.clear()
+    _reportes_vistos.update(r["id"] for r in reportes_disponibles()
+                            if r["disponible"])
+
+
+def _reportes_panel_body(activo: Optional[str] = None):
+    """Listado de reportes. Se abre el que se pida, no todos."""
+    nuevos = set(reportes_nuevos())
+    filas = []
+    for r in reportes_disponibles():
+        color = "success" if r["disponible"] else "secondary"
+        etiqueta = ("🆕 " if r["id"] in nuevos else "") + r["titulo"]
+        filas.append(html.Div([
+            dbc.Row([
+                dbc.Col(dbc.Button(etiqueta, id={"type": "rep-ver", "index": r["id"]},
+                                   size="sm", color=color, outline=True,
+                                   disabled=not r["disponible"],
+                                   style={"fontSize": "10px", "width": "100%",
+                                          "textAlign": "left"}), width=4),
+                dbc.Col(html.Small(r["que"] if r["disponible"]
+                                   else f"⚠ {r['motivo']}",
+                                   style={"fontSize": "9px",
+                                          "color": "#888" if r["disponible"] else "#F39C12"}),
+                        width=8),
+            ], className="g-2 align-items-center"),
+        ], style={"marginBottom": "6px"}))
+    aviso = []
+    if nuevos:
+        aviso = [dbc.Alert(
+            f"🆕 {len(nuevos)} reporte(s) se habilitaron con los datos que "
+            f"cargaste: {', '.join(sorted(nuevos))}.",
+            color="info", style={"fontSize": "10px", "padding": "6px 10px",
+                                 "marginBottom": "8px"})]
+    _marcar_reportes_vistos()
+    return html.Div(aviso + [
+        html.Small("Los reportes NO se calculan solos: se abre el que pidas. "
+                   "Uno gris todavía no tiene con qué correr, y dice qué falta.",
+                   style={"fontSize": "10px", "color": "#888", "display": "block",
+                          "marginBottom": "10px"}),
+        html.Div(filas),
+        html.Hr(style={"borderColor": "#333"}),
+        html.Div(id="rep-salida", children=(
+            html.Small("Elige un reporte de la lista.",
+                       style={"fontSize": "10px", "color": "#666"}))),
+    ])
+
+
+def _render_reporte(rid: str):
+    """El contenido de un reporte, en JSON legible con su título."""
+    rep = generar_reporte(rid)
+    if rep["status"] != "ok":
+        return html.Div(f"⚠ {rep.get('motivo')}",
+                        style={"fontSize": "11px", "color": "#F39C12"})
+    return html.Div([
+        html.Div(rep["titulo"], style={"fontSize": "12px", "fontWeight": "bold",
+                                       "color": "#3B8BD4", "marginBottom": "6px"}),
+        html.Pre(json.dumps(rep["datos"], indent=2, ensure_ascii=False,
+                            default=str)[:24000],
+                 style={"fontSize": "10px", "maxHeight": "52vh",
+                        "overflowY": "auto", "background": "#111",
+                        "padding": "10px", "border": "1px solid #333"}),
+    ])
+
+
+def _tronadura_panel_body(variable: str = "di"):
+    """Pantalla de soporte a tronadura: el sólido y las cifras que se leen antes de cargar."""
+    r = tronadura_resumen()
+    if r["status"] != "ok":
+        cifras = html.Div(r.get("motivo", ""),
+                          style={"fontSize": "11px", "color": "#F39C12"})
+    else:
+        def tarjeta(titulo, valor, nota=""):
+            return dbc.Col(html.Div([
+                html.Small(titulo, style={"color": "#888", "fontSize": "9px",
+                                          "display": "block"}),
+                html.Div(valor, style={"fontSize": "17px", "fontWeight": "bold"}),
+                html.Small(nota, style={"color": "#666", "fontSize": "9px"}),
+            ], style={"padding": "8px 12px", "border": "1px solid #333"}), width="auto")
+        cifras = html.Div([
+            dbc.Row([
+                tarjeta("Volumen modelado", f"{r['volumen_m3']:,.0f} m³".replace(",", "."),
+                        f"{r['n_bloques']:,} bloques de {r['lado_m']:g} m".replace(",", ".")),
+                tarjeta("Fracturado", f"{r['pct_fracturado']:.1f} %",
+                        f"DI sobre {r['umbral_di']:g}"),
+                tarjeta("UCS mediana", f"{r['ucs_mediana']:.0f} MPa",
+                        f"p10 {r['ucs_p10']:.0f} · p90 {r['ucs_p90']:.0f}"),
+            ], className="g-2"),
+            html.Small(r["modelo_ucs"], style={"color": "#5DCAA5", "fontSize": "9px",
+                                               "display": "block", "marginTop": "8px"}),
+            html.Small(r["advertencia"], style={"color": "#F39C12", "fontSize": "9px",
+                                                "display": "block", "marginTop": "4px"}),
+        ])
+    return html.Div([
+        dbc.Row([
+            dbc.Col(dcc.Dropdown(
+                id="tronadura-var", value=variable, clearable=False,
+                options=[{"label": "DI — dónde está quebrada la roca", "value": "di"},
+                         {"label": "UCS — qué tan competente es", "value": "ucs"}],
+                style={"fontSize": "10px", "width": "320px"}), width="auto"),
+            dbc.Col(dbc.Button("Recalcular sólido", id="btn-tronadura-calc",
+                               size="sm", color="primary"), width="auto"),
+        ], className="g-2 align-items-center", style={"marginBottom": "8px"}),
+        cifras,
+        dcc.Graph(id="tronadura-fig", figure=build_bloques_figure(variable),
+                  style={"height": "62vh"},
+                  config={"displaylogo": False}),
     ])
 
 
@@ -11531,9 +11936,12 @@ def _perfil_panel_body(menu: str = None, avanzados: bool = False):
     cuerpo = [cabecera, pestanas, acciones, html.Div(bloques)]
     # El radio del RQD vive DENTRO del menú de Fracturamiento: es donde se
     # decide, y tenía pantalla propia solo por haberse construido aparte.
-    if menu == "Fracturamiento" and drillholes:
+    if menu == "Fracturamiento":
         cuerpo += [html.Hr(style={"borderColor": "#333", "margin": "14px 0"}),
-                   _rqd_radio_panel_body()]
+                   _di_vigente_body()]
+        if drillholes:
+            cuerpo += [html.Hr(style={"borderColor": "#333", "margin": "14px 0"}),
+                       _rqd_radio_panel_body()]
     cuerpo.append(html.Div(id="perfil-msg", style={"marginTop": "8px"}))
     return html.Div(cuerpo)
 
@@ -11788,6 +12196,85 @@ def on_rqd_radio_fijar(n, valor, ref):
                                _perfil_menu_activo["avanzados"]), (ref or 0) + 1,
             f"✔ Radio de asignación del RQD fijado en {r:g} m. Los pesos del DI "
             "ya se pueden calibrar contra el testigo.", True)
+
+
+@app.callback(Output("tronadura-modal", "is_open"),
+              Output("tronadura-body", "children"),
+              Input("btn-open-tronadura", "n_clicks"),
+              Input("close-tronadura", "n_clicks"),
+              State("tronadura-modal", "is_open"), prevent_initial_call=True)
+def toggle_tronadura_modal(open_c, close_c, is_open):
+    trig = callback_context.triggered_id
+    if not _disparo_real():
+        return no_update, no_update
+    if trig == "btn-open-tronadura":
+        return True, _tronadura_panel_body()
+    if trig == "close-tronadura":
+        return False, no_update
+    return no_update, no_update
+
+
+@app.callback(Output("tronadura-fig", "figure"),
+              Input("tronadura-var", "value"),
+              Input("btn-tronadura-calc", "n_clicks"),
+              prevent_initial_call=True)
+def on_tronadura_var(variable, n):
+    if callback_context.triggered_id == "btn-tronadura-calc":
+        if not _disparo_real():
+            return no_update
+        _bloques_cache["firma"] = None      # forzar recálculo
+    return build_bloques_figure(variable or "di")
+
+
+@app.callback(Output("reportes-modal", "is_open"),
+              Output("reportes-body", "children"),
+              Input("btn-open-reportes", "n_clicks"),
+              Input("close-reportes", "n_clicks"),
+              prevent_initial_call=True)
+def toggle_reportes_modal(open_c, close_c):
+    trig = callback_context.triggered_id
+    if not _disparo_real():
+        return no_update, no_update
+    if trig == "btn-open-reportes":
+        # El listado se arma mirando si hay con qué; ningún reporte se corre
+        # todavía. Correrlos todos para pintar la lista sería la lentitud que
+        # este panel viene a sacar.
+        return True, _reportes_panel_body()
+    if trig == "close-reportes":
+        return False, no_update
+    return no_update, no_update
+
+
+@app.callback(Output("rep-salida", "children"),
+              Output("rep-abierto", "data"),
+              Input({"type": "rep-ver", "index": ALL}, "n_clicks"),
+              prevent_initial_call=True)
+def on_ver_reporte(_clicks):
+    if not _disparo_real():
+        return no_update, no_update
+    trig = callback_context.triggered_id
+    rid = trig.get("index") if isinstance(trig, dict) else None
+    if not rid:
+        return no_update, no_update
+    return _render_reporte(rid), rid
+
+
+@app.callback(Output("dl-reporte", "data"),
+              Output("toast", "children", allow_duplicate=True),
+              Output("toast", "is_open", allow_duplicate=True),
+              Input("btn-dl-reporte", "n_clicks"),
+              State("rep-abierto", "data"), prevent_initial_call=True)
+def on_descargar_reporte(n, rid):
+    if not _disparo_real():
+        return no_update, no_update, no_update
+    if not rid:
+        return no_update, "Abre un reporte antes de descargarlo.", True
+    rep = generar_reporte(rid)
+    if rep["status"] != "ok":
+        return no_update, f"⚠ {rep.get('motivo')}", True
+    texto = json.dumps(rep["datos"], indent=2, ensure_ascii=False, default=str)
+    return (dict(content=texto, filename=f"reporte_{rid}.json"),
+            f"✔ Reporte «{rep['titulo']}» descargado.", True)
 
 
 @app.callback(Output("perfil-badge", "children"), Input("refresh", "data"))
@@ -13213,6 +13700,45 @@ def do_di_sensitivity(n_clicks_list, well_sel_list, out_ids):
     content = build_di_sensitivity_content(well)
     return [content] * n_out
 
+
+@app.callback(
+    Output("cal-output", "children"),
+    Output("refresh", "data", allow_duplicate=True),
+    Input("btn-calibrar-di", "n_clicks"),
+    State("cal-params", "value"),
+    State("cal-muestras", "value"),
+    State("cal-semilla", "value"),
+    State("refresh", "data"),
+    prevent_initial_call=True,
+)
+def do_calibrar_di(n, params, muestras, semilla, ref):
+    """
+    (Auditoría) La búsqueda de pesos por varianza móvil, desde la pantalla.
+
+    Registra una VARIANTE; la de convención queda intacta. No la activa sola:
+    qué DI corre lo decide quien mira el veredicto, no el hecho de haber
+    calibrado.
+    """
+    if not _disparo_real():
+        return no_update, no_update
+    elegidos = tuple(p for p in CAL_PARAMS if p in (params or []))
+    if len(elegidos) < 2:
+        return (dbc.Alert("Elige al menos dos presiones candidatas: con una sola "
+                          "no hay pesos que repartir.", color="warning",
+                          style={"fontSize": "11px", "padding": "6px 10px"}),
+                no_update)
+    try:
+        rep = calibrate_di_weights(params=elegidos,
+                                   n_muestras=muestras, seed=semilla)
+    except Exception as e:
+        return (dbc.Alert(f"La calibración falló: {type(e).__name__}: {e}",
+                          color="danger",
+                          style={"fontSize": "11px", "padding": "6px 10px"}),
+                no_update)
+    salida = _render_calibracion(rep)
+    # El refresco solo cuando hay variante nueva que mostrar en los selectores.
+    return salida, ((ref or 0) + 1 if rep.get("variante") else no_update)
+
 @app.callback(
     Output("ml-task-poll","disabled"),
     Output("toast","children",allow_duplicate=True),
@@ -13941,6 +14467,125 @@ def _di_sensitivity_card():
         html.Div(id={"type":"sens-output","index":0}),
     ])
 
+
+# Nombres SIN ambigüedad de las cinco presiones candidatas. La sigla sola no
+# alcanza: en IREDES «FP» es Feed Pressure —la de AVANCE, que acá es `pa`— y la
+# de barrido es «FLP» → `pf`. El panel del DI rotulaba `pf` como "FP", que es
+# la sigla de la otra.
+CAL_ETIQUETAS = {
+    "pp": "Percusión (PP)",
+    "pd": "Dámper (DP)",
+    "pr": "Rotación (RP)",
+    "pf": "Barrido (FLP)",
+    "pa": "Avance (FP/AP)",
+}
+
+
+def _di_calibracion_card():
+    """
+    (Auditoría) Pantalla para buscar los pesos del DI contra el RQD del testigo.
+
+    `calibrate_di_weights()` existía desde S8d y no había forma de llamarla
+    desde el programa: la búsqueda de pesos por varianza móvil —el método de
+    Fernández, el mismo que produjo los pesos de convención— quedaba fuera del
+    alcance de quien usa la plataforma. Y las CINCO presiones son candidatas,
+    incluida la de barrido y la de avance, que en el panel del DI no aparecen.
+    """
+    titulo = "Calibrar los pesos contra el testigo (movvar)"
+    if not drillholes:
+        return card(titulo, [
+            dbc.Alert("No hay sondajes cargados. Sin testigo con RQD no hay "
+                      "patrón contra el cual ajustar los pesos.",
+                      color="secondary",
+                      style={"fontSize": "11px", "padding": "6px 10px"}),
+        ])
+    radio = radio_rqd_confirmado()
+    estado_radio = (
+        dbc.Alert(f"Radio de asignación del RQD elegido: {radio:g} m.",
+                  color="success", style={"fontSize": "10px", "padding": "5px 9px"})
+        if radio is not None else
+        dbc.Alert("Falta elegir el radio de asignación del RQD. El radio decide "
+                  "el resultado —sobre MPC a 5 y 10 m manda el dámper y a 25 m "
+                  "manda el barrido— así que no puede quedar en un default. Se "
+                  "fija en ⚙ perfil → Fracturamiento.",
+                  color="warning", style={"fontSize": "10px", "padding": "5px 9px"}))
+    return card(titulo, [
+        html.Small(
+            "Busca sobre el símplex de pesos la combinación cuyo RQD_MWD ordena "
+            "los tramos como los ordena el testigo, y la valida dejando UN "
+            "SONDAJE fuera. La variante de convención no se toca: el resultado "
+            "se registra aparte para poder comparar.",
+            style={"color": "#aaa", "display": "block", "marginBottom": "8px"}),
+        estado_radio,
+        html.Small("Presiones candidatas — qué presión sobra lo decide la "
+                   "calibración, no un descarte previo:",
+                   style={"color": "#aaa", "display": "block", "margin": "8px 0 4px"}),
+        dbc.Checklist(
+            id="cal-params", inline=True,
+            options=[{"label": f" {CAL_ETIQUETAS[k]}", "value": k} for k in CAL_PARAMS],
+            value=list(CAL_PARAMS), style={"fontSize": "10px"}),
+        dbc.Row([
+            dbc.Col([html.Small("Combinaciones", style={"color": "#666", "display": "block"}),
+                     dbc.Input(id="cal-muestras", type="number", value=CAL_N_MUESTRAS,
+                               step=50, size="sm", style={"fontSize": "11px"})], width=3),
+            dbc.Col([html.Small("Semilla", style={"color": "#666", "display": "block"}),
+                     dbc.Input(id="cal-semilla", type="number", value=CAL_SEMILLA,
+                               step=1, size="sm", style={"fontSize": "11px"})], width=3),
+            dbc.Col(dbc.Button("⚖ Calibrar", id="btn-calibrar-di", color="info",
+                               size="sm", className="mt-3",
+                               disabled=radio is None), width=3),
+        ], className="g-2 mt-1"),
+        dcc.Loading(html.Div(id="cal-output", style={"marginTop": "8px"}),
+                    type="dot", color="#3B8BD4"),
+    ])
+
+
+def _render_calibracion(rep: Dict):
+    """El resultado de la calibración, con el veredicto por delante."""
+    st = rep.get("status")
+    if st != "ok":
+        return dbc.Alert(rep.get("motivo") or f"status={st}", color="warning",
+                         style={"fontSize": "11px", "padding": "6px 10px"})
+    filas = []
+    for k in rep["params_candidatos"]:
+        w = rep["pesos"].get(k)
+        conv = (rep.get("pesos_convencion") or {}).get(k, 0.0)
+        filas.append(html.Tr([
+            html.Td(CAL_ETIQUETAS.get(k, k), style={"fontSize": "10px"}),
+            html.Td(f"{w:.3f}", className="text-end", style={"fontSize": "10px"}),
+            html.Td(f"{conv:.2f}", className="text-end",
+                    style={"fontSize": "10px", "color": "#888"}),
+        ]))
+    rho_v = rep.get("rho_validacion")
+    color = ("success" if (rho_v or -1) >= 0.4
+             else "warning" if (rho_v or -1) > 0.1 else "danger")
+    return html.Div([
+        dbc.Alert(rep["veredicto"], color=color,
+                  style={"fontSize": "11px", "padding": "6px 10px"}),
+        dbc.Table([
+            html.Thead(html.Tr([html.Th("Presión", style={"fontSize": "10px"}),
+                                html.Th("Calibrado", className="text-end",
+                                        style={"fontSize": "10px"}),
+                                html.Th("Convención", className="text-end",
+                                        style={"fontSize": "10px"})])),
+            html.Tbody(filas),
+        ], bordered=False, size="sm", style={"marginBottom": "6px"}),
+        html.Small(
+            f"ρ ajuste {rep['rho_ajuste']:+.3f} · ρ convención "
+            + (f"{rep['rho_convencion']:+.3f}" if rep.get("rho_convencion") is not None
+               else "n/d")
+            + " · ρ validación "
+            + (f"{rho_v:+.3f}" if rho_v is not None else "no medible")
+            + f" · {rep['n_pares']} par(es) de {rep['n_sondajes']} sondaje(s), "
+              f"alcance {rep['radio_m']:g} m.",
+            style={"fontSize": "10px", "color": "#aaa", "display": "block"}),
+        html.Small(f"Registrado como variante «{rep.get('variante')}». "
+                   + rep["encuadre"],
+                   style={"fontSize": "10px", "color": "#5DCAA5",
+                          "display": "block", "marginTop": "6px"}),
+    ])
+
+
 def _step3():
     all_pts = list(all_points())
     n_di = sum(1 for p in all_pts if p.di is not None)
@@ -13975,24 +14620,35 @@ def _step3():
             ], className="g-2 mb-2"),
             html.Small("Pesos (P3-3.7):", style={"color":"#aaa","display":"block","marginBottom":"4px"}),
             dbc.Row([
-                dbc.Col([html.Small("PP", style={"color":"#666","display":"block"}),
+                dbc.Col([html.Small("Percusión (PP)", style={"color":"#666","display":"block"}),
                           dbc.Input(id="di-w-pp", type="number", value=di_config["weights"]["pp"],
                                      step=0.01, size="sm", style={"fontSize":"11px"})], width=3),
-                dbc.Col([html.Small("DP", style={"color":"#666","display":"block"}),
+                dbc.Col([html.Small("Dámper (DP)", style={"color":"#666","display":"block"}),
                           dbc.Input(id="di-w-pd", type="number", value=di_config["weights"]["pd"],
                                      step=0.01, size="sm", style={"fontSize":"11px"})], width=3),
-                dbc.Col([html.Small("FP", style={"color":"#666","display":"block"}),
+                # Rotulado "FP" hasta ahora, que en IREDES es la sigla de la
+                # presión de AVANCE. Esta entrada escribe `pf`, que es FLP, la
+                # de barrido. La sigla estaba puesta sobre la variable de al
+                # lado; el número nunca cambió.
+                dbc.Col([html.Small("Barrido (FLP)", style={"color":"#666","display":"block"}),
                           dbc.Input(id="di-w-pf", type="number", value=di_config["weights"]["pf"],
                                      step=0.01, size="sm", style={"fontSize":"11px"})], width=3),
-                dbc.Col([html.Small("RP", style={"color":"#666","display":"block"}),
+                dbc.Col([html.Small("Rotación (RP)", style={"color":"#666","display":"block"}),
                           dbc.Input(id="di-w-pr", type="number", value=di_config["weights"]["pr"],
                                      step=0.01, size="sm", style={"fontSize":"11px"})], width=3),
             ], className="g-2"),
+            html.Small(
+                "La presión de AVANCE (FP/AP) no participa de estos cuatro pesos: "
+                "entra como quinta candidata en la calibración contra el testigo, "
+                "más abajo, que es donde se decide si sobra.",
+                style={"color":"#666","fontSize":"10px","display":"block",
+                       "marginTop":"6px"}),
         ]),
         dbc.Badge(f"DI: {n_di} pts · {n_disc} discontinuidades", color="success",
                   className="mb-2") if n_di else None,
         _di_sensitivity_card(),
         _di_rqd_card(),
+        _di_calibracion_card(),
         dbc.Row([
             dbc.Col(dbc.Button("← Atrás", id={"type":"pill","index":2}, color="secondary", outline=True, size="sm"), width="auto"),
             dbc.Col(dbc.Button("Siguiente → ML", id={"type":"pill","index":4}, color="info", size="sm",

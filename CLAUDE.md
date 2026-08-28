@@ -129,6 +129,10 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | A7 | Menús del perfil · badge cacheado · canario despierto | — | ✅ `3eccdb4` |
 | A8 | UCS por banda · SE no física fuera | — | ✅ `2e5da9f` |
 | A9 | Cuatro caserones completos · Lavas por cota | — | ✅ |
+| B1 | Cierre · las ventanas no saltan solas · se elige modelo | — | ✅ `b178c7a` |
+| B2 | Soporte a tronadura · sólido por DI y por UCS | — | ✅ |
+| B3 | Centro de reportes · se abre el que se pida | — | ✅ |
+| B4 | Pantalla de calibración · siglas cruzadas · un solo lugar | — | ✅ |
 
 Hallazgos que condicionan la interpretación, no defectos pendientes:
 
@@ -191,16 +195,33 @@ de sondaje por caserón, con `repo.patron_caseron`. `guardar_proyecto_en(ruta)`
 escribe el .gwz a disco: el guardado siempre funcionó, lo que falla es la
 descarga del navegador con archivos de decenas de MB.
 
+## Pantallas de salida
+
+Dos botones en la barra, y ninguno calcula nada hasta que se lo pide:
+
+- 💥 **tronadura** (`_tronadura_panel_body`, `build_bloques_figure`,
+  `tronadura_resumen`): el sólido coloreado por DI —dónde está quebrada— y por
+  UCS —qué tan competente—. Un bloque SIN soporte de datos no se pinta de un
+  color intermedio: queda fuera del sólido. Lleva su advertencia de qué NO es:
+  aproximación de apoyo, no modelo geológico validado.
+- 📄 **reportes** (`REPORTES`, `reportes_disponibles`, `generar_reporte`): los
+  nueve reportes en un listado. Armar la lista NO corre ninguno —solo mira si
+  hay con qué— y el que hoy no puede correr dice qué falta. `reportes_nuevos()`
+  avisa cuáles se habilitaron desde la última vez que se abrió el panel; se
+  calcula al abrirlo, nunca en un badge de la barra: un recorrido de todos los
+  puntos en cada refresco es exactamente la lentitud que este panel viene a
+  sacar (el badge de vocabulario costaba 561 ms por refresco antes de cachearlo).
+
 ## Perfil de faena
 
-Los parámetros de operación viven en `param_registry` (64 en dieciocho
+Los parámetros de operación viven en `param_registry` (61 en diecinueve
 secciones), no en el código: `get_param` / `set_param` / `reset_param`, con
 validación y procedencia declarada. Se editan desde la PANTALLA del perfil
 (botón ⚙ de la barra, `_perfil_panel_body`), no solo desde código;
 `aplicar_perfil_desde_panel` escribe por lote y un valor rechazado no bloquea
 los demás. `export_site_profile()` e `import_site_profile()` en JSON es lo que
-recibe una faena nueva. Seis parámetros están PROTEGIDOS —la ventana, el
-umbral y los cuatro pesos del DI— y rechazan la escritura.
+recibe una faena nueva. Hoy NINGUNO está protegido; el mecanismo
+(`ParametroProtegido`) sigue disponible para la faena que quiera congelar algo.
 
 Un parámetro del perfil NUNCA se usa como valor por defecto de argumento
 (`def f(r=RADIO)`): Python los congela al importar y el número dejaría de
@@ -212,6 +233,19 @@ es la única puerta que escribe `di_config`/`di_threshold`. Cambiar parámetros
 en el panel crea o reusa una variante (`aplicar_di_config`); la convención de
 Fernández nunca se toca. Fernández busca sus pesos con `movvar`: calibrar es
 su método, no una desviación.
+
+Los SEIS del DI —ventana, umbral y cuatro pesos— NO son parámetros del perfil.
+Estuvieron en el registro y eran un control que no controlaba: la pantalla
+aceptaba el número, lo daba por aplicado, y el DI seguía con los suyos.
+Además se pedían dos veces, en el perfil y en el Paso 3. Se escriben en un
+solo lugar —el Paso 3, o `calibrate_di_weights` contra el testigo— y el menú
+de Fracturamiento los MUESTRA en vivo (`_di_vigente_body`), solo lectura.
+
+Las siglas de las presiones estaban cruzadas en la pantalla: en IREDES `FP` es
+Feed Pressure —el AVANCE, que el código guarda en `pa`— y `FLP` es el BARRIDO,
+que guarda en `pf`. El panel del DI rotulaba la entrada de `pf` como "FP". El
+número nunca cambió; el rótulo sí. `CAL_ETIQUETAS` es el nombre completo de
+cada una y se usa en todas las pantallas.
 
 ## Suite de tests
 

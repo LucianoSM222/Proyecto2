@@ -139,20 +139,23 @@ def los_protegidos_no_se_escriben():
           "hoy ningún parámetro está bloqueado: los del DI se liberaron",
           protegidos)
     # Se protege uno a mano y tiene que rechazar la escritura y la reposición.
-    gw.param_registry["di.umbral"]["protegido"] = True
+    # Ya no se usa uno del DI: esos seis salieron del registro por no escribir
+    # nada. Se usa un límite físico, que sí es un parámetro de faena real.
+    pid, defecto = "ucs.max_fisico", 450.0
+    gw.param_registry[pid]["protegido"] = True
     try:
-        gw.set_param("di.umbral", 9.9)
+        gw.set_param(pid, 9.9)
         check(False, "un parámetro protegido tenía que rechazar la escritura")
     except gw.ParametroProtegido:
         check(True, "un parámetro protegido rechaza la escritura")
     try:
-        gw.reset_param("di.umbral")
+        gw.reset_param(pid)
         check(False, "y también la reposición")
     except gw.ParametroProtegido:
         check(True, "y también la reposición")
-    check(gw.get_param("di.umbral") == 1.5, "sin haberse movido")
+    check(gw.get_param(pid) == defecto, "sin haberse movido")
     gw.seed_param_registry(force=True)
-    check(not gw.param_registry["di.umbral"].get("protegido"),
+    check(not gw.param_registry[pid].get("protegido"),
           "y al resembrar vuelve a estar libre")
 
 def se_valida_antes_de_escribir():

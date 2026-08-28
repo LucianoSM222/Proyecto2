@@ -127,19 +127,37 @@ def las_convenciones_siguen_siendo_constantes():
     check(gw.MWD_VAL_ORDER == ("LT", "ROP", "PP", "FP", "DP", "RP", "FLP"),
           "el orden de los campos Val es el de CLAUDE.md", gw.MWD_VAL_ORDER)
     check(len(gw.MWD_VAL_ORDER) == 7, "exactamente 7", len(gw.MWD_VAL_ORDER))
-    # EL CONTRATO CAMBIÓ, por decisión del autor: los seis parámetros del DI
-    # traen los valores por defecto del proyecto pero YA NO ESTÁN BLOQUEADOS.
-    # Quien calibra decide, y calibrar contra el testigo es el método.
+    # EL CONTRATO CAMBIÓ DOS VECES, y esta es la segunda.
+    #
+    # Primero los seis del DI estaban BLOQUEADOS en el perfil. El autor los
+    # liberó: quien calibra decide, y calibrar contra el testigo es el método
+    # de Fernández, no una desviación.
+    #
+    # Después se vio lo que en realidad pasaba al escribirlos ahí: NADA. La
+    # pantalla aceptaba el número, lo reportaba como aplicado, y el DI seguía
+    # corriendo con los suyos, porque `di_config`/`di_threshold` se escriben
+    # solo desde activar_di(). Un control que no controla es peor que no
+    # tenerlo, y encima se pedían dos veces —perfil y Paso 3—. Salieron del
+    # registro: se escriben en UN lugar y el perfil los muestra en vivo.
     for pid in ("di.ventana", "di.umbral", "di.peso_pp", "di.peso_dp",
                 "di.peso_fp", "di.peso_rp"):
-        check(pid in gw.param_registry, f"{pid} está en el perfil")
-        check(not gw.param_registry[pid].get("protegido"),
-              f"{pid} es editable, no bloqueado")
-    gw.set_param("di.umbral", 2.0)
-    check(gw.get_param("di.umbral") == 2.0, "y se puede escribir de verdad")
-    gw.seed_param_registry(force=True)
-    check(gw.get_param("di.umbral") == 1.5,
-          "con 1,5 como valor por defecto al que se puede volver")
+        check(pid not in gw.param_registry,
+              f"{pid} ya no es un parámetro del perfil: no lo usaba nadie")
+    check(not any(k.startswith("di.") for k in gw.param_registry),
+          "ningún parámetro del DI quedó suelto en el perfil",
+          [k for k in gw.param_registry if k.startswith("di.")])
+    # Lo que los reemplaza: el perfil los MUESTRA, sin ofrecer editarlos.
+    cuerpo = gw._di_vigente_body()
+    txt = " ".join(_textos(cuerpo))
+    check(gw.di_activo() in txt,
+          "el perfil dice qué variante del DI está corriendo", txt[:100])
+    check("olo lectura" in txt,
+          "y declara que es solo lectura, en vez de fingir un control", txt[:200])
+    check(f"{gw.di_config['window']}" in txt, "con su ventana")
+    # El único escritor sigue siendo activar_di().
+    check(gw.di_config["weights"] == gw.DI_DEFAULTS["weights"],
+          "y los pesos que corren son los de convención mientras nadie active "
+          "otra variante", gw.di_config["weights"])
     # El mecanismo de protección sigue existiendo para la faena que lo necesite.
     check(hasattr(gw, "ParametroProtegido"),
           "el mecanismo de protección sigue disponible aunque hoy no se use")
@@ -258,9 +276,17 @@ def el_perfil_se_edita_desde_el_programa():
     for sec in ("Sondajes", "Modelo de bloques", "Calibración DI↔RQD",
                 "Modelo de aprendizaje"):
         check(sec in txt, f"la sección «{sec}» aparece agrupada", txt[:200])
-    check("Peso de PP" in txt and "Umbral del DI" in txt,
-          "los seis del DI se muestran y son editables: ya no están bloqueados",
-          txt[:200])
+    # Los seis del DI ya no son campos del perfil —escribirlos ahí no movía el
+    # DI— pero el menú de Fracturamiento tiene que SEGUIR diciendo con qué
+    # está corriendo. Sacarlos sin poner nada en su lugar habría convertido un
+    # control falso en una ausencia, que informa todavía menos.
+    frac = " | ".join(_textos(gw._perfil_panel_body("Fracturamiento",
+                                                    avanzados=True)))
+    check("Peso de PP" not in frac,
+          "el perfil ya no ofrece escribir los pesos del DI", frac[:200])
+    check(gw.di_activo() in frac and "olo lectura" in frac,
+          "pero sí muestra qué variante corre, declarada como solo lectura",
+          frac[:300])
     # Cada sección cae en exactamente un menú, y ningún menú queda vacío.
     secs = {p["seccion"] for p in gw.param_registry.values()}
     cubiertas = {s for lista in gw.MENUS_PERFIL.values() for s in lista}
@@ -297,17 +323,22 @@ def los_basicos_son_los_que_una_faena_toca():
 
 def la_pantalla_escribe_lo_que_promete():
     """
-    Antes esta prueba verificaba que la pantalla NO pudiera escribir los seis
-    parámetros del DI. El autor pidió liberarlos: traen los valores por defecto
-    del proyecto, pero quien calibra decide. Lo que sigue valiendo es que un
-    valor RECHAZADO se declare y no bloquee a los demás.
+    Esta prueba pasó por los tres contratos del DI: primero verificaba que la
+    pantalla NO pudiera escribir esos seis parámetros; después que SÍ pudiera,
+    cuando el autor los liberó; y ahora ya no los usa, porque escribirlos ahí
+    nunca movió el DI. Lo que valió en las tres versiones y sigue valiendo: lo
+    que la pantalla dice haber aplicado tiene que haberse aplicado de verdad, y
+    un valor RECHAZADO se declara sin bloquear a los demás.
     """
     section("Universalidad — la pantalla escribe, y lo rechazado se declara")
-    rep = gw.aplicar_perfil_desde_panel({"di.umbral": 2.5,
+    rep = gw.aplicar_perfil_desde_panel({"bloques.tamano_m": 3.5,
                                          "sondajes.radio_cercania": 30.0})
-    check(gw.get_param("di.umbral") == 2.5,
-          "el umbral del DI ahora SÍ se puede mover desde la pantalla",
-          gw.get_param("di.umbral"))
+    check(gw.get_param("bloques.tamano_m") == 3.5,
+          "lo que la pantalla aplica llega al parámetro",
+          gw.get_param("bloques.tamano_m"))
+    check(gw.BLOQUE_M == 3.5,
+          "y al módulo: un parámetro que se aplica solo en el registro es el "
+          "control que no controla que ya sacamos del DI", gw.BLOQUE_M)
     check(gw.get_param("sondajes.radio_cercania") == 30.0,
           "y el resto también", gw.get_param("sondajes.radio_cercania"))
     check(rep["n_aplicados"] == 2, "los dos se aplican", rep["n_aplicados"])
