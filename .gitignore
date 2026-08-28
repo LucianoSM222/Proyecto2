@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+.geomech_cache/
+.test_geomech_cache/
+test_data/reales/
+
+# Kit del Capítulo 5: salida regenerable con `python3 run_sesion10.py`.
+# La vista 3D en HTML pesa decenas de MB porque embebe la geometría de las mallas.
+# Se ignora el CONTENIDO, no el directorio: una exclusión de directorio no
+# admite reincorporar archivos de adentro.
+resultados/kit_capitulo5/*
+# ...salvo el índice, que es lo que mapea cada archivo a su sección.
+!resultados/kit_capitulo5/INDICE_capitulo5.csv
+!resultados/kit_capitulo5/INDICE_capitulo5.md
+
+# Modelo de bloques en DXF: 20 MB de binario regenerable con `python3 run_sesion9.py`.
+# El CSV equivalente sí se versiona: es legible y cabe.
+resultados/*.dxf
+
+# Fixture de Granate: vive comprimido en test_data/MGN3025.zip y
+# test_support.asegurar_fixture_granate() lo extrae cuando hace falta.
+test_data/_MGN3025/
+test_data/Metandesitas.dxf
+test_data/DQMGN_*.xml
+test_data/MWMGN_*.xml
