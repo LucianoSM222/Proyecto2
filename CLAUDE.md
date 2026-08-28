@@ -133,6 +133,7 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | B2 | Soporte a tronadura · sólido por DI y por UCS | — | ✅ |
 | B3 | Centro de reportes · se abre el que se pida | — | ✅ |
 | B4 | Pantalla de calibración · siglas cruzadas · un solo lugar | — | ✅ |
+| B5 | Velocidad de la interfaz · medida, no estimada | — | ✅ |
 
 Hallazgos que condicionan la interpretación, no defectos pendientes:
 
@@ -211,6 +212,28 @@ Dos botones en la barra, y ninguno calcula nada hasta que se lo pide:
   calcula al abrirlo, nunca en un badge de la barra: un recorrido de todos los
   puntos en cada refresco es exactamente la lentitud que este panel viene a
   sacar (el badge de vocabulario costaba 561 ms por refresco antes de cachearlo).
+
+## Velocidad
+
+Se mide, no se estima. Cronometrado con 1.050.000 puntos en 600 pozos, que es
+el orden de los cuatro caserones:
+
+| | antes | ahora | qué era |
+|---|---|---|---|
+| Paso 4 | 9.367 ms | 1.157 ms | el embudo armaba la matriz de entrenamiento entera —X, y, groups— para mostrar nueve números, y `_step4` materializaba un millón de puntos en una lista que no leía |
+| Paso 1 | 1.062 ms | 1 ms (2ª visita) | `conteo_puntos_con_ucs()` cachea el total y los con banda contra la firma de puntos MÁS la de dominios |
+| Paso 3 | 663 ms | 318 ms | recorre el generador en vez de materializar |
+| Vista 3D | 1.157 ms | 713 ms | cada pozo declaraba SU barra de color (600 barras idénticas apiladas) y cada collar era su propia traza |
+
+`_training_funnel(..., solo_conteos=True)` da los mismos conteos sin la matriz;
+NO borra la procedencia (`_prov_capas`/`_prov_caserones`/`_prov_ucs`), porque un
+pase de conteos que la limpiara dejaría muda a la guardia de circularidad.
+`test_embudo_conteos.py` compara etapa por etapa contra el pase completo.
+
+Lo que NO se cacheó: `training_composition_report()` sigue costando ~1,1 s por
+visita al Paso 4. Depende de `p.entrenable` y `p.di`, que se mutan en sitio sin
+que ninguna firma barata los capte; un embudo desactualizado explicaría mal el
+N del modelo, y eso es peor que esperar un segundo.
 
 ## Perfil de faena
 

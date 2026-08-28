@@ -1294,6 +1294,33 @@ def attribute_point_counts() -> Dict[str, int]:
     return _agregados_por_atributo()[0]
 
 
+_conteo_ucs_cache = {"firma": None, "valor": (0, 0)}
+
+
+def conteo_puntos_con_ucs() -> Tuple[int, int]:
+    """
+    (total, con banda de UCS). Es la cifra de cabecera del Paso 1 y cuesta un
+    recorrido de todos los puntos: a un millón, medio segundo cada vez que se
+    entra al paso. Se cachea contra la firma de los puntos MÁS la de los
+    dominios, porque asignarle una banda a una litología cambia el número sin
+    que se mueva un solo punto.
+    """
+    firma = (_firma_puntos(),
+             tuple(sorted((k, (v or {}).get("ucs_lab")) for k, v in domains.items())))
+    if _conteo_ucs_cache["firma"] == firma:
+        return _conteo_ucs_cache["valor"]
+    con_banda = {k for k, v in domains.items() if (v or {}).get("ucs_lab") is not None}
+    total = n_ucs = 0
+    for w in wells.values():
+        for p in w.points:
+            total += 1
+            if p.dominio in con_banda:
+                n_ucs += 1
+    _conteo_ucs_cache["firma"] = firma
+    _conteo_ucs_cache["valor"] = (total, n_ucs)
+    return total, n_ucs
+
+
 def training_blockers() -> List[Dict]:
     """
     Atributos que impiden entrenar: de rol LITOLOGÍA, presentes en los datos, no
@@ -4803,7 +4830,7 @@ def set_training_caserones(caserones=None):
                  f"({', '.join(sorted(disponibles)) or '—'}).")
     return training_caserones
 
-def _training_funnel(ucs_min, ucs_max):
+def _training_funnel(ucs_min, ucs_max, solo_conteos: bool = False):
     """
     Devuelve (X, y, groups, n_excl_di, funnel). `funnel` es una lista de
     {"etapa","label","quedan","perdidos"} en el orden de TRAINING_FUNNEL_STAGES.
@@ -4811,9 +4838,20 @@ def _training_funnel(ucs_min, ucs_max):
     (C.1) De paso registra la PROCEDENCIA de las etiquetas —qué mallas y qué
     caserones las produjeron—, que es lo que la guardia de circularidad
     necesita para negarse a comparar el modelo contra su propia fuente.
+
+    `solo_conteos`: la tarjeta del embudo necesita los NÚMEROS y nada más, y
+    armaba igual la matriz de entrenamiento entera para tirarla. Con un millón
+    de puntos eran 5,4 s cada vez que se abría el Paso 4. Con esta bandera el
+    recorrido es el mismo —los conteos no cambian— pero no se construyen X, y
+    ni groups, y se devuelven vacíos. Quien entrena NO la usa.
     """
-    _prov_capas.clear(); _prov_caserones.clear(); _prov_ucs.clear()
-    pts = list(all_points())
+    # La procedencia se BORRA solo cuando se va a volver a llenar. Un pase de
+    # conteos que la limpiara dejaría a la guardia de circularidad sin saber de
+    # qué mallas salieron las etiquetas, y esa guardia calla cuando no sabe:
+    # abrir el Paso 4 habría desarmado en silencio la protección.
+    if not solo_conteos:
+        _prov_capas.clear(); _prov_caserones.clear(); _prov_ucs.clear()
+    n_total = sum(len(w.points) for w in wells.values())
     labels = {
         "total": "Total de puntos MWD",
         "entrenable": f"Entrenable (emboquillado <{inicio_cut_m:g} m + filtros de limpieza)",
@@ -4829,7 +4867,18 @@ def _training_funnel(ucs_min, ucs_max):
     }
     X, y, groups = [], [], []
     n = {k: 0 for k in TRAINING_FUNNEL_STAGES}
-    n["total"] = len(pts)
+    n["total"] = n_total
+    # El veredicto de cada dominio no depende del punto: se resuelve una vez
+    # por dominio —hay decenas— en vez de un millón de veces adentro del bucle.
+    # Los conteos son los mismos; lo que cambia es cuántas veces se pregunta.
+    veredicto: Dict[str, Tuple[bool, bool, bool, float]] = {}
+    for nombre, dom in domains.items():
+        ucs_d = (dom or {}).get("ucs_lab")
+        tiene_banda = ucs_d is not None
+        excluido = (dom or {}).get("atributo_id") in attribute_exclusions
+        en_rango = tiene_banda and (ucs_min <= ucs_d <= ucs_max)
+        veredicto[nombre] = (tiene_banda, excluido, en_rango,
+                             float(ucs_d) if tiene_banda else 0.0)
     for wn, well in wells.items():
         cas_w = caseron_de_pozo(well)
         entrena_cas = (training_caserones is None) or (cas_w in training_caserones)
@@ -4846,17 +4895,19 @@ def _training_funnel(ucs_min, ucs_max):
             # contabilizado en overlap_stats, no puede etiquetar nada.
             if getattr(p, "ambiguo", False): continue
             n["sin_ambiguedad"] += 1
-            dom = domains.get(p.dominio)
-            if not dom or dom.get("ucs_lab") is None: continue
+            v = veredicto.get(p.dominio)
+            if v is None or not v[0]: continue
             n["banda_ucs"] += 1
             # (P1-T1.5) Atributo excluido explícitamente por el usuario.
-            if dom.get("atributo_id") in attribute_exclusions: continue
+            if v[1]: continue
             n["no_excluido"] += 1
-            ucs = dom["ucs_lab"]
-            if ucs < ucs_min or ucs > ucs_max: continue
+            if not v[2]: continue
+            ucs = v[3]
             n["rango_ucs"] += 1
             if p.di is not None and p.di > di_threshold: continue
             n["roca_intacta"] += 1
+            if solo_conteos:
+                continue
             X.append([getattr(p, k) for k in ML_FEATURES])
             y.append(ucs)
             groups.append(wn)
@@ -4865,8 +4916,7 @@ def _training_funnel(ucs_min, ucs_max):
             # para que no pueda desincronizarse de lo que el modelo entrenó.
             if p.capa_lito: _prov_capas.add(p.capa_lito)
             _prov_ucs.add(float(ucs))
-            cas = caseron_de_pozo(well)
-            if cas: _prov_caserones.add(cas)
+            if cas_w: _prov_caserones.add(cas_w)
     funnel, prev = [], n["total"]
     for st in TRAINING_FUNNEL_STAGES:
         funnel.append({"etapa": st, "label": labels[st], "quedan": n[st],
@@ -4897,7 +4947,7 @@ def training_composition_report(ucs_min=None, ucs_max=None):
     """
     ucs_min = ucs_range["ucs_min"] if ucs_min is None else ucs_min
     ucs_max = ucs_range["ucs_max"] if ucs_max is None else ucs_max
-    _, _, _, _, funnel = _training_funnel(ucs_min, ucs_max)
+    _, _, _, _, funnel = _training_funnel(ucs_min, ucs_max, solo_conteos=True)
     return {"funnel": funnel,
             "n_total": funnel[0]["quedan"] if funnel else 0,
             "n_final": funnel[-1]["quedan"] if funnel else 0}
@@ -9456,7 +9506,7 @@ def _export_descriptor(kind: str) -> Optional[Dict]:
                 "filename": export_filename("dominios", "csv"),
                 "desc": "Tabla resumen por dominio geomecánico (UCS/DI medios)."}
     if kind == "predicciones":
-        n = len(list(all_points()))
+        n = sum(len(w.points) for w in wells.values())
         if n == 0: return None
         return {"kind": kind, "n": n, "unidad": "puntos MWD",
                 "filename": export_filename("predicciones", "csv"),
@@ -9477,7 +9527,7 @@ def _export_descriptor(kind: str) -> Optional[Dict]:
                        f"{len(drillholes)} sondajes). El modelo RF no se guarda."}
     if kind == "kit":
         if not wells: return None
-        n = len(list(all_points()))
+        n = sum(len(w.points) for w in wells.values())
         return {"kind": kind, "n": n, "unidad": "puntos MWD",
                 "filename": export_filename("kit_cap5", "zip"),
                 "desc": f"Kit completo para el Capítulo 5: CSVs, figuras HTML y resumen "
@@ -10223,7 +10273,13 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
     hidden_wells  = hidden_wells or set()
     fig = go.Figure()
     n_total_pts = sum(len(w.points) for w in wells.values())
-    ratio = (MAX_VIZ_POINTS / n_total_pts) if n_total_pts > MAX_VIZ_POINTS else 1.0
+    # Los collares son marcadores y cuentan contra el tope. Antes iban en una
+    # traza de un punto cada uno y el conteo los pasaba por alto: la vista
+    # dibujaba MAX_VIZ_POINTS + un marcador por pozo. Ahora se reservan.
+    n_collares = sum(1 for wn, w in wells.items()
+                     if w.points and wn not in hidden_wells)
+    presupuesto = max(1, MAX_VIZ_POINTS - n_collares)
+    ratio = (presupuesto / n_total_pts) if n_total_pts > presupuesto else 1.0
     label, cmin, cmax, categorical, _ayuda = COLOR_FIELDS.get(
         color_by, ("", 0, 1, False, ""))
     cat_map = {}
@@ -10251,6 +10307,14 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
             showlegend=True,legendgroup="dxf",
             visible=True if name not in hidden_layers else "legendonly"))
     n_dibujados = 0
+    # Los collares iban en UNA TRAZA POR POZO para dibujar un punto negro cada
+    # uno: con 600 pozos, 600 objetos Scatter3d para 600 puntos. Se juntan en
+    # una sola traza; se ven exactamente igual.
+    col_x, col_y, col_z, col_hover = [], [], [], []
+    # La barra de color la lleva UNA sola traza. Antes la declaraba cada pozo:
+    # Plotly construía 600 colorbars idénticas, apiladas en la misma x. Era la
+    # mitad del costo de dibujar la vista, y visualmente no aportaba nada.
+    barra_puesta = False
     for wn, well in wells.items():
         pts_full = well.points
         if not pts_full: continue
@@ -10268,11 +10332,11 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
         n_dibujados += len(pts)
         is_visible = True if wn not in hidden_wells else "legendonly"
         xs = [p.este for p in pts]; ys = [p.norte for p in pts]; zs = [p.cota for p in pts]
-        # collar
-        fig.add_trace(go.Scatter3d(x=[xs[0]],y=[ys[0]],z=[zs[0]],mode="markers",
-            marker=dict(size=6,color="#111"),showlegend=False,
-            hovertext=f"Collar {wn}: E={xs[0]:.1f} N={ys[0]:.1f} Z={zs[0]:.1f}",hoverinfo="text",
-            visible=is_visible))
+        # collar — se acumula y se dibuja todo junto al final del bucle.
+        if is_visible is True:
+            col_x.append(xs[0]); col_y.append(ys[0]); col_z.append(zs[0])
+            col_hover.append(
+                f"Collar {wn}: E={xs[0]:.1f} N={ys[0]:.1f} Z={zs[0]:.1f}")
         if categorical:
             vals = [getattr(p, color_by) or "—" for p in pts]
             colors = [cat_map.get(v, "#888") for v in vals]
@@ -10296,13 +10360,22 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
                      f"<br>UCS ML: {_fmt_ucs_interval(p)}"
                      f"<br>E={p.este:.1f} N={p.norte:.1f} Z={p.cota:.1f}"
                      for p,vd in zip(pts,raw_vals_display)]
+            marker = dict(size=2.5, color=raw_vals, colorscale="Plasma",
+                          cmin=cmin, cmax=cmax, opacity=0.85,
+                          showscale=not barra_puesta)
+            if not barra_puesta:
+                marker["colorbar"] = dict(
+                    title=dict(text=label, font=dict(size=10)),
+                    thickness=14, len=0.55, x=1.02)
+                barra_puesta = True
             fig.add_trace(go.Scatter3d(x=xs,y=ys,z=zs,mode="lines+markers",name=wn,
                 hovertext=hover,hoverinfo="text",line=dict(color="rgba(150,150,150,0.4)",width=1),
-                marker=dict(size=2.5,color=raw_vals,colorscale="Plasma",cmin=cmin,cmax=cmax,
-                            opacity=0.85,showscale=True,
-                            colorbar=dict(title=dict(text=label,font=dict(size=10)),
-                                          thickness=14,len=0.55,x=1.02)),legendgroup="wells",
+                marker=marker,legendgroup="wells",
                 visible=is_visible))
+    if col_x:
+        fig.add_trace(go.Scatter3d(x=col_x, y=col_y, z=col_z, mode="markers",
+            marker=dict(size=6, color="#111"), showlegend=False,
+            hovertext=col_hover, hoverinfo="text", name="collares"))
     # ── Sondajes con testigo ────────────────────────────────────────────────
     # Van en la misma vista que el MWD y las mallas: es la única forma de ver
     # si un sondaje pasa cerca de los tiros que dice describir, y esa cercanía
@@ -14236,24 +14309,26 @@ def _diagnostico_calce():
         ], color="warning", style={"fontSize":"11px","padding":"7px 10px"})
 
 def _step1():
-    all_pts = list(all_points())
+    # Antes materializaba el millón de puntos en una lista y lo recorría para
+    # contar los que tienen banda. Ahora la cifra viene cacheada y la lista no
+    # se arma: solo se necesitaba su largo.
+    n_pts, n_ucs = conteo_puntos_con_ucs()
     n_dxf, n_wells = len(layers), len(wells)
-    n_ucs = sum(1 for p in all_pts if p.dominio and domains.get(p.dominio, {}).get("ucs_lab"))
-    n_no_ucs = len(all_pts) - n_ucs
+    n_no_ucs = n_pts - n_ucs
     diag = _diagnostico_calce()
     status_block = dbc.Alert([
         html.B("Etiquetado automático punto a punto"), html.Br(),
         html.Small("El cruce geométrico DXF ↔ MWD determina qué puntos tienen UCS."),
         html.Hr(style={"margin":"6px 0"}),
         dbc.Row([
-            dbc.Col([html.Div(str(len(all_pts)),style={"fontSize":"22px","fontWeight":700}),
+            dbc.Col([html.Div(str(n_pts),style={"fontSize":"22px","fontWeight":700}),
                      html.Small("Total MWD",style={"color":"#aaa"})], width=4),
             dbc.Col([html.Div(str(n_ucs),style={"fontSize":"22px","fontWeight":700,"color":"#2ECC71"}),
                      html.Small("Con UCS → ML",style={"color":"#aaa"})], width=4),
             dbc.Col([html.Div(str(n_no_ucs),style={"fontSize":"22px","fontWeight":700,"color":"#aaa"}),
                      html.Small("Sin UCS",style={"color":"#aaa"})], width=4),
         ]),
-    ], color="dark", style={"fontSize":"12px"}) if all_pts else None
+    ], color="dark", style={"fontSize":"12px"}) if n_pts else None
     s_act = active_site()
     n_pend = pending_alias_count()
     n_bloq = len(training_blockers())
@@ -14334,14 +14409,19 @@ def _step1():
     ])
 
 def _step2():
-    all_pts = list(all_points())
-    active = sum(1 for p in all_pts if p.entrenable)
+    # Un solo recorrido del generador para las tres cifras, sin materializar.
+    n_pts = active = n_cut = 0
+    for p in all_points():
+        n_pts += 1
+        if p.entrenable:
+            active += 1
+        if p.largo < inicio_cut_m:
+            n_cut += 1
     # (P3-3.8) El corte de emboquillado se APLICA (apply_inicio_filter) pero
     # antes no figuraba en ninguna lista de filtros. Se antepone como entrada
     # sintética de solo lectura — no es removible aquí porque no es un filtro
     # de clean_filters, es el corte base que recompute_filters() siempre
     # reaplica primero.
-    n_cut = sum(1 for p in all_pts if p.largo < inicio_cut_m)
     filter_items = [dbc.ListGroupItem([
         html.Small(f"Emboquillado — largo < {inicio_cut_m:g} m",
                    style={"fontSize":"11px","marginRight":"6px","flex":1}),
@@ -14363,7 +14443,7 @@ def _step2():
         # MWD por un factor derivado de esos promedios no corrige unidades,
         # reescala el dato crudo contra un agregado que ya lo contiene.
         card("Filtros de limpieza (globales)", [
-            dbc.Alert(f"Activos: {active}/{len(all_pts)} pts · {len(wells)} pozos",
+            dbc.Alert(f"Activos: {active}/{n_pts} pts · {len(wells)} pozos",
                       color="info", style={"fontSize":"11px","padding":"4px 8px"}, className="mb-2"),
             dbc.Row([
                 dbc.Col(html.Small("Corte emboquillado (m):", style={"color":"#aaa"}), width=5),
@@ -14587,9 +14667,15 @@ def _render_calibracion(rep: Dict):
 
 
 def _step3():
-    all_pts = list(all_points())
-    n_di = sum(1 for p in all_pts if p.di is not None)
-    n_disc = sum(1 for p in all_pts if p.di is not None and p.di > di_threshold)
+    # Sobre el generador, no sobre una lista de un millón de elementos que se
+    # arma para contar dos cosas y se tira.
+    n_di = n_disc = 0
+    for p in all_points():
+        if p.di is None:
+            continue
+        n_di += 1
+        if p.di > di_threshold:
+            n_disc += 1
     return html.Div([
         html.H6("Paso 3 — Índice de discontinuidad (DI)", className="mb-3"),
         card("Fórmula", [
@@ -14816,7 +14902,9 @@ def _varjust_panel_body():
 
 
 def _step4():
-    all_pts = list(all_points())
+    # Acá había un `all_pts = list(all_points())` que nadie leía: un millón de
+    # puntos materializados en una lista para tirarla. Cronometrado, era 1,4 s
+    # de los 9,4 que tardaba abrir este paso.
     return html.Div([
         html.H6("Paso 4 — Modelo ML (UCS)", className="mb-3"),
         _training_composition_card(),
@@ -14997,8 +15085,7 @@ def _mesh_validation_card():
     return card("Validación de capas DXF (consistencia multipozo)", body)
 
 def _step5():
-    all_pts = list(all_points())
-    n_nodom = sum(1 for p in all_pts if not p.dominio)
+    n_nodom = sum(1 for p in all_points() if not p.dominio)
     return html.Div([
         html.H6("Paso 5 — Dominios geomecánicos", className="mb-3"),
         card("Agrupación", [
