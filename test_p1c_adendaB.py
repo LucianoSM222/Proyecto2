@@ -105,7 +105,7 @@ def b3_esquema_ampliado():
     check(kfa.ucs_ancla() == 289.6,
           "sin ucs_central, ucs_ancla() sigue usando ucs_media como antes",
           kfa.ucs_ancla())
-    check(len(gw.attr_registry) == 22, "el registro sigue completo (22 atributos)",
+    check(len(gw.attr_registry) == 25, "el registro sigue completo (25 atributos)",
           len(gw.attr_registry))
 
 

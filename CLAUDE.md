@@ -37,6 +37,27 @@ mina subterránea de cobre.
 - Terminología: "modelo geológico informado por MWD". Nunca "corregido" ni
   "exacto".
 
+## Litologías y anclas de UCS
+
+Aportadas por el autor y confirmadas contra el registro:
+
+| Atributo | UCS central | Banda | Nota |
+|---|---|---|---|
+| `Bht` | 128,1 | disp. 64,5-296,9 | CV 0,57 |
+| `Bht_feldk` | 155 | 130-180 | litología PROPIA, no Bht con alteración |
+| `Kpcli` (Lavas Inferiores) | 180 | 150-230 | |
+| `Kpcls` (Lavas Superiores) | — | — | SIN ancla: no hay ensayo |
+| `Brecha_mixta` (Kpcmix) | 111,5 | 82,6-141,7 | sd 23,6 |
+| `Kpcsb_sedimentaria` | 83,6 | 77,4-98,7 | |
+| `Ka_caliza` / `Ka_arenisca` | 60 / 120 | — | sin puntos MWD hoy |
+| `Dique` (DQ1) | — | — | rol estructura |
+
+LAS DOS LAVAS SE SEPARAN POR COTA, no por nombre: Pucobre entrega ambas como
+«Lavas»/«LAVA». Inferiores bajo `lito.cota_lavas_inferiores` (320), superiores
+sobre `lito.cota_lavas_superiores` (400). Una malla en la franja intermedia
+queda SIN atributo y sin ancla — es el caso de PCS_1043, 35 m sobre el techo de
+las inferiores. Es la regla del geólogo, criterio trazable, no un percentil.
+
 ## Sitio activo
 
 Punta del Cobre (MPC). Envolvente UTM de sondajes:
@@ -102,6 +123,12 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | A1 | DI activo · el panel no pisa la convención | — | ✅ `a6a64ce` |
 | A2 | Fuera defaults silenciosos y kit duplicado | — | ✅ `bd974c7` |
 | A3 | Universalidad · 64 parámetros y pantalla de perfil | — | ✅ `05aee77` |
+| A4 | Vara común UCS · relación directa · valor por punto | — | ✅ `0e12e18` |
+| A5 | Radio del RQD elegible · anclas reales de MPC | — | ✅ `38622e7` |
+| A6 | `on_xml` restaurado · la carga de MWD estaba muerta | — | ✅ `a48abc3` |
+| A7 | Menús del perfil · badge cacheado · canario despierto | — | ✅ `3eccdb4` |
+| A8 | UCS por banda · SE no física fuera | — | ✅ `2e5da9f` |
+| A9 | Cuatro caserones completos · Lavas por cota | — | ✅ |
 
 Hallazgos que condicionan la interpretación, no defectos pendientes:
 

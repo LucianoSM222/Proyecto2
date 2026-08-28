@@ -84,6 +84,10 @@ def cargar_capas(caseron: str, rutas: List[str], verbose=True) -> Dict:
         m = gw.resolve_or_note(name, "dxf_layer")
         if m: gw.set_layer_attributes(lay, m)
         else: lay.kind = rol
+        # Lavas Superiores vs Inferiores: las separa la COTA, no el nombre.
+        motivo_lavas = gw.aplicar_regla_lavas(lay)
+        if motivo_lavas:
+            print(f"     ⚑ regla de lavas por cota — {motivo_lavas}")
         gw.layers[key] = lay
         ok += 1
         if verbose:

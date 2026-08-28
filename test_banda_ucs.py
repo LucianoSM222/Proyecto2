@@ -337,3 +337,68 @@ if __name__ == "__main__":
         sys.exit(1)
     print("✓ BANDA DE UCS — todas las verificaciones pasaron.")
     print("=" * 72)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+def las_lavas_se_separan_por_cota():
+    """
+    Pucobre entrega las Lavas Superiores y las Inferiores con el MISMO nombre
+    de malla. La regla del geólogo —inferiores bajo ~320, superiores sobre
+    ~400— es lo único que las separa, y es un criterio trazable, no un filtro
+    estadístico: por eso se aplica donde la convención prohíbe los percentiles.
+
+    Sobre los datos reales, las Lavas de PCS_1043 caen 35 m sobre el techo de
+    las inferiores. Heredaban Kpcli=180 MPa sin que nada lo respaldara: 39.927
+    puntos con un ancla prestada.
+    """
+    section("Lavas — las separa la cota, y la franja intermedia no se adivina")
+    reset()
+    casos = [("PCC_1541", 300, 329, "Kpcli"),
+             ("PCC_0042", 268, 311, "Kpcli"),
+             ("PCS_1059", 420, 460, "Kpcls"),
+             ("PCS_1043", 341, 363, None)]
+    for nom, zmin, zmax, esperado in casos:
+        r = gw.clasificar_lavas_por_cota(zmin, zmax)
+        check(r["atributo"] == esperado,
+              f"{nom} (cota {zmin}-{zmax}) → {esperado or 'sin atributo'}",
+              (r["atributo"], r["motivo"]))
+    r = gw.clasificar_lavas_por_cota(341, 363)
+    check("inventar" in r["motivo"] or "intermedia" in r["motivo"],
+          "y la franja intermedia explica POR QUÉ no se asigna", r["motivo"])
+    # Kpcls existe y NO tiene ancla: sus puntos no entrenan, y eso se declara.
+    kpcls = gw.attr_registry["Kpcls"]
+    check(kpcls.ucs_ancla() is None,
+          "Lavas Superiores sin ancla: no hay ensayo", kpcls.ucs_ancla())
+    check(not kpcls.entrenable()[0], "así que no entrena", kpcls.entrenable())
+    # Las cotas son del perfil, no del código.
+    for pid in ("lito.cota_lavas_inferiores", "lito.cota_lavas_superiores"):
+        check(pid in gw.param_registry, f"{pid} es configurable")
+    gw.set_param("lito.cota_lavas_inferiores", 360.0)
+    check(gw.clasificar_lavas_por_cota(341, 363)["atributo"] == "Kpcli",
+          "y moverlas cambia la clasificación: otra mina, otros niveles")
+    gw.seed_param_registry(force=True)
+
+
+def bht_feldk_es_litologia_propia():
+    section("Bht_feldk — litología distinta de Bht, por decisión del autor")
+    reset()
+    a = gw.attr_registry["Bht_feldk"]
+    check(a.rol == "litologia", "es litología", a.rol)
+    check((a.ucs_min, a.ucs_max) == (130.0, 180.0),
+          "con su banda 130-180 MPa", (a.ucs_min, a.ucs_max))
+    check(a.ucs_ancla() == 155.0, "y ancla 155", a.ucs_ancla())
+    check(gw.resolve_alias("Bht_feldk") == {"litologia": "Bht_feldk"},
+          "la malla resuelve a ella, NO se descompone en Bht + alteración Fk",
+          gw.resolve_alias("Bht_feldk"))
+    check(gw.attr_registry["Bht"].ucs_ancla() == 128.1,
+          "y Bht conserva la suya, separada", gw.attr_registry["Bht"].ucs_ancla())
+    # El dique es estructura: no lleva banda y no bloquea el entrenamiento.
+    d = gw.attr_registry["Dique"]
+    check(d.rol == "estructura", "DQ1 es un dique, rol estructura", d.rol)
+    check(gw.resolve_alias("DQ1") == {"estructura": "Dique"},
+          "y su malla resuelve ahí", gw.resolve_alias("DQ1"))
+    check(d.entrenable()[0],
+          "una estructura no necesita banda de UCS para no bloquear")
+
+
+ALL_TESTS += [las_lavas_se_separan_por_cota, bht_feldk_es_litologia_propia]

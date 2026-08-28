@@ -585,6 +585,22 @@ def seed_attribute_registry(force: bool = False):
                          "PENDIENTE DE CONFIRMAR: la descripción del autor "
                          "llegó parcialmente ininteligible en este punto y "
                          "estos dos niveles son mi lectura de ella.")),
+        Attribute(id="Kpcls", nombre_oficial="Lavas Superiores", rol="litologia",
+                  nivel="unidad", calidad=0, fuente="autor de la memoria",
+                  notas=("SIN ancla de UCS: no hay ensayo de las Lavas Superiores. "
+                         "Se separan de las Inferiores por COTA —inferiores bajo "
+                         "~320, superiores sobre ~400—, que es la regla del "
+                         "geólogo, no un criterio estadístico. Sus puntos quedan "
+                         "fuera del entrenamiento y eso se declara.")),
+        Attribute(id="Bht_feldk", nombre_oficial="Brecha hidrotermal feldespatizada",
+                  rol="litologia", nivel="unidad",
+                  ucs_central=155.0, ucs_min=130.0, ucs_max=180.0,
+                  calidad=2, fuente="autor de la memoria",
+                  notas=("UCS 130-180 MPa aportada por el autor. Se trata como "
+                         "LITOLOGÍA DISTINTA de Bht por decisión del autor, no "
+                         "como Bht con alteración: la descomposición en "
+                         "litología+alteración era posible pero complicaba sin "
+                         "aportar, y el ensayo es propio de esta unidad.")),
         Attribute(id="DL", nombre_oficial="Sin identificar", rol="litologia", nivel="unidad",
                   calidad=0,
                   notas="Código sin identificar en los sondajes. 0,2% del metraje MPC (3,1 m)."),
@@ -636,6 +652,9 @@ def seed_attribute_registry(force: bool = False):
                   nivel="unidad", calidad=0),
         Attribute(id="SD", nombre_oficial="Zona de cizalle", rol="estructura",
                   nivel="unidad", calidad=0),
+        Attribute(id="Dique", nombre_oficial="Dique", rol="estructura", nivel="unidad",
+                  calidad=1, fuente="malla DXF de Pucobre",
+                  notas="Cuerpo intrusivo tabular. Rol estructura: no lleva banda de UCS."),
         Attribute(id="Cto", nombre_oficial="Contacto", rol="estructura",
                   nivel="unidad", calidad=0,
                   notas=("Los contactos casi no están logueados como estructura en los "
@@ -1015,8 +1034,11 @@ def _seed_default_aliases():
         # "Bht_feldk" es COMPUESTA: Bht con alteración feldespato potásica. El
         # separador la descompone en litología + alteración, que es justo el
         # caso para el que se construyó la composición por roles.
-        "Fk": ["FK", "feldk", "Feldespato potasica", "Feldespato potásica",
+        "Fk": ["FK", "Feldespato potasica", "Feldespato potásica",
                "Potasica", "Potásica", "K-feldespato"],
+        "Bht_feldk": ["Bht_feldk", "BHT_FELDK", "Bht feldk"],
+        "Kpcls": ["Lavas Superiores", "KPCLS"],
+        "Dique": ["DQ1", "Dique", "DQ"],
         # "Kpcmix" y "Kpcsb" son como Pucobre nombra estas mallas.
         "Brecha_mixta": ["Brecha mixta", "Bx mixta", "Kpcmix", "KPCMIX"],
         "Kpcsb_sedimentaria": ["Brecha sedimentaria", "Bx sedimentaria",
@@ -1394,6 +1416,60 @@ def layer_role_ids(layer) -> Dict[str, str]:
     kind = getattr(layer, "kind", "litologia")
     if kind not in ATTR_ROLES: kind = "litologia"
     return {kind: layer.name}
+
+
+# ─── Lavas Superiores vs Inferiores: las separa la COTA, no el nombre ────────
+# Pucobre entrega ambas con el mismo nombre de malla ("Lavas", "LAVA"), pero
+# son unidades distintas: las INFERIORES bajo la cota ~320 y las SUPERIORES
+# sobre la ~400. Es la regla del geólogo, no un criterio estadístico, y por eso
+# se aplica —a diferencia de un filtro por percentiles, que la convención del
+# proyecto prohíbe—. Las dos cotas viven en el perfil de faena: otra mina tiene
+# otros niveles, o ninguno.
+#
+# Una malla que cae ENTRE las dos cotas no se asigna a ninguna: se declara
+# indeterminada y queda sin ancla, en vez de heredar en silencio la de las
+# inferiores. Sobre los datos reales eso es exactamente PCS_1043, cuyas Lavas
+# están 35 m sobre el techo de las inferiores.
+
+def clasificar_lavas_por_cota(z_min: float, z_max: float) -> Dict:
+    """
+    ¿Superiores, Inferiores o indeterminadas? Decide por la cota de la malla.
+
+    Devuelve {"atributo": id|None, "motivo": str}. Nunca adivina: si la malla
+    cruza la franja intermedia, el atributo es None y el motivo lo explica.
+    """
+    techo_inf = float(get_param("lito.cota_lavas_inferiores"))
+    piso_sup = float(get_param("lito.cota_lavas_superiores"))
+    z_med = (float(z_min) + float(z_max)) / 2.0
+    if z_med < techo_inf:
+        return {"atributo": "Kpcli",
+                "motivo": (f"cota media {z_med:.0f} m, bajo el techo de las "
+                           f"Lavas Inferiores ({techo_inf:.0f} m)")}
+    if z_med > piso_sup:
+        return {"atributo": "Kpcls",
+                "motivo": (f"cota media {z_med:.0f} m, sobre el piso de las "
+                           f"Lavas Superiores ({piso_sup:.0f} m)")}
+    return {"atributo": None,
+            "motivo": (f"cota media {z_med:.0f} m, en la franja intermedia "
+                       f"({techo_inf:.0f}-{piso_sup:.0f} m) donde no aplica "
+                       "ninguna de las dos reglas. Queda SIN atributo y sin "
+                       "ancla: asignarla a las Inferiores sería inventar.")}
+
+
+def aplicar_regla_lavas(layer) -> Optional[str]:
+    """
+    Reasigna una malla de Lavas según su cota. Devuelve el motivo declarado, o
+    None si la malla no es de Lavas y no hay nada que decidir.
+    """
+    aid = (getattr(layer, "atributos", None) or {}).get("litologia")
+    if aid not in ("Kpcli", "Kpcls"):
+        return None
+    r = clasificar_lavas_por_cota(layer.bbox_min[2], layer.bbox_max[2])
+    if r["atributo"] is None:
+        layer.atributos.pop("litologia", None)
+    else:
+        layer.atributos["litologia"] = r["atributo"]
+    return f'"{layer.name}": {r["atributo"] or "SIN ATRIBUTO"} — {r["motivo"]}.'
 
 
 def set_layer_attributes(layer, atributos: Dict[str, str]):
@@ -3709,7 +3785,7 @@ MENUS_PERFIL = {
     "Datos": ["Repositorio", "Carga de datos", "Carga de pozos", "Sondajes"],
     "Geometría": ["Validación de mallas", "Plano del abanico", "Modelo de bloques"],
     "Roca": ["UCS", "Etiqueta de UCS", "Límites físicos", "Percusión (PP)",
-             "Presión de percusión"],
+             "Presión de percusión", "Litología"],
     "Fracturamiento": ["RQD", "Calibración DI↔RQD", "Discriminador",
                        "DI (convención)"],
     "Modelo": ["Modelo de aprendizaje", "Visor 3D"],
@@ -4041,6 +4117,18 @@ def seed_param_registry(force: bool = False):
                "Tramos de PP dentro de los que se compara SE contra UCS: sin "
                "estratificar, la variable que el operador manipula se confunde "
                "con la roca. Formato «a-b,c-d», en bar.", global_name="_PP_ESTRATOS_TXT"),
+        # ── Litología ────────────────────────────────────────────────────────
+        _param("lito.cota_lavas_inferiores", "Litología",
+               "Techo de las Lavas Inferiores", 320.0, "float", "m.s.n.m.",
+               "Regla del geólogo de Pucobre: las Lavas Inferiores están bajo "
+               "esta cota. Pucobre entrega ambas lavas con el mismo nombre de "
+               "malla, así que la cota es lo único que las separa. Otra mina "
+               "tiene otros niveles, o ninguno.", -2000.0, 6000.0),
+        _param("lito.cota_lavas_superiores", "Litología",
+               "Piso de las Lavas Superiores", 400.0, "float", "m.s.n.m.",
+               "Las Lavas Superiores están sobre esta cota. Una malla que cae "
+               "ENTRE las dos queda sin atributo y sin ancla: heredar la de las "
+               "inferiores sería inventar.", -2000.0, 6000.0),
         _param("ucs.min_fisico", "Límites físicos", "UCS mínima", 0.0, "float",
                "MPa", "Límite físico declarado en CLAUDE.md. Sin truncamiento "
                "silencioso jamás.", 0.0, 1000.0),
@@ -5042,6 +5130,11 @@ def ucs_a_litologia(ucs: float) -> Optional[str]:
     return mejor
 
 
+# Tramos de litología de sondaje con profundidades ilegibles. Se acumulan para
+# que un logueo mal escrito se pueda ver, en vez de saltarse en silencio.
+_tramos_lito_ilegibles: List[str] = []
+
+
 def _lito_de_sondaje(este: float, norte: float, cota: float,
                      tol_m: float = 3.0) -> Optional[str]:
     """Unidad logueada en el testigo, en el tramo más cercano al punto dado."""
@@ -5055,7 +5148,12 @@ def _lito_de_sondaje(este: float, norte: float, cota: float,
         prof = float(t[i, 0])
         for L in dh.lithology:
             try: f, to = float(L.get("from")), float(L.get("to"))
-            except (TypeError, ValueError): continue
+            except (TypeError, ValueError):
+                # Un tramo con profundidades ilegibles se salta, pero se cuenta:
+                # sin esto el punto podía terminar etiquetado por el tramo
+                # VECINO sin que nada lo delatara.
+                _tramos_lito_ilegibles.append(f'{dh.holeid}: {L!r}')
+                continue
             if f <= prof <= to:
                 u = L.get("unidad") or L.get("lito")
                 if u: mejor, mejor_d = u, float(dd[i])
