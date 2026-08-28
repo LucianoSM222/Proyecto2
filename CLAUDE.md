@@ -39,18 +39,40 @@ mina subterránea de cobre.
 
 ## Litologías y anclas de UCS
 
-Aportadas por el autor y confirmadas contra el registro:
+Fuente ÚNICA desde el 2026-08-28: `test_data/vocabulario_MPC_20260828_1302.json`
+(exportado por el autor desde la app, schema `mwd-geomech-vocabulario`).
+`cargar_caserones.py` lo importa con `import_vocabulary()` al arrancar —
+YA NO siembra la tabla de Karzulovic hardcodeada en `seed_attribute_registry()`—
+así que estos números pueden diferir de versiones anteriores de este documento:
+son los que el autor refinó trabajando con datos reales, no una primera pasada.
 
-| Atributo | UCS central | Banda | Nota |
-|---|---|---|---|
-| `Bht` | 128,1 | disp. 64,5-296,9 | CV 0,57 |
-| `Bht_feldk` | 155 | 130-180 | litología PROPIA, no Bht con alteración |
-| `Kpcli` (Lavas Inferiores) | 180 | 150-230 | |
-| `Kpcls` (Lavas Superiores) | — | — | SIN ancla: no hay ensayo |
-| `Brecha_mixta` (Kpcmix) | 111,5 | 82,6-141,7 | sd 23,6 |
-| `Kpcsb_sedimentaria` | 83,6 | 77,4-98,7 | |
-| `Ka_caliza` / `Ka_arenisca` | 60 / 120 | — | sin puntos MWD hoy |
-| `Dique` (DQ1) | — | — | rol estructura |
+| Atributo | UCS central | Banda | CV | Fuente / nota |
+|---|---|---|---|---|
+| `Kfa` (Albitófiro) | 289,6 (media) | 274,3-304,9 | — | Karzulovic 2005 T3.2. 66% del metraje de sondaje (1.176,3 m). Sin sd → probeta única, intervalo ensanchado |
+| `Bht` | 128,1 | disp. 64,5-296,9 | 0,57 | Hoek-Brown s/25 ensayos + carga puntual n=16 (CAS1004S). 33% del metraje (576,9 m). RQD mediana 92,0. CV excede lo que la etiqueta puede resolver — se declara, no se oculta ensanchando la banda |
+| `Bht_feldk` | 155 | 130-180 | — | litología PROPIA, no Bht con alteración — decisión del autor |
+| `Kpcli` (Lavas Inferiores) | 180 | 150-230 | — | cota <~320. Confirmado: Lavas de PCC_1541 93,4% bajo 320 (=Kpcli); Lavas de PCS_1043 99,6% entre 320-400 (=Kpcls) |
+| `Kpcls` (Lavas Superiores) | 60 | 40-95 | — | SIN ensayo — ancla aportada por el autor, no de laboratorio. Cota >~400 |
+| `Ka` (Calizas Fm. Abundancia) | 80 | 60-140 | — | dos niveles con resistencia distinta, ver subunidades |
+| `Ka_caliza` | 60 | — | — | subunidad de `Ka` |
+| `Ka_arenisca` | 120 | — | — | subunidad de `Ka`, ~20 m de espesor. Descripción del autor llegó parcialmente ilegible: pendiente de confirmar |
+| `Kpcsb_basal` (Brecha basal) | — | — | — | unidad PADRE, sin ancla propia — `Kpcsb` es ambiguo en la literatura (Marschik=basal, Ortiz et al.=sedimentaria); se distinguen con ids explícitos |
+| `Brecha_mixta` | 111,5 | 82,6-141,7 | 0,212 | subunidad de `Kpcsb_basal`. Karzulovic 2005 T3.2 |
+| `Kpcsb_sedimentaria` | 83,6 | 77,4-98,7 | 0,103 | subunidad de `Kpcsb_basal`. Karzulovic 2005 T3.2 |
+| `Kpcs` (Miembro Trinidad) | — | — | — | unidad padre de las lutitas, sin ancla propia |
+| `Lutitas_normales` | 126,0 | 117,1-134,9 | 0,100 | subunidad de `Kpcs`. Karzulovic 2005 T3.2 |
+| `Lutitas_metamorfoseadas` | 204,3 | 186,8-221,8 | 0,121 | subunidad de `Kpcs`. Karzulovic 2005 T3.2 |
+| `DL` | — | — | — | código sin identificar en sondajes, 0,2% del metraje (3,1 m) |
+
+Estructuras (rol `estructura`, sin banda de UCS): `FM` Falla menor · `FI` Falla
+interna · `ZF` Zona de falla · `ZFR` Zona fracturada · `FRI` Fractura interna ·
+`SD` Zona de cizalle · `V` Veta · `Dique` · `Cto` Contacto.
+
+COLISIÓN DE NOMENCLATURA `Fk` ↔ `Kfa`: `Fk` es feldespato potásica
+(ALTERACIÓN); `Kfa` es Albitófiro (LITOLOGÍA). Strings casi invertidos con
+roles OPUESTOS — estuvo a punto de invalidar el 66% del metraje de sondaje
+MPC. El campo `rol` de `Attribute` existe en buena medida por este caso: un
+traslape entre los dos es COMPOSICIÓN (roles distintos), no conflicto.
 
 LAS DOS LAVAS SE SEPARAN A MANO, por capa, en el vocabulario — no por una
 regla automática. Pucobre entrega ambas como «Lavas»/«LAVA», con el mismo
@@ -60,7 +82,10 @@ sacarla: diferenciar cuál malla es cuál es conocimiento de quien configura la
 faena, no un umbral que el programa adivine. `set_layer_attributes` asigna la
 litología POR CAPA (por objeto `Layer`, no por texto del nombre), así que dos
 mallas de nombre idéntico pueden llevar litologías distintas igual, elegidas
-a mano en el árbol de vocabulario.
+a mano en el árbol de vocabulario. El vocabulario final trae el alias
+`dxf_layer` exacto por malla (`Lavas_1043`→`Kpcli`, `Lavas_1541`→`Kpcls`,
+`LAVA_1059`→`Kpcli`), así que en la carga por lote ya no hace falta elegir
+nada a mano: la elección ya está en el JSON, hecha por el autor.
 
 ## Sitio activo
 
@@ -78,8 +103,18 @@ Asignación entrena/prueba = parámetro de ejecución, no constante.
 
 ## Escala
 
-~15 abanicos x 10 tiros x 35 m = ~5.250 m y ~262.500 registros por caserón,
-~150 pozos. Cuatro caserones superan el millón de puntos.
+Medido sobre la carga final (2026-08-28), no estimado:
+
+| Caserón | Pozos | Puntos MWD |
+|---|---|---|
+| PCC_0042 | 436 | 479.316 |
+| PCC_1541 | 237 | 202.827 |
+| PCS_1043 | 125 | 157.195 |
+| PCS_1059 | 130 | 143.082 |
+| **Total** | **928** | **982.420** |
+
+38 mallas DXF (litología + estructura) en los cuatro caserones. Cero puntos
+sin litología, cero ambiguos, en el cruce geométrico completo.
 
 ## Especificaciones
 
@@ -266,6 +301,41 @@ con el procedimiento habría sido perder el argumento que sostiene la decisión.
 de sondaje por caserón, con `repo.patron_caseron`. `guardar_proyecto_en(ruta)`
 escribe el .gwz a disco: el guardado siempre funcionó, lo que falla es la
 descarga del navegador con archivos de decenas de MB.
+
+### Datos de trabajo de la tesis (2026-08-28, final)
+
+`test_data/` quedó reducido a exactamente lo que se usa: `reales/` (los cuatro
+caserones) más los dos JSON de configuración exportados por el autor. Todo lo
+anterior —datos de Mina Granate/SAN_7064 (OTRA mina), Excel geomecánico viejo,
+fixtures sintéticas de sesiones tempranas, zips duplicados— se BORRÓ, a
+pedido explícito del autor: "los datos con los que trabajaremos en la tesis
+serán solo los que te subí, los demás bórralos todos".
+
+- `test_data/reales/Capas {caseron}/*.dxf` — mallas, PLANAS (sin subcarpeta
+  "Litología"/"Estructuras": el rol de cada malla ya no se adivina por
+  carpeta, lo resuelve el vocabulario).
+- `test_data/reales/MWD {SITIO} {número}/{DQ|MW}*.xml` — DQ y MW mezclados en
+  la misma carpeta por caserón (antes: `{sitio}/CP*/DQ/` separado).
+- `test_data/reales/MPC Sondajes/MPC_*.csv` — los 6 CSV de sondaje (header,
+  survey, lithology, structure, geomec, density), reubicados desde la raíz de
+  `test_data/`.
+- `test_data/vocabulario_MPC_20260828_1302.json` — 25 atributos + 96 alias,
+  incluido uno `dxf_layer` EXACTO por cada malla de los cuatro caserones (ver
+  tabla de anclas arriba). `cargar_caserones.py` lo importa con
+  `import_vocabulary()` al arrancar; YA NO siembra la tabla de Karzulovic
+  hardcodeada de `seed_attribute_registry()`.
+- `test_data/perfil_faena_MPC_20260828_1236.json` — 58 parámetros de
+  operación, importado con `import_site_profile()`.
+
+`cargar_caserones.py` quedó ajustado a esta estructura (`_carpeta_mwd()`,
+`VOCABULARIO`, `PERFIL`). Probado extremo a extremo sobre los cuatro
+caserones: 928 pozos, 982.420 puntos, **cero** puntos sin litología, cero
+ambiguos en el cruce geométrico.
+
+Efecto en la suite: `test_p2_sondajes.py` apuntaba a la ruta vieja de los CSV
+de sondaje — corregido a la nueva. El resto de los tests que dependían de las
+fixtures borradas (Mina Granate, sintéticas) pasan a SKIP, no a fallo, por el
+mecanismo ya existente en `test_support.py` (`require_real_data`).
 
 ## Pantallas de salida
 

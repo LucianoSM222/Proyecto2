@@ -13,8 +13,10 @@ Cubre las seis tareas:
   T2.5  métricas por pozo (metros dentro, unidades, estructuras, RQD/RMR)
   T2.6  selección persistente, anulación manual en ambos sentidos, panel UI
 
-Usa los seis CSV reales de test_data/MPC_*.csv (11 sondajes de Punta del
-Cobre) como fixture principal — son datos reales del sitio, no sintéticos.
+Usa los seis CSV reales de test_data/reales/MPC Sondajes/MPC_*.csv (11
+sondajes de Punta del Cobre) como fixture principal — son datos reales del
+sitio, no sintéticos. Ruta actualizada 2026-08-28: viajan dentro de la carga
+final de datos (MPC Sondajes.zip), ya no sueltos en la raíz de test_data/.
 Los estados del cruce (T2.4) se verifican con cajas sintéticas, igual que
 test_a6_traslape.py, porque los CSV reales no traen mallas DXF asociadas.
 """
@@ -50,7 +52,7 @@ MPC_FILES = {
 
 
 def _mpc_bytes():
-    d = os.path.join(HERE, "test_data")
+    d = os.path.join(HERE, "test_data", "reales", "MPC Sondajes")
     return {k: open(os.path.join(d, fn), "rb").read() for k, fn in MPC_FILES.items()}
 
 

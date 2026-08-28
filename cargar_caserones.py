@@ -9,14 +9,26 @@ listo (o un .gwz guardado) para entrenar. Se ejecuta desde la raíz del repo.
     python3 cargar_caserones.py --caseron PCS_1043 --caseron PCC_0042
     python3 cargar_caserones.py --todos --guardar proyecto.gwz
 
-Cada caserón se resuelve así:
-  · DQ  test_data/reales/{PCC|PCS}/CP*/DQ/DQ{caseron}_*.xml   (fusionados)
-  · MW  test_data/reales/{PCC|PCS}/CP*/MW{caseron}_*.xml
-  · DXF test_data/reales/Capas {caseron}/**/*.dxf
-        subcarpeta "Litología*" -> rol litologia · "Estructuras*" -> estructura
+Cada caserón se resuelve así (datos finales para la tesis, subidos 2026-08-28):
+  · DQ/MW  test_data/reales/MWD {SITIO} {número}/{DQ|MW}{caseron}_*.xml
+           (mezclados en la misma carpeta; se separan por el prefijo del
+           nombre, DQ se fusiona entre revisiones igual que antes)
+  · DXF    test_data/reales/Capas {caseron}/*.dxf  (PLANA — sin subcarpeta
+           "Litología"/"Estructuras": el rol de cada malla ya NO se adivina
+           por carpeta ni por nombre, se resuelve por el vocabulario
+           importado desde test_data/vocabulario_MPC_*.json, que trae un
+           alias `dxf_layer` exacto para cada malla de los cuatro caserones)
+
+El vocabulario y el perfil de faena de esta carga viven en:
+  · test_data/vocabulario_MPC_*.json   (anclas de UCS + 37 alias por malla)
+  · test_data/perfil_faena_MPC_*.json  (parámetros de operación de MPC)
+Se importan al inicio de `main()` — YA NO se siembra `seed_attribute_registry()`
+con la tabla de Karzulovic hardcodeada: el JSON exportado es la fuente única
+para esta carga, y sus anclas de UCS pueden diferir de las de esa tabla (el
+autor las refinó trabajando con la app).
 """
 
-import os, sys, glob, time, argparse
+import os, sys, glob, time, argparse, zipfile
 from typing import Dict, List
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -25,6 +37,8 @@ sys.path.insert(0, HERE)
 import geomech_wizard as gw
 
 REALES = os.path.join(HERE, "test_data", "reales")
+VOCABULARIO = os.path.join(HERE, "test_data", "vocabulario_MPC_20260828_1302.json")
+PERFIL = os.path.join(HERE, "test_data", "perfil_faena_MPC_20260828_1236.json")
 
 # Los cuatro caserones del plan (CLAUDE.md). El rol entrena/prueba NO se fija
 # aquí: es un parámetro de ejecución de la sesión 5, no una constante.
@@ -35,12 +49,66 @@ def _prefijo_sitio(caseron: str) -> str:
     return caseron.split("_")[0]          # PCS_1043 -> PCS
 
 
+ZIPS_FINALES = [
+    "Capas PCC_0042.zip", "Capas PCC_1541.zip",
+    "Capas PCS_1043.zip", "Capas PCS_1059.zip",
+    "MPC Sondajes.zip", "MWD MPC.zip",
+]
+
+
+def asegurar_datos_extraidos(verbose=True) -> bool:
+    """
+    Extrae los seis zips finales a test_data/reales/ si no están sueltos
+    todavía. `test_data/reales/` está en .gitignore a propósito —son cientos
+    de MB de DXF/XML sueltos, y el repo versiona solo los zips (~75 MB
+    comprimidos)—, así que un clon limpio NO trae la carpeta y este paso es
+    lo único que la repone. Sin él, `descubrir_archivos()` no encuentra nada
+    y cada caserón se ve "vacío" sin que quede claro por qué.
+    """
+    base = os.path.join(HERE, "test_data")
+    if os.path.isdir(REALES) and any(
+            os.path.isdir(os.path.join(REALES, n)) for n in
+            ("Capas PCC_0042", "MWD PCC 0042", "MPC Sondajes")):
+        return True
+    faltan = [z for z in ZIPS_FINALES if not os.path.exists(os.path.join(base, z))]
+    if faltan:
+        print(f"  ⛔ Faltan zips de datos en test_data/: {', '.join(faltan)}")
+        return False
+    if verbose:
+        print(f"  test_data/reales/ vacío o incompleto: extrayendo los "
+              f"{len(ZIPS_FINALES)} zips finales…")
+    os.makedirs(REALES, exist_ok=True)
+    for z in ZIPS_FINALES:
+        with zipfile.ZipFile(os.path.join(base, z)) as zf:
+            zf.extractall(REALES)
+    # "MWD MPC.zip" trae una carpeta contenedora extra ("MWD MPC/") con las
+    # cuatro carpetas por caserón adentro; el resto de los zips no la traen.
+    # Se sube un nivel para que quede "reales/MWD {SITIO} {número}/", que es
+    # lo que _carpeta_mwd() espera, y se descarta el contenedor vacío.
+    contenedor = os.path.join(REALES, "MWD MPC")
+    if os.path.isdir(contenedor):
+        for nombre in os.listdir(contenedor):
+            destino = os.path.join(REALES, nombre)
+            if not os.path.exists(destino):
+                os.rename(os.path.join(contenedor, nombre), destino)
+        if not os.listdir(contenedor):
+            os.rmdir(contenedor)
+    return True
+
+
+def _carpeta_mwd(caseron: str) -> str:
+    """'PCC_0042' -> 'MWD PCC 0042', el nombre de carpeta que trae el zip."""
+    sitio = _prefijo_sitio(caseron)
+    numero = caseron.split("_", 1)[1]
+    return f"{REALES}/MWD {sitio} {numero}"
+
+
 def descubrir_archivos(caseron: str) -> Dict[str, List[str]]:
     """Rutas de DQ, MW y mallas de un caserón, sin leer nada todavía."""
-    sitio = _prefijo_sitio(caseron)
-    dq = sorted(p for p in glob.glob(f"{REALES}/{sitio}/CP*/DQ/*.xml")
+    carpeta = _carpeta_mwd(caseron)
+    dq = sorted(p for p in glob.glob(f"{carpeta}/*.xml")
                 if os.path.basename(p).startswith(f"DQ{caseron}_"))
-    mw = sorted(p for p in glob.glob(f"{REALES}/{sitio}/CP*/*.xml")
+    mw = sorted(p for p in glob.glob(f"{carpeta}/*.xml")
                 if os.path.basename(p).startswith(f"MW{caseron}_"))
     capas = sorted(glob.glob(f"{REALES}/Capas {caseron}/**/*.dxf", recursive=True))
     # .dwg: ezdxf no los lee. Se listan aparte para poder DECLARAR que el
@@ -50,7 +118,14 @@ def descubrir_archivos(caseron: str) -> Dict[str, List[str]]:
 
 
 def _rol_de_ruta(path: str) -> str:
-    """Rol de la malla según la subcarpeta en que Pucobre la entregó."""
+    """
+    Rol de RESPALDO cuando la malla no tiene alias en el vocabulario. La
+    carga final (2026-08-28) viene en carpeta plana —ya no hay subcarpeta
+    "Litología"/"Estructuras" que declare el rol—, así que en la práctica el
+    rol real lo pone `resolve_or_note(name, "dxf_layer")` en `cargar_capas()`
+    contra el vocabulario importado; esto solo cubre una malla nueva sin
+    alias todavía.
+    """
     low = gw._norm_txt(path)
     if "estructura" in low: return "estructura"
     if "litolog" in low:    return "litologia"
@@ -92,7 +167,13 @@ def cargar_capas(caseron: str, rutas: List[str], verbose=True) -> Dict:
         ok += 1
         if verbose:
             attr = ",".join(f"{k}={v}" for k, v in (lay.atributos or {}).items()) or "SIN VOCABULARIO"
-            print(f"     {name:14s} {len(tris):7,d} tris  {rol:10s} {attr}".replace(",", "."))
+            # lay.kind, no `rol`: `rol` es el respaldo adivinado ANTES de
+            # resolver el vocabulario — mostrarlo aquí es lo mismo default
+            # silencioso que el proyecto prohíbe, solo que en el log en vez
+            # del dato. set_layer_attributes() ya corrigió lay.kind si el
+            # vocabulario trajo un rol distinto (ej. FM2_0042 "adivinado"
+            # litología, corregido a estructura por el alias).
+            print(f"     {name:14s} {len(tris):7,d} tris  {lay.kind:10s} {attr}".replace(",", "."))
     return {"ok": ok, "errores": err, "t": round(time.time()-t0, 1)}
 
 
@@ -171,7 +252,31 @@ def main():
 
     objetivo = args.caseron or (CASERONES if args.todos else CASERONES)
 
-    gw.seed_attribute_registry()
+    if not asegurar_datos_extraidos():
+        print("\n  ⛔ No se puede continuar sin los datos. Faltan zips en test_data/.")
+        return []
+
+    # El vocabulario exportado por el autor es la fuente ÚNICA para esta
+    # carga (anclas de UCS + 37 alias `dxf_layer`, uno por malla real de los
+    # cuatro caserones); reemplaza a seed_attribute_registry(), que sembraba
+    # la tabla de Karzulovic hardcodeada y no conocía estos nombres de malla.
+    with open(VOCABULARIO, encoding="utf-8") as fh:
+        rep_vocab = gw.import_vocabulary(fh.read())
+    if rep_vocab["errores"]:
+        print(f"  ⚠ vocabulario: {len(rep_vocab['errores'])} error(es) al importar:")
+        for e in rep_vocab["errores"]:
+            print(f"     · {e}")
+    print(f"  vocabulario importado: {rep_vocab['atributos']} atributos, "
+          f"{rep_vocab['alias']} alias.")
+    if os.path.exists(PERFIL):
+        gw.seed_param_registry()   # el perfil se aplica SOBRE el registro, no lo reemplaza
+        with open(PERFIL, encoding="utf-8") as fh:
+            rep_perfil = gw.import_site_profile(fh.read())
+        print(f"  perfil de faena aplicado: {rep_perfil.get('n_aplicados', 0)} "
+              f"parámetro(s)" +
+              (f" · {len(rep_perfil['rechazados'])} rechazado(s)"
+               if rep_perfil.get("rechazados") else ""))
+
     t0 = time.time()
     resultados = [cargar_caseron(c) for c in objetivo]
 
