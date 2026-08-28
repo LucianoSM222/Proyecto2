@@ -1711,6 +1711,12 @@ prelim_model = None
 # restauración a estos mismos valores.
 DI_DEFAULTS = {"window": 14, "threshold": 1.5,
               "weights": {"pp": 0.35, "pr": 0.20, "pd": 0.25, "pf": 0.20}}
+# Sigla IREDES de cada presión, y el ORDEN en que se muestran. Vive acá arriba
+# —y no junto a CAL_ETIQUETAS, que se arma desde ella— porque la sigla se
+# escribía en dos lugares y volvieron a cruzarse: di_config_summary() rotulaba
+# `pf` como «FP», que en IREDES es el AVANCE. FLP es el BARRIDO, que es lo que
+# `pf` guarda. Una sola fuente para la sigla evita repetir ese cruce.
+CAL_SIGLAS = {"pp": "PP", "pd": "DP", "pf": "FLP", "pr": "RP", "pa": "FP/AP"}
 # Nombre de la variante de convención. Vive acá arriba, junto a DI_DEFAULTS,
 # porque `di_variante_activa` lo necesita antes de que se declare el registro
 # de variantes; el registro mismo se siembra más abajo (seed_di_variants).
@@ -1718,6 +1724,29 @@ DI_VARIANTE_CONVENCION = "por_defecto"
 di_config = {"params": ["pp","pr","pd","pf"], "weights": dict(DI_DEFAULTS["weights"]),
             "window": DI_DEFAULTS["window"]}
 di_threshold: float = DI_DEFAULTS["threshold"]
+# Lo que la calibración dejó PROPUESTO en las casillas del Paso 3, esperando
+# que alguien lo revise y pulse «Calcular DI». Vive fuera de di_config a
+# propósito: calibrar NO activa su variante —eso lo decide quien mira el
+# veredicto—, así que estos números todavía no son los que corren.
+#
+# Sin esto la calibración parecía no guardar nada: escribía los pesos en las
+# casillas Y subía `refresh`, y `render_wizard` escucha `refresh`, así que
+# `_step3()` se volvía a dibujar y recreaba los `dbc.Input` con
+# `value=di_config[...]` —los de la variante ACTIVA, que la calibración
+# justamente no cambia—, pisando lo recién calibrado en el mismo ciclo.
+_di_panel_pendiente: Dict[str, float] = {}
+
+
+def _di_panel_valor(clave: str, defecto=None):
+    """Valor que va en una casilla del panel del DI: el propuesto por la
+    última calibración si lo hay, y si no el de la variante que corre."""
+    if clave in _di_panel_pendiente:
+        return _di_panel_pendiente[clave]
+    if clave == "window":
+        return di_config["window"]
+    if clave == "threshold":
+        return di_threshold
+    return di_config["weights"].get(clave, defecto)
 # Qué variante del DI está corriendo AHORA. `di_config` y `di_threshold` son su
 # reflejo, no una segunda verdad: se escriben solo desde `activar_di()`.
 di_variante_activa: str = DI_VARIANTE_CONVENCION
@@ -1744,9 +1773,16 @@ def di_config_summary() -> str:
     pantalla donde se cambió.
     """
     w = di_config["weights"]
+    # LAS CINCO presiones, con la sigla de CAL_SIGLAS. Antes se imprimían
+    # cuatro y la de `pf` decía «FP»: el avance no aparecía por ninguna parte y
+    # el barrido salía con la sigla del avance. Esta línea encabeza además cada
+    # CSV exportado como procedencia, así que el error viajaba en los datos.
+    # Un peso ausente se declara "—", que no es lo mismo que valer 0.
+    pesos_txt = ",".join(
+        f"{CAL_SIGLAS[k]}=" + (f"{w[k]:g}" if k in w else "—")
+        for k in CAL_SIGLAS)
     linea = (f"DI «{di_variante_activa}»: ventana={di_config['window']} "
-            f"umbral={di_threshold:g} "
-            f"pesos(PP={w.get('pp')},DP={w.get('pd')},FP={w.get('pf')},RP={w.get('pr')})")
+            f"umbral={di_threshold:g} pesos({pesos_txt})")
     linea += (" [valores por defecto]" if di_config_is_default()
               else " [variante, distinta de los valores por defecto]")
     return linea
@@ -12358,21 +12394,236 @@ def _reportes_panel_body(activo: Optional[str] = None):
     ])
 
 
+# Filas de tabla que entran en un reporte DIBUJADO. Un reporte es un resumen
+# para mirar: si una tabla trae miles de filas lo que hace falta es el CSV, no
+# una imagen ilegible. Se declara cuántas se recortaron, nunca en silencio.
+REPORTE_MAX_FILAS = 40
+# Un valor más largo que esto es prosa —una nota, una procedencia— y va a un
+# párrafo de ancho completo, no a una tarjeta de cifra.
+REPORTE_LARGO_PROSA = 90
+# Caracteres que caben a lo ancho de la imagen del reporte con su tipografía
+# (1.180 px de figura, cuerpo 10). Se reparte entre las columnas según lo que
+# ocupa cada una. Solo afecta a la IMAGEN: en pantalla el texto se ajusta solo
+# y no se recorta nada.
+REPORTE_ANCHO_CARS = 205
+
+
+def _es_escalar(v) -> bool:
+    return v is None or isinstance(v, (str, int, float, bool))
+
+
+def _fmt_valor(v) -> str:
+    if v is None: return "—"
+    if isinstance(v, bool): return "sí" if v else "no"
+    if isinstance(v, float):
+        if not np.isfinite(v): return str(v)
+        return f"{v:,.4g}".replace(",", "·").replace(".", ",").replace("·", ".")
+    if isinstance(v, int): return f"{v:,}".replace(",", ".")
+    return str(v)
+
+
+def _reporte_secciones(datos, titulo_base: str = "", _nivel: int = 0) -> List[Dict]:
+    """
+    Parte el dict de un reporte en secciones DIBUJABLES.
+
+    Es la ÚNICA fuente de estructura: la misma lista alimenta la vista en
+    pantalla y la imagen que se descarga, así que las dos no pueden discrepar.
+
+      · escalares          -> una sección de pares campo/valor
+      · lista de dicts     -> una tabla, con sus columnas
+      · lista de escalares -> una fila campo/valor, unidos por coma
+      · dict anidado       -> se recurre, con su nombre como prefijo
+    """
+    if not isinstance(datos, dict):
+        return [{"titulo": titulo_base.strip(" ·") or "Resultado", "tipo": "kv",
+                 "filas": [("valor", _fmt_valor(datos))]}]
+    kv: List[Tuple[str, str]] = []
+    secciones: List[Dict] = []
+    for k, v in datos.items():
+        etiqueta = str(k).replace("_", " ")
+        if _es_escalar(v):
+            kv.append((etiqueta, _fmt_valor(v)))
+        elif isinstance(v, list):
+            if not v:
+                kv.append((etiqueta, "— (vacío)"))
+            elif all(isinstance(x, dict) for x in v):
+                cols: List[str] = []
+                for x in v[:REPORTE_MAX_FILAS]:
+                    for c in x:
+                        if c not in cols: cols.append(c)
+                secciones.append({
+                    "titulo": f"{titulo_base}{etiqueta}", "tipo": "tabla",
+                    "columnas": [str(c).replace("_", " ") for c in cols],
+                    "filas": [[_fmt_valor(x.get(c)) for c in cols]
+                              for x in v[:REPORTE_MAX_FILAS]],
+                    "n_total": len(v)})
+            else:
+                corte = v[:12]
+                kv.append((etiqueta, ", ".join(_fmt_valor(x) for x in corte)
+                           + (f" … (+{len(v)-12})" if len(v) > 12 else "")))
+        elif isinstance(v, dict) and _nivel < 2 and v:
+            secciones.extend(
+                _reporte_secciones(v, f"{titulo_base}{etiqueta} · ", _nivel + 1))
+        else:
+            kv.append((etiqueta, _fmt_valor(v)))
+    if kv:
+        secciones.insert(0, {"titulo": titulo_base.strip(" ·") or "Resumen",
+                             "tipo": "kv", "filas": kv})
+    return secciones
+
+
 def _render_reporte(rid: str):
-    """El contenido de un reporte, en JSON legible con su título."""
+    """
+    El reporte DIBUJADO: tarjetas para las cifras, tablas para los registros,
+    párrafos para las notas.
+
+    Antes era `json.dumps()` dentro de un `html.Pre` — el reporte se veía como
+    código fuente, que es exactamente lo que no sirve para leer un resultado ni
+    para pegar en la memoria.
+    """
     rep = generar_reporte(rid)
     if rep["status"] != "ok":
         return html.Div(f"⚠ {rep.get('motivo')}",
                         style={"fontSize": "11px", "color": "#F39C12"})
+    bloques = []
+    for sec in _reporte_secciones(rep["datos"]):
+        if sec["titulo"] not in ("Resumen", rep["titulo"]):
+            bloques.append(html.Div(sec["titulo"], style={
+                "fontSize": "11px", "fontWeight": "bold", "color": "#5DCAA5",
+                "margin": "12px 0 5px", "borderBottom": "1px solid #2a2a2a",
+                "paddingBottom": "3px"}))
+        if sec["tipo"] == "kv":
+            cifras = [(a, b) for a, b in sec["filas"] if len(b) <= REPORTE_LARGO_PROSA]
+            prosa = [(a, b) for a, b in sec["filas"] if len(b) > REPORTE_LARGO_PROSA]
+            if cifras:
+                bloques.append(dbc.Row([
+                    dbc.Col(html.Div([
+                        html.Small(a, style={"color": "#888", "fontSize": "9px",
+                                             "display": "block"}),
+                        html.Div(b, style={"fontSize": "14px", "fontWeight": "bold",
+                                           "color": "#eee"}),
+                    ], style={"padding": "6px 10px", "border": "1px solid #333",
+                              "borderRadius": "3px", "height": "100%"}),
+                        width="auto") for a, b in cifras
+                ], className="g-2"))
+            for a, b in prosa:
+                bloques.append(html.Div([
+                    html.Small(a, style={"color": "#888", "fontSize": "9px",
+                                         "display": "block"}),
+                    html.Small(b, style={"fontSize": "10px", "color": "#bbb",
+                                         "lineHeight": "1.5"}),
+                ], style={"marginTop": "7px"}))
+        else:
+            cabecera = html.Thead(html.Tr([
+                html.Th(c, style={"fontSize": "9px", "color": "#888",
+                                  "whiteSpace": "nowrap"}) for c in sec["columnas"]]))
+            cuerpo = html.Tbody([
+                html.Tr([html.Td(celda, style={"fontSize": "10px"})
+                         for celda in fila]) for fila in sec["filas"]])
+            bloques.append(html.Div(
+                dbc.Table([cabecera, cuerpo], bordered=False, hover=True,
+                          size="sm", striped=True, style={"marginBottom": "2px"}),
+                style={"overflowX": "auto"}))
+            if sec.get("n_total", 0) > len(sec["filas"]):
+                bloques.append(html.Small(
+                    f"Mostrando {len(sec['filas'])} de {sec['n_total']} filas — "
+                    "la tabla completa va en el CSV, no en el resumen.",
+                    style={"fontSize": "9px", "color": "#F39C12"}))
     return html.Div([
-        html.Div(rep["titulo"], style={"fontSize": "12px", "fontWeight": "bold",
-                                       "color": "#3B8BD4", "marginBottom": "6px"}),
-        html.Pre(json.dumps(rep["datos"], indent=2, ensure_ascii=False,
-                            default=str)[:24000],
-                 style={"fontSize": "10px", "maxHeight": "52vh",
-                        "overflowY": "auto", "background": "#111",
-                        "padding": "10px", "border": "1px solid #333"}),
+        html.Div(rep["titulo"], style={"fontSize": "13px", "fontWeight": "bold",
+                                       "color": "#3B8BD4", "marginBottom": "2px"}),
+        html.Small(di_config_summary(), style={
+            "fontSize": "9px", "color": "#666", "fontFamily": "monospace",
+            "display": "block", "marginBottom": "8px"}),
+        html.Div(bloques, style={"maxHeight": "52vh", "overflowY": "auto",
+                                 "paddingRight": "6px"}),
     ])
+
+
+def reporte_figura(rid: str):
+    """
+    El reporte como UNA figura: una tabla de Plotly por sección, apiladas.
+
+    Se arma desde `_reporte_secciones()`, la misma partición que dibuja la
+    pantalla, para que la imagen descargada y lo que se vio sean lo mismo.
+    """
+    rep = generar_reporte(rid)
+    if rep["status"] != "ok":
+        raise ValueError(rep.get("motivo") or "El reporte no se pudo generar.")
+    secciones = _reporte_secciones(rep["datos"])
+    if not secciones:
+        raise ValueError("El reporte no devolvió nada que dibujar.")
+    # Cada sección pesa según sus filas, para que una tabla larga no quede
+    # aplastada contra una de dos líneas.
+    alturas = [max(2, len(s["filas"]) + 1) for s in secciones]
+    fig = make_subplots(
+        rows=len(secciones), cols=1,
+        specs=[[{"type": "table"}] for _ in secciones],
+        row_heights=[a / sum(alturas) for a in alturas],
+        subplot_titles=[s["titulo"] for s in secciones],
+        vertical_spacing=min(0.06, 0.9 / max(len(secciones), 1)))
+    for i, sec in enumerate(secciones, start=1):
+        if sec["tipo"] == "kv":
+            cabecera = ["Campo", "Valor"]
+            columnas = [[f[0] for f in sec["filas"]], [f[1] for f in sec["filas"]]]
+            anchos = [1, 2]
+        else:
+            cabecera = sec["columnas"]
+            columnas = [[fila[j] for fila in sec["filas"]]
+                        for j in range(len(cabecera))]
+            anchos = [1] * len(cabecera)
+        # go.Table RECORTA el texto que no cabe, sin avisar: una procedencia
+        # larga se perdía a media palabra y desde la imagen no había forma de
+        # saber que faltaba algo. Se corta explícitamente, con puntos
+        # suspensivos, para que el recorte se VEA.
+        #
+        # El presupuesto de caracteres se reparte según el ancho REAL de cada
+        # columna —no un tope plano— para no cortar a 28 caracteres una
+        # columna que ocupa media página. REPORTE_ANCHO_CARS es cuánto texto
+        # entra a lo ancho de la figura con esta tipografía.
+        total_ancho = sum(anchos)
+        columnas = [
+            [c if len(c) <= tope else c[:tope - 1] + "…" for c in col]
+            for col, tope in zip(
+                columnas,
+                (max(16, int(REPORTE_ANCHO_CARS * a / total_ancho)) for a in anchos))]
+        fig.add_trace(go.Table(
+            columnwidth=anchos,
+            header=dict(values=[f"<b>{c}</b>" for c in cabecera],
+                        fill_color="#22303C", font=dict(color="#DDE4EA", size=11),
+                        align="left", height=26),
+            cells=dict(values=columnas, fill_color="#FBFCFD",
+                       font=dict(color="#1B2A33", size=10), align="left",
+                       height=21)), row=i, col=1)
+    for anot in fig.layout.annotations:
+        anot.update(font=dict(size=12, color="#1F5C8B"), x=0, xanchor="left")
+    fig.update_layout(
+        title=dict(text=f"<b>{rep['titulo']}</b><br>"
+                        f"<span style='font-size:10px;color:#667'>"
+                        f"{di_config_summary()}</span>",
+                   x=0.5, xanchor="center", font=dict(size=16, color="#12303F")),
+        paper_bgcolor="white", margin=dict(l=26, r=26, t=86, b=26),
+        height=max(360, 150 + 26 * sum(alturas)), width=1180)
+    return fig
+
+
+def reporte_imagen(rid: str) -> Tuple[bytes, str]:
+    """
+    El reporte como imagen, para descargar. Devuelve (bytes, extensión).
+
+    PNG, y la elección se MIDIÓ sobre el reporte de perfil, no se supuso:
+
+        png  scale=1  138.778 B      png  scale=2  365.198 B
+        jpeg scale=1  127.286 B      jpeg scale=2  344.041 B
+
+    El JPEG es un 9% más liviano, no menos —una tabla no tiene gradientes que
+    JPEG aproveche—, y ese 9% se paga emborronando los dígitos, que es lo
+    único que el reporte contiene. Por 12 kB no vale la pena. `scale=1` sí es
+    una diferencia real: a este tamaño de letra el texto ya sale nítido, y
+    scale=2 pesaba 2,6 veces más sin verse mejor.
+    """
+    fig = reporte_figura(rid)
+    return fig.to_image(format="png", scale=1), "png"
 
 
 def _tronadura_cifras_body():
@@ -12949,9 +13200,21 @@ def on_descargar_reporte(n, rid):
     rep = generar_reporte(rid)
     if rep["status"] != "ok":
         return no_update, f"⚠ {rep.get('motivo')}", True
-    texto = json.dumps(rep["datos"], indent=2, ensure_ascii=False, default=str)
-    return (dict(content=texto, filename=f"reporte_{rid}.json"),
-            f"✔ Reporte «{rep['titulo']}» descargado.", True)
+    # IMAGEN, no JSON: lo que se pidió es algo que se pueda mirar y pegar en
+    # la memoria. El JSON queda como respaldo cuando la imagen no se puede
+    # producir —kaleido necesita un navegador instalado— para no dejar al
+    # usuario sin nada; el toast dice cuál de los dos salió y por qué.
+    try:
+        datos, ext = reporte_imagen(rid)
+        return (dcc.send_bytes(datos, f"reporte_{rid}.{ext}"),
+                f"✔ «{rep['titulo']}» descargado como {ext.upper()} "
+                f"({len(datos)/1e6:.2f} MB).", True)
+    except Exception as e:
+        texto = json.dumps(rep["datos"], indent=2, ensure_ascii=False, default=str)
+        return (dict(content=texto, filename=f"reporte_{rid}.json"),
+                f"⚠ No se pudo generar la imagen ({type(e).__name__}); se "
+                f"descargó el JSON. Para PNG hace falta kaleido con un "
+                f"navegador: pip install kaleido && plotly_get_chrome.", True)
 
 
 @app.callback(Output("perfil-badge", "children"), Input("refresh", "data"))
@@ -14336,6 +14599,9 @@ def do_di(n, window, thresh, w_pp, w_pd, w_pf, w_pr, w_pa, ref):
                                             "pr": wpr, "pa": wpa})
     except (ValueError, TypeError) as e:
         return no_update, f"🚫 {e}", True
+    # Lo pendiente ya se aplicó: a partir de acá las casillas describen la
+    # variante que corre de verdad, no una propuesta sin confirmar.
+    _di_panel_pendiente.clear()
     compute_di()
     wz_state['step3']['di_computed'] = True
     all_pts = list(all_points())
@@ -14362,6 +14628,7 @@ def do_di_reset(n, ref):
     cambia la configuración; no recalcula el DI hasta que se pulse Calcular."""
     if not n: return (no_update,)*9
     activar_di(DI_VARIANTE_CONVENCION)
+    _di_panel_pendiente.clear()   # restaurar descarta la propuesta pendiente
     w = di_config["weights"]
     return (ref+1, di_config["window"], di_threshold, w["pp"], w["pd"], w["pf"], w["pr"],
            w.get("pa", 0.0),
@@ -14454,6 +14721,16 @@ def do_calibrar_di(n, params, muestras, semilla, ref):
     campos = (rep["window"], rep["umbral"],
              pesos.get("pp", 0.0), pesos.get("pd", 0.0), pesos.get("pf", 0.0),
              pesos.get("pr", 0.0), pesos.get("pa", 0.0))
+    # Se anotan como PENDIENTES antes de devolverlos: este mismo callback sube
+    # `refresh`, que vuelve a dibujar el Paso 3 y recrea las casillas. Sin
+    # esta anotación se redibujaban con los pesos de la variante activa —que
+    # calibrar no cambia a propósito— y borraban el resultado en el acto.
+    _di_panel_pendiente.clear()
+    _di_panel_pendiente.update({
+        "window": rep["window"], "threshold": rep["umbral"],
+        "pp": pesos.get("pp", 0.0), "pd": pesos.get("pd", 0.0),
+        "pf": pesos.get("pf", 0.0), "pr": pesos.get("pr", 0.0),
+        "pa": pesos.get("pa", 0.0)})
     return (salida, refresco) + campos
 
 @app.callback(
@@ -15309,13 +15586,11 @@ def _di_sensitivity_card():
 # alcanza: en IREDES «FP» es Feed Pressure —la de AVANCE, que acá es `pa`— y la
 # de barrido es «FLP» → `pf`. El panel del DI rotulaba `pf` como "FP", que es
 # la sigla de la otra.
-CAL_ETIQUETAS = {
-    "pp": "Percusión (PP)",
-    "pd": "Dámper (DP)",
-    "pr": "Rotación (RP)",
-    "pf": "Barrido (FLP)",
-    "pa": "Avance (FP/AP)",
-}
+# El nombre completo se arma desde CAL_SIGLAS: la sigla se escribe UNA vez.
+CAL_ETIQUETAS = {k: f"{nombre} ({CAL_SIGLAS[k]})" for k, nombre in (
+    ("pp", "Percusión"), ("pd", "Dámper"), ("pf", "Barrido"),
+    ("pr", "Rotación"), ("pa", "Avance"),
+)}
 
 
 def _di_calibracion_card():
@@ -15458,10 +15733,10 @@ def _step3():
                           # (P1-T1.6) Sin min/max en el componente: un valor
                           # fuera de rango llegaría como None y se perdería en
                           # silencio. La validación vive en do_di.
-                          dbc.Input(id="di-window", type="number", value=di_config["window"],
+                          dbc.Input(id="di-window", type="number", value=_di_panel_valor("window"),
                                      step=1, size="sm", style={"fontSize":"11px"})], width=3),
                 dbc.Col([html.Small("Umbral", style={"color":"#aaa","display":"block"}),
-                          dbc.Input(id="di-thresh", type="number", value=di_threshold,
+                          dbc.Input(id="di-thresh", type="number", value=_di_panel_valor("threshold"),
                                      step=0.1, size="sm", style={"fontSize":"11px"})], width=3),
                 dbc.Col(dbc.Button("🌀 Calcular DI", id="btn-di", color="info", size="sm",
                                     className="mt-3"), width=3),
@@ -15474,20 +15749,20 @@ def _step3():
                        style={"color":"#aaa","display":"block","marginBottom":"4px"}),
             dbc.Row([
                 dbc.Col([html.Small("Percusión (PP)", style={"color":"#666","display":"block"}),
-                          dbc.Input(id="di-w-pp", type="number", value=di_config["weights"]["pp"],
+                          dbc.Input(id="di-w-pp", type="number", value=_di_panel_valor("pp", 0.0),
                                      step=0.01, size="sm", style={"fontSize":"11px"})], width=2),
                 dbc.Col([html.Small("Dámper (DP)", style={"color":"#666","display":"block"}),
-                          dbc.Input(id="di-w-pd", type="number", value=di_config["weights"]["pd"],
+                          dbc.Input(id="di-w-pd", type="number", value=_di_panel_valor("pd", 0.0),
                                      step=0.01, size="sm", style={"fontSize":"11px"})], width=2),
                 # Rotulado "FP" hasta ahora, que en IREDES es la sigla de la
                 # presión de AVANCE. Esta entrada escribe `pf`, que es FLP, la
                 # de barrido. La sigla estaba puesta sobre la variable de al
                 # lado; el número nunca cambió.
                 dbc.Col([html.Small("Barrido (FLP)", style={"color":"#666","display":"block"}),
-                          dbc.Input(id="di-w-pf", type="number", value=di_config["weights"]["pf"],
+                          dbc.Input(id="di-w-pf", type="number", value=_di_panel_valor("pf", 0.0),
                                      step=0.01, size="sm", style={"fontSize":"11px"})], width=2),
                 dbc.Col([html.Small("Rotación (RP)", style={"color":"#666","display":"block"}),
-                          dbc.Input(id="di-w-pr", type="number", value=di_config["weights"]["pr"],
+                          dbc.Input(id="di-w-pr", type="number", value=_di_panel_valor("pr", 0.0),
                                      step=0.01, size="sm", style={"fontSize":"11px"})], width=2),
                 # QUINTA casilla: antes el avance no tenía dónde escribirse
                 # acá, así que una variante calibrada que le diera peso lo
@@ -15495,7 +15770,7 @@ def _step3():
                 # «Calcular DI». Ahora participa como las otras cuatro.
                 dbc.Col([html.Small("Avance (FP/AP)", style={"color":"#666","display":"block"}),
                           dbc.Input(id="di-w-pa", type="number",
-                                     value=di_config["weights"].get("pa", 0.0),
+                                     value=_di_panel_valor("pa", 0.0),
                                      step=0.01, size="sm", style={"fontSize":"11px"})], width=2),
             ], className="g-2"),
             html.Small(

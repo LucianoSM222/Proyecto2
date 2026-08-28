@@ -153,6 +153,9 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | D4 | Tronadura por UCS de matriz: deja de mezclarse con la UCS cruda | — | ✅ |
 | D5 | Visor: ocultar en el árbol aliviana la traza, no solo la esconde | — | ✅ |
 | D6 | Persistencia: caserón y error de asignación viajan en el .gwz | — | ✅ |
+| D7 | Calibración del DI: la propuesta ya no se borra sola al redibujar | — | ✅ |
+| D8 | Siglas cruzadas otra vez: `di_config_summary` decía FP por FLP y omitía el avance | — | ✅ |
+| D9 | Reportes dibujados (no JSON crudo) y descarga en PNG | — | ✅ |
 
 Hallazgos que condicionan la interpretación, no defectos pendientes:
 
@@ -278,6 +281,24 @@ Dos botones en la barra, y ninguno calcula nada hasta que se lo pide:
   puntos en cada refresco es exactamente la lentitud que este panel viene a
   sacar (el badge de vocabulario costaba 561 ms por refresco antes de cachearlo).
 
+  El reporte se DIBUJA: tarjetas para las cifras, tablas para los registros,
+  párrafos para las notas. Antes era `json.dumps()` dentro de un `html.Pre` —se
+  veía como código fuente, que no sirve ni para leer un resultado ni para pegar
+  en la memoria—. `_reporte_secciones()` parte el reporte en secciones
+  dibujables y alimenta LAS DOS salidas, la pantalla y la imagen, para que no
+  puedan discrepar. Un recorte de filas (`REPORTE_MAX_FILAS`) se declara con su
+  total real, y en la imagen un valor que no cabe se corta con «…» visible:
+  `go.Table` recorta en silencio y desde el PNG no habría forma de saberlo.
+
+  `reporte_imagen()` baja el reporte como **PNG**, y la elección se midió sobre
+  el reporte de perfil en vez de suponerse: png 138.778 B contra jpeg 127.286 B
+  a la misma escala. El JPEG es un 9% más liviano —una tabla no tiene gradientes
+  que aproveche— y ese 9% se paga emborronando los dígitos, que es lo único que
+  el reporte contiene. `scale=1` sí importa: a este cuerpo de letra el texto ya
+  sale nítido y `scale=2` pesaba 2,6 veces más sin verse mejor. Si no hay con
+  qué producir la imagen (kaleido necesita un navegador) se baja el JSON y el
+  aviso dice por qué, en vez de dejar al usuario sin nada.
+
 `ml_seed_sensitivity()` corre la misma vara con varias semillas y compara la
 dispersión contra la distancia entre competidores: si la semilla mueve el MAE
 más que lo que separa al primero del segundo, el orden lo decidió qué filas
@@ -367,6 +388,23 @@ Feed Pressure —el AVANCE, que el código guarda en `pa`— y `FLP` es el BARRI
 que guarda en `pf`. El panel del DI rotulaba la entrada de `pf` como "FP". El
 número nunca cambió; el rótulo sí. `CAL_ETIQUETAS` es el nombre completo de
 cada una y se usa en todas las pantallas.
+
+Y VOLVIERON A CRUZARSE, porque la sigla se escribía en dos lugares:
+`di_config_summary()` rotulaba `pf` como "FP" y **omitía `pa` por completo**,
+así que de las cinco presiones declaraba cuatro, una con la sigla de otra. Esa
+línea encabeza el panel del Paso 3 Y se antepone a cada CSV exportado como
+procedencia, de modo que el error viajaba en los datos, no solo en la pantalla.
+La sigla ahora se escribe UNA vez, en `CAL_SIGLAS`, y `CAL_ETIQUETAS` se arma
+desde ella. El cálculo nunca estuvo mal: `di_profile` siempre integró `pf` con
+su peso 0,20 — lo que faltaba era decirlo bien.
+
+La calibración tampoco "guardaba" sus pesos, y la causa era de Dash: escribía
+los pesos en las casillas Y subía `refresh` en el mismo retorno; `render_wizard`
+escucha `refresh`, así que `_step3()` se redibujaba y recreaba los `dbc.Input`
+con `value=di_config[...]` —los de la variante ACTIVA, que calibrar no toca a
+propósito—, borrando el resultado en el mismo ciclo en que aparecía. La
+propuesta vive ahora en `_di_panel_pendiente` y el panel la lee con
+`_di_panel_valor()`; sigue sin activar nada, y aplicar o restaurar la descartan.
 
 ## Suite de tests
 
