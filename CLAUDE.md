@@ -134,6 +134,7 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | B3 | Centro de reportes · se abre el que se pida | — | ✅ |
 | B4 | Pantalla de calibración · siglas cruzadas · un solo lugar | — | ✅ |
 | B5 | Velocidad de la interfaz · medida, no estimada | — | ✅ |
+| B6 | SE sin estratificar · reporte de semillas | — | ✅ |
 
 Hallazgos que condicionan la interpretación, no defectos pendientes:
 
@@ -191,6 +192,26 @@ etiqueta POR PUNTO, atacando el problema de fondo —tres etiquetas para 400.000
 registros—. Induce circularidad con SE: ese modo lo declara y excluye SE de las
 predictoras.
 
+## Cómo se resume la SE de una litología
+
+`se.control_pp` = `directo` (defecto) o `por_estrato`. Decisión del autor, con
+su razón: SE_reacción = (PP + RP + AP) / ROP **ya lleva ROP en el
+denominador**, así que la percusión entra CONTRASTADA contra la velocidad. Si
+subir PP consigue subir ROP, la SE se normaliza y sigue hablando de la roca; si
+la SE no se mueve pese a más PP, es porque la roca resiste esa percusión, que
+también es hablar de la roca. En los dos casos el número describe el macizo y
+no la decisión del operador, así que estratificar sobra.
+
+`_se_representativa()` y `_se_escala_lito()` obedecen ese modo, y
+`_nota_control_pp()` viaja pegado a la procedencia de todo modelo que dependa
+de ello: el número cambia según el modo y leerlo sin saber cuál corrió sería
+leer un dato sin procedencia.
+
+LO QUE NO CAMBIA: `se_ucs_coherence_report()` sigue reportando `estratos_pp`
+pase lo que pase. Ahí estratificar es la PRUEBA de que la relación no es
+artefacto del operador, no el método de estimación. Sacar la evidencia junto
+con el procedimiento habría sido perder el argumento que sostiene la decisión.
+
 `explorar_repositorio(ruta)` recorre una carpeta y clasifica DXF, DQ, MW y CSV
 de sondaje por caserón, con `repo.patron_caseron`. `guardar_proyecto_en(ruta)`
 escribe el .gwz a disco: el guardado siempre funcionó, lo que falla es la
@@ -206,12 +227,18 @@ Dos botones en la barra, y ninguno calcula nada hasta que se lo pide:
   color intermedio: queda fuera del sólido. Lleva su advertencia de qué NO es:
   aproximación de apoyo, no modelo geológico validado.
 - 📄 **reportes** (`REPORTES`, `reportes_disponibles`, `generar_reporte`): los
-  nueve reportes en un listado. Armar la lista NO corre ninguno —solo mira si
+  diez reportes en un listado. Armar la lista NO corre ninguno —solo mira si
   hay con qué— y el que hoy no puede correr dice qué falta. `reportes_nuevos()`
   avisa cuáles se habilitaron desde la última vez que se abrió el panel; se
   calcula al abrirlo, nunca en un badge de la barra: un recorrido de todos los
   puntos en cada refresco es exactamente la lentitud que este panel viene a
   sacar (el badge de vocabulario costaba 561 ms por refresco antes de cachearlo).
+
+`ml_seed_sensitivity()` corre la misma vara con varias semillas y compara la
+dispersión contra la distancia entre competidores: si la semilla mueve el MAE
+más que lo que separa al primero del segundo, el orden lo decidió qué filas
+tocaron y no el método. Los deterministas —línea base, relación, banda— se
+corren UNA vez y declaran que su cero es por construcción, no por estables.
 
 ## Velocidad
 
@@ -237,7 +264,7 @@ N del modelo, y eso es peor que esperar un segundo.
 
 ## Perfil de faena
 
-Los parámetros de operación viven en `param_registry` (61 en diecinueve
+Los parámetros de operación viven en `param_registry` (62 en diecinueve
 secciones), no en el código: `get_param` / `set_param` / `reset_param`, con
 validación y procedencia declarada. Se editan desde la PANTALLA del perfil
 (botón ⚙ de la barra, `_perfil_panel_body`), no solo desde código;

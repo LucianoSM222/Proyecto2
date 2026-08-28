@@ -4191,6 +4191,21 @@ def seed_param_registry(force: bool = False):
                "Tramos de PP dentro de los que se compara SE contra UCS: sin "
                "estratificar, la variable que el operador manipula se confunde "
                "con la roca. Formato «a-b,c-d», en bar.", global_name="_PP_ESTRATOS_TXT"),
+        _param("se.control_pp", "Percusión (PP)",
+               "Cómo se resume la SE de una litología", "directo", "opcion", "—",
+               "Decisión del autor, y su razón: SE = (PP + RP + AP) / ROP ya "
+               "lleva ROP en el denominador, así que la percusión entra "
+               "CONTRASTADA contra la velocidad. Si subir PP consigue subir "
+               "ROP, la SE se normaliza y sigue hablando de la roca; si la SE "
+               "no se mueve pese a más PP, es porque la roca resiste esa "
+               "percusión, que también es hablar de la roca. En los dos casos "
+               "el número describe el macizo, no la decisión del operador, y "
+               "estratificar sobra. «por_estrato» conserva el camino anterior "
+               "—mediana dentro de cada tramo de PP y después mediana de las "
+               "medianas— para poder contrastar los dos en la memoria. El "
+               "diagnóstico de coherencia SE↔UCS sigue reportando por estrato "
+               "pase lo que pase: ahí estratificar es la prueba, no el método.",
+               opciones=["directo", "por_estrato"]),
         # ── Litología ────────────────────────────────────────────────────────
         _param("lito.cota_lavas_inferiores", "Litología",
                "Techo de las Lavas Inferiores", 320.0, "float", "m.s.n.m.",
@@ -8551,17 +8566,45 @@ def _puntos_de_litologia(lito: str) -> List:
             and (p.di is None or p.di <= di_threshold)]
 
 
-def _se_mediana_por_estrato(lito: str) -> Optional[float]:
+def _nota_control_pp() -> str:
     """
-    SE representativa de una litología, controlando por PP.
+    Cómo se resumió la SE, pegado a todo resultado que dependa de ello. El
+    número cambia según el modo, así que leerlo sin saber cuál corrió sería
+    leer un dato sin su procedencia.
+    """
+    if get_param("se.control_pp") == "por_estrato":
+        return ("SE resumida POR ESTRATO DE PP (mediana dentro de cada tramo, "
+                "después mediana de las medianas).")
+    return ("SE resumida DIRECTO, sin estratificar por PP: la SE ya lleva ROP "
+            "en el denominador, así que la percusión entra contrastada contra "
+            "la velocidad y el número sigue hablando de la roca.")
 
-    La mediana se toma DENTRO de cada estrato de percusión y después se
-    promedian los estratos: PP es la única variable que manipula el operador,
-    y una mediana global mezclaría la decisión del operador con la roca.
+
+def _se_representativa(lito: str) -> Optional[float]:
+    """
+    SE representativa de una litología.
+
+    POR QUÉ YA NO SE ESTRATIFICA POR PP (decisión del autor, con su razón):
+    SE_reacción = (PP + RP + AP) / ROP lleva ROP en el denominador, así que la
+    percusión entra CONTRASTADA contra la velocidad. Si subir PP consigue
+    subir ROP, la SE se normaliza y sigue hablando de la roca; si la SE no se
+    mueve pese a más PP, es porque la roca resiste esa percusión, que también
+    es hablar de la roca. En los dos casos el número describe el macizo y no
+    la decisión del operador.
+
+    El camino anterior —mediana dentro de cada tramo de PP y después mediana
+    de las medianas— sigue disponible en «se.control_pp», para poder
+    contrastar los dos en la memoria. Lo que NO cambia es el diagnóstico de
+    coherencia SE↔UCS: ese sigue reportando por estrato pase lo que pase,
+    porque ahí estratificar es la prueba de que la relación no es artefacto
+    del operador, no el método de estimación.
     """
     pts = _puntos_de_litologia(lito)
     if not pts:
         return None
+    if get_param("se.control_pp") != "por_estrato":
+        v = [p.se for p in pts]
+        return float(np.median(v)) if len(v) >= 30 else None
     medianas = []
     for lo, hi in PP_ESTRATOS:
         v = [p.se for p in pts if p.pp is not None and lo <= p.pp < hi]
@@ -8606,7 +8649,8 @@ def _aplicar_curva(curva: Dict, se: float) -> float:
     return k * (max(se, 1e-9) ** n)
 
 
-def leave_one_lithology_out(metodo: str = "relacion") -> Dict:
+def leave_one_lithology_out(metodo: str = "relacion",
+                            seed: Optional[int] = None) -> Dict:
     """
     La vara común: se deja UNA litología fuera, se ajusta con las demás y se
     predice su ancla. El error va EN MPa, que es comparable entre métodos y
@@ -8615,7 +8659,7 @@ def leave_one_lithology_out(metodo: str = "relacion") -> Dict:
     `metodo`: "linea_base" | "relacion" | "ml".
     """
     anclas = _anclas_por_litologia()
-    usables = {k: v for k, v in anclas.items() if _se_mediana_por_estrato(k) is not None}
+    usables = {k: v for k, v in anclas.items() if _se_representativa(k) is not None}
     if len(usables) < UCS_MIN_LITOLOGIAS_VARA:
         return {"status": "sin_vara",
                 "motivo": (f"Dejar una litología fuera necesita al menos "
@@ -8626,13 +8670,13 @@ def leave_one_lithology_out(metodo: str = "relacion") -> Dict:
     pliegues = []
     for fuera in sorted(usables):
         entrena = {k: v for k, v in usables.items() if k != fuera}
-        se_fuera = _se_mediana_por_estrato(fuera)
+        se_fuera = _se_representativa(fuera)
         real = usables[fuera]
         pred, motivo = None, None
         if metodo == "linea_base":
             pred = float(np.mean(list(entrena.values())))
         elif metodo == "relacion":
-            cal = [(_se_mediana_por_estrato(k), v) for k, v in entrena.items()]
+            cal = [(_se_representativa(k), v) for k, v in entrena.items()]
             curva = _ajustar_curva_se_ucs(cal)
             pred = _aplicar_curva(curva, se_fuera) if curva else None
             motivo = None if curva else "no se pudo ajustar la curva"
@@ -8654,7 +8698,7 @@ def leave_one_lithology_out(metodo: str = "relacion") -> Dict:
             # con su propia banda acertaría por construcción y la vara no
             # valdría nada. Se ajusta la curva con las demás y se predice el
             # centro; la dispersión describe la roca, no ubica su centro.
-            cal = [(_se_mediana_por_estrato(k), v) for k, v in entrena.items()]
+            cal = [(_se_representativa(k), v) for k, v in entrena.items()]
             curva = _ajustar_curva_se_ucs(cal)
             se_lito = _se_escala_lito(fuera)
             if curva is None or se_lito is None:
@@ -8666,7 +8710,7 @@ def leave_one_lithology_out(metodo: str = "relacion") -> Dict:
                     motivo = (f"EXTRAPOLACIÓN: SE={se_lito[0]:.0f} fuera del rango "
                               f"de calibración [{min(ses):.0f}, {max(ses):.0f}].")
         elif metodo == "ml":
-            pred, motivo = _ml_predice_litologia_fuera(fuera, entrena)
+            pred, motivo = _ml_predice_litologia_fuera(fuera, entrena, seed)
         else:
             return {"status": "error", "motivo": f'Método desconocido: "{metodo}".'}
         if pred is not None:
@@ -8695,8 +8739,17 @@ def leave_one_lithology_out(metodo: str = "relacion") -> Dict:
             "anclas": {k: round(v, 1) for k, v in sorted(usables.items())}}
 
 
-def _ml_predice_litologia_fuera(fuera: str, entrena: Dict[str, float]):
-    """Entrena con las demás litologías y predice la mediana de la excluida."""
+def _ml_predice_litologia_fuera(fuera: str, entrena: Dict[str, float],
+                                seed: Optional[int] = None):
+    """
+    Entrena con las demás litologías y predice la mediana de la excluida.
+
+    `seed` gobierna las DOS fuentes de azar del competidor: qué filas entran
+    en el submuestreo y cómo se arma el bosque. Se deja entrar por argumento
+    para poder repetir el pliegue con varias semillas y medir cuánto del
+    resultado es la muestra — que es lo que hace ml_seed_sensitivity().
+    """
+    seed = COMPARISON_SEED if seed is None else int(seed)
     X, y = [], []
     for lito in entrena:
         for p in _puntos_de_litologia(lito):
@@ -8717,7 +8770,7 @@ def _ml_predice_litologia_fuera(fuera: str, entrena: Dict[str, float]):
     # minutos y el resultado no mejora. Se sortea con semilla fija para que dos
     # corridas den lo mismo, y el tope es el parámetro del perfil.
     nota = None
-    rng = np.random.default_rng(COMPARISON_SEED)
+    rng = np.random.default_rng(seed)
     if len(X) > COMPARISON_MAX_N:
         idx = rng.choice(len(X), COMPARISON_MAX_N, replace=False)
         nota = f"entrenado sobre {COMPARISON_MAX_N:,} de {len(X):,} filas".replace(",", ".")
@@ -8725,7 +8778,7 @@ def _ml_predice_litologia_fuera(fuera: str, entrena: Dict[str, float]):
     if len(Xf) > COMPARISON_MAX_N:
         Xf = Xf[rng.choice(len(Xf), COMPARISON_MAX_N, replace=False)]
     m = RandomForestRegressor(n_estimators=120, max_depth=10, n_jobs=-1,
-                              random_state=COMPARISON_SEED)
+                              random_state=seed)
     m.fit(X, y)
     return float(np.median(m.predict(Xf))), nota
 
@@ -8740,7 +8793,7 @@ def _monotonia_se_ucs() -> Dict:
     """
     pares = []
     for lito, ucs in _anclas_por_litologia().items():
-        se = _se_mediana_por_estrato(lito)
+        se = _se_representativa(lito)
         if se is not None:
             pares.append((lito, se, ucs))
     if len(pares) < 3:
@@ -8836,6 +8889,123 @@ def compare_ucs_methods() -> Dict:
                      "predice el ancla de la excluida. Error en MPa.")}
 
 
+SEMILLAS_SENSIBILIDAD = (42, 7, 123, 2024, 31337)
+
+
+def ml_seed_sensitivity(semillas=None, metodos=("ml",)) -> Dict:
+    """
+    Cuánto del resultado es la ROCA y cuánto es la MUESTRA.
+
+    La comparación de métodos se decide con tan pocas anclas de litología que
+    un ganador por medio MPa no significa nada. Este reporte corre la misma
+    vara con varias semillas y mide la dispersión: si el MAE del bosque se
+    mueve más entre semillas que la distancia al competidor que le sigue, el
+    orden entre métodos no está decidido por el método sino por qué filas
+    tocaron. Es la advertencia que la memoria tiene que llevar al lado del
+    ganador.
+
+    Los métodos deterministas —línea base, relación, banda— no dependen de la
+    semilla: se corren UNA vez y se declara que su dispersión es cero por
+    construcción, no por haber salido estable.
+    """
+    semillas = list(SEMILLAS_SENSIBILIDAD if semillas is None else semillas)
+    if len(semillas) < 2:
+        return {"status": "sin_datos",
+                "motivo": "Hacen falta al menos dos semillas para medir dispersión."}
+    DETERMINISTAS = {"linea_base", "relacion", "banda"}
+    filas, motivos = [], []
+    for met in metodos:
+        if met in DETERMINISTAS:
+            r = leave_one_lithology_out(met)
+            if r["status"] != "ok":
+                motivos.append({"metodo": met, "motivo": r.get("motivo")})
+                continue
+            filas.append({
+                "metodo": met, "determinista": True, "n_semillas": 1,
+                "mae_mpa": [r["mae_mpa"]], "mae_medio": r["mae_mpa"],
+                "mae_min": r["mae_mpa"], "mae_max": r["mae_mpa"],
+                "rango_mpa": 0.0, "sd_mpa": 0.0,
+                "nota": ("No usa azar: su dispersión es cero POR CONSTRUCCIÓN, "
+                         "no por haber salido estable entre corridas."),
+            })
+            continue
+        maes, por_semilla = [], []
+        for s in semillas:
+            r = leave_one_lithology_out(met, seed=s)
+            if r["status"] != "ok":
+                motivos.append({"metodo": met, "semilla": s, "motivo": r.get("motivo")})
+                continue
+            maes.append(r["mae_mpa"])
+            por_semilla.append({
+                "semilla": s, "mae_mpa": r["mae_mpa"],
+                "por_litologia": {p["litologia"]: p["ucs_predicho"]
+                                  for p in r["pliegues"]},
+            })
+        if not maes:
+            continue
+        filas.append({
+            "metodo": met, "determinista": False, "n_semillas": len(maes),
+            "semillas": semillas, "mae_mpa": maes,
+            "mae_medio": round(float(np.mean(maes)), 1),
+            "mae_min": round(float(min(maes)), 1),
+            "mae_max": round(float(max(maes)), 1),
+            "rango_mpa": round(float(max(maes) - min(maes)), 1),
+            "sd_mpa": round(float(np.std(maes)), 1),
+            "por_semilla": por_semilla,
+        })
+    if not filas:
+        return {"status": "sin_datos",
+                "motivo": ("Ningún método pudo evaluarse con la vara de "
+                           "dejar-una-litología-fuera."),
+                "detalle": motivos}
+
+    # El veredicto: ¿la dispersión por semilla es chica frente a la distancia
+    # entre competidores? Si no lo es, el ranking no está decidido.
+    comp = compare_ucs_methods()
+    distancia = None
+    if comp.get("status") == "ok":
+        maes_met = sorted(m["mae_mpa"] for m in comp["metodos"]
+                          if m.get("mae_mpa") is not None)
+        if len(maes_met) >= 2:
+            distancia = round(float(maes_met[1] - maes_met[0]), 1)
+    peor_rango = max((f["rango_mpa"] for f in filas), default=0.0)
+    if distancia is None:
+        veredicto = (f"El MAE del competidor con azar se mueve {peor_rango:g} MPa "
+                     f"entre {len(semillas)} semillas. No hay con qué comparar "
+                     "esa dispersión contra la distancia entre métodos.")
+        decidido = None
+    elif peor_rango >= distancia:
+        decidido = False
+        veredicto = (
+            f"EL ORDEN NO ESTÁ DECIDIDO. Cambiar la semilla mueve el MAE "
+            f"{peor_rango:g} MPa, y entre el primer y el segundo método hay "
+            f"{distancia:g} MPa. La diferencia que separa a los competidores es "
+            "menor que el ruido de qué filas tocaron: con este número de anclas "
+            "el ganador es azar, y la memoria tiene que decirlo así en vez de "
+            "coronar a uno.")
+    else:
+        decidido = True
+        veredicto = (
+            f"El orden se sostiene: la semilla mueve el MAE {peor_rango:g} MPa y "
+            f"la distancia al siguiente método es {distancia:g} MPa. La ventaja "
+            "es mayor que el ruido de muestreo — lo que NO la vuelve grande: "
+            f"sigue decidiéndose con {comp.get('n_anclas')} ancla(s).")
+    return {"status": "ok", "semillas": semillas, "metodos": filas,
+            "distancia_entre_metodos_mpa": distancia,
+            "dispersion_maxima_mpa": peor_rango,
+            "orden_decidido": decidido,
+            "veredicto": veredicto,
+            "no_evaluados": motivos,
+            "que_mide": (
+                "La semilla gobierna qué filas entran en el submuestreo y cómo "
+                "se arma el bosque. Repetir la misma vara cambiando SOLO eso "
+                "separa lo que aporta el método de lo que aporta la suerte."),
+            "que_no_mide": (
+                "No mide si el modelo generaliza a otro caserón —eso es LOCO-CV— "
+                "ni si las bandas de UCS asignadas son correctas. Una dispersión "
+                "chica con anclas equivocadas es un resultado estable y falso.")}
+
+
 # ─── Predicción por punto ────────────────────────────────────────────────────
 ucs_modelo_vigente: Optional[str] = None
 ucs_modelo_meta: Dict = {}
@@ -8886,7 +9056,7 @@ def predict_ucs_relacion() -> Dict:
     """
     global ucs_modelo_vigente, ucs_modelo_meta
     anclas = _anclas_por_litologia()
-    pares = [(_se_mediana_por_estrato(k), v) for k, v in anclas.items()]
+    pares = [(_se_representativa(k), v) for k, v in anclas.items()]
     pares = [(a, b) for a, b in pares if a is not None]
     if len(pares) < 2:
         return {"status": "sin_datos",
@@ -8920,7 +9090,8 @@ def predict_ucs_relacion() -> Dict:
                 + (f"; error dejando-una-fuera {vara['mae_mpa']:g} MPa"
                    if vara.get("mae_mpa") is not None
                    else "; sin vara: se necesitan tres litologías con ancla")
-                + ". Sin acote a la banda de la unidad: solo a 0–450 MPa.")}
+                + ". Sin acote a la banda de la unidad: solo a 0–450 MPa. "
+                + _nota_control_pp())}
 
 
 # ─── UCS POR BANDA: la distribución de SE mapeada sobre la banda de la unidad ─
@@ -9023,10 +9194,22 @@ def _cv_de(attr) -> Optional[float]:
 
 
 def _se_escala_lito(lito: str) -> Optional[Tuple[float, float]]:
-    """(SE mediana, σ robusta de SE) de una litología, controlando por PP."""
+    """
+    (SE mediana, σ robusta de SE) de una litología.
+
+    Mismo criterio que `_se_representativa`: por defecto NO se estratifica por
+    PP, porque SE ya lleva ROP en el denominador y la percusión entra
+    contrastada contra la velocidad. «se.control_pp» conserva el otro camino.
+    """
     pts = _puntos_de_litologia(lito)
     if len(pts) < 30:
         return None
+    if get_param("se.control_pp") != "por_estrato":
+        v = np.array([p.se for p in pts])
+        # σ robusta: la mitad del rango p16-p84. Con las colas del MWD, la
+        # desviación estándar la infla un outlier suelto.
+        s = float((np.percentile(v, 84) - np.percentile(v, 16)) / 2.0)
+        return float(np.median(v)), (s if s > 1e-9 else 1.0)
     med, sig = [], []
     for lo, hi in PP_ESTRATOS:
         v = np.array([p.se for p in pts if p.pp is not None and lo <= p.pp < hi])
@@ -9126,7 +9309,7 @@ def predict_ucs_banda() -> Dict:
                 + (f"; error dejando-una-fuera {vara['mae_mpa']:g} MPa"
                    if vara.get("mae_mpa") is not None else "")
                 + ". Sin acote a la banda: un punto puede salirse, y salirse es "
-                  "la señal de alteración.")}
+                  "la señal de alteración. " + _nota_control_pp())}
 
 
 def predict_all_wells():
@@ -11734,6 +11917,9 @@ REPORTES: Tuple[Dict, ...] = (
      "que": "Línea base, relación directa, banda y bosque aleatorio bajo la "
             "misma vara: error en MPa dejando una litología fuera.",
      "gen": "compare_ucs_methods"},
+    {"id": "semillas", "titulo": "Sensibilidad a la semilla",
+     "que": "Cuánto del ganador es el método y cuánto es qué filas tocaron: "
+            "la misma vara con varias semillas.", "gen": "ml_seed_sensitivity"},
     {"id": "coherencia", "titulo": "Coherencia SE ↔ UCS",
      "que": "Si la energía específica ordena las litologías como su resistencia "
             "de laboratorio, controlando por estrato de percusión.",
@@ -11772,6 +11958,7 @@ def reportes_disponibles() -> List[Dict]:
     requisitos = {
         "tronadura": (hay_ucs, "Falta correr un modelo de UCS (paso 4)."),
         "ucs_metodos": (hay_dominios, "Falta cruzar la geometría (paso 4)."),
+        "semillas": (hay_dominios, "Falta cruzar la geometría (paso 4)."),
         "coherencia": (hay_dominios, "Falta cruzar la geometría (paso 4)."),
         "variables": (hay_dominios, "Falta cruzar la geometría (paso 4)."),
         "di_calidad": (hay_sondajes, "No hay sondajes con RQD cargados."),
