@@ -402,3 +402,74 @@ def bht_feldk_es_litologia_propia():
 
 
 ALL_TESTS += [las_lavas_se_separan_por_cota, bht_feldk_es_litologia_propia]
+
+def la_no_monotonia_se_declara():
+    """
+    LA PREMISA DE LA RELACIÓN DIRECTA es que a más SE, más resistencia. Sobre
+    los datos reales de MPC NO se cumple: la Brecha mixta tiene la SE más alta
+    (445,6) y la UCS más baja (111,5). Ninguna curva monótona pasa por los tres
+    puntos, y el error de la relación queda acotado por abajo por esa
+    inversión, no por el ajuste.
+
+    Y con tres anclas, dos de los tres pliegues EXTRAPOLAN: dejando fuera la
+    Brecha mixta, la curva predijo 450 MPa —el tope físico— contra 111,5
+    reales, y el MAE saltó de 53,9 a 151,3. Ese número mide la falta de anclas,
+    no el método, y el reporte tiene que decirlo.
+    """
+    section("Relación — la no monotonía y la extrapolación se declaran")
+    reset()
+    rng = np.random.default_rng(7)
+    # Tres litologías donde la TERCERA invierte la relación, como Brecha_mixta.
+    for k, (lito, ucs, se_obj) in enumerate([("Bht", 128.1, 335.0),
+                                             ("Kpcli", 180.0, 348.0),
+                                             ("Brecha_mixta", 111.5, 446.0)]):
+        for w_i in range(3):
+            pts = []
+            for i in range(200):
+                rop = float(0.9 + rng.normal(0, 0.02))
+                pp = float(rng.choice([110.0, 150.0, 200.0]))
+                pa = 60.0
+                pr = se_obj * rop - pp - pa
+                p = gw.MWDPoint(largo=i * 0.02, vel=rop, pp=pp, pa=pa, pd=75.0,
+                                pr=pr, pf=8.0, se=(pp + pr + pa) / rop, t=0.0)
+                p.este = E0 + k * 40.0 + w_i * 3.0; p.norte = N0
+                p.cota = Z0 - i * 0.02
+                p.entrenable = True; p.dominio = lito; p.lito = lito; p.di = 0.4
+                pts.append(p)
+            gw.wells[f"{lito}_W{w_i}"] = gw.Well(
+                well_name=f"{lito}_W{w_i}", plan_id=f"C_{lito}",
+                hole_id=f"{lito}{w_i}", points=pts)
+        gw.domains[lito] = {"count": 600, "ucs_lab": ucs, "atributo_id": lito,
+                            "alteracion_id": None, "estructura_id": None,
+                            "pi_factor": None, "calidad": 1,
+                            "fuente_ucs": "prueba", "modo_ucs": "central"}
+    mon = gw._monotonia_se_ucs()
+    check(mon["status"] == "ok", "la monotonía se evalúa", mon.get("motivo"))
+    check(not mon["monotona"],
+          "y se detecta que NO es monótona: hay una litología con más SE y "
+          "menos UCS", mon.get("orden_por_se"))
+    check("Brecha_mixta" in mon["rompen"],
+          "nombrando cuál rompe la relación", mon["rompen"])
+    check("monótona" in mon["lectura"] or "monotona" in mon["lectura"],
+          "con la lectura escrita, no solo el booleano", mon["lectura"][:80])
+
+    c = gw.compare_ucs_methods()
+    check(c["status"] == "ok", "la comparación corre", c.get("motivo"))
+    check(c.get("aviso_extrapolacion"),
+          "y AVISA que hay pliegues que extrapolan: un pliegue recortado al "
+          "tope físico domina el promedio y el MAE deja de medir el método",
+          c.get("aviso_extrapolacion"))
+    check(c.get("ganador_interpolacion"),
+          "declarando cuál ganaría juzgando solo los pliegues que interpolan",
+          c.get("ganador_interpolacion"))
+    check(c.get("monotonia", {}).get("status") == "ok",
+          "y la monotonía viaja en el mismo reporte")
+    rel = [m for m in c["metodos"] if m["metodo"] == "relacion"][0]
+    if rel.get("n_extrapolados"):
+        check(rel.get("mae_interpolacion") is not None
+              and rel["mae_interpolacion"] < rel["mae_mpa"],
+              "el error de interpolación es menor que el total, como debe ser",
+              (rel.get("mae_interpolacion"), rel["mae_mpa"]))
+
+
+ALL_TESTS.append(la_no_monotonia_se_declara)

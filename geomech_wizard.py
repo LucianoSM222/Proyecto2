@@ -8643,6 +8643,40 @@ def _ml_predice_litologia_fuera(fuera: str, entrena: Dict[str, float]):
     return float(np.median(m.predict(Xf))), nota
 
 
+def _monotonia_se_ucs() -> Dict:
+    """
+    ¿Sube la UCS con la SE? Es la premisa de la relación directa, y sobre los
+    datos reales NO se cumple: la Brecha mixta tiene la SE más alta (445,6) y
+    la UCS más baja (111,5). Ninguna curva monótona puede pasar por los tres
+    puntos, así que conviene decirlo antes de que alguien lea el MAE y piense
+    que el método falló por otra razón.
+    """
+    pares = []
+    for lito, ucs in _anclas_por_litologia().items():
+        se = _se_mediana_por_estrato(lito)
+        if se is not None:
+            pares.append((lito, se, ucs))
+    if len(pares) < 3:
+        return {"status": "sin_datos",
+                "motivo": f"Se necesitan tres anclas con SE; hay {len(pares)}."}
+    pares.sort(key=lambda x: x[1])
+    ucs_ordenada = [u for _, _, u in pares]
+    creciente = all(a <= b for a, b in zip(ucs_ordenada, ucs_ordenada[1:]))
+    rompen = [pares[i][0] for i in range(1, len(pares))
+              if pares[i][2] < pares[i - 1][2]]
+    return {"status": "ok", "monotona": creciente,
+            "orden_por_se": [(l, round(s, 1), u) for l, s, u in pares],
+            "rompen": rompen,
+            "lectura": ("La UCS sube con la SE: la premisa de la relación "
+                        "directa se sostiene."
+                        if creciente else
+                        f"La UCS NO sube con la SE. {', '.join(rompen)} "
+                        "invierte(n) la relación: tiene(n) más SE y menos UCS. "
+                        "Ninguna curva monótona pasa por todos los puntos, así "
+                        "que el error de la relación directa está acotado por "
+                        "abajo por esa inversión, no por el ajuste.")}
+
+
 def compare_ucs_methods() -> Dict:
     """
     Los tres competidores bajo la misma vara. La línea base ignora el MWD y es
@@ -8676,12 +8710,33 @@ def compare_ucs_methods() -> Dict:
                 "motivo": (salida[0].get("motivo")
                            or "Ningún método pudo evaluarse.")}
     ganador = min(con_num, key=lambda m: m["mae_mpa"])
+    # Un pliegue que EXTRAPOLA puede irse al tope físico y llevarse el promedio:
+    # sobre los datos reales, dejando fuera la Brecha mixta la curva predijo 450
+    # MPa contra 111,5 reales y el MAE saltó de 53,9 a 151,3. Ese número no
+    # describe el método, describe la falta de anclas. Se declara cuál sería el
+    # ganador juzgando SOLO los pliegues que interpolan.
+    con_interp = [m for m in con_num if m.get("mae_interpolacion") is not None]
+    ganador_interp = (min(con_interp, key=lambda m: m["mae_interpolacion"])["metodo"]
+                      if con_interp else None)
+    aviso_extrap = None
+    if any(m.get("n_extrapolados") for m in con_num):
+        detalle = ", ".join(
+            f"{m['metodo']} {m.get('n_extrapolados', 0)} de {len(m.get('pliegues') or [])}"
+            for m in con_num if m.get("n_extrapolados"))
+        aviso_extrap = (
+            f"Hay pliegues que EXTRAPOLAN ({detalle}). Un pliegue extrapolado "
+            "puede irse al límite físico y dominar el promedio: el MAE total "
+            "mide entonces la falta de anclas, no el método. Juzgando solo los "
+            f"pliegues que interpolan, el ganador sería «{ganador_interp}».")
     anclas = _anclas_por_litologia()
     lb = next((m for m in con_num if m["metodo"] == "linea_base"), None)
     supera = ([m["metodo"] for m in con_num
                if m["metodo"] != "linea_base" and m["mae_mpa"] < lb["mae_mpa"]]
               if lb else [])
     return {"status": "ok", "metodos": salida, "ganador": ganador["metodo"],
+            "ganador_interpolacion": ganador_interp,
+            "aviso_extrapolacion": aviso_extrap,
+            "monotonia": _monotonia_se_ucs(),
             "n_anclas": len(anclas),
             "superan_linea_base": supera,
             "sin_ancla": _litologias_sin_ancla(),
