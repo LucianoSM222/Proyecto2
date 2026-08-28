@@ -126,23 +126,34 @@ def el_cambio_llega_a_las_funciones():
 
 
 def los_protegidos_no_se_escriben():
-    section("Perfil — los parámetros de convención no se pueden escribir")
+    """
+    EL CONTRATO CAMBIÓ: hoy NINGÚN parámetro está protegido. Los seis del DI
+    lo estaban y el autor pidió liberarlos —traen los valores por defecto del
+    proyecto, pero quien calibra decide—. El MECANISMO se conserva para la
+    faena que necesite congelar algo, y este test verifica que funciona.
+    """
+    section("Perfil — el mecanismo de protección funciona, aunque hoy no se use")
     reset()
     protegidos = [pid for pid, p in gw.param_registry.items() if p.get("protegido")]
-    check(protegidos, "hay parámetros marcados como protegidos", protegidos)
-    for pid in protegidos:
-        try:
-            gw.set_param(pid, gw.get_param(pid))
-            check(False, f"{pid} debería rechazar la escritura")
-        except gw.ParametroProtegido:
-            pass
-    check(True, f"los {len(protegidos)} protegidos rechazan la escritura")
-    check(all("claude.md" in (gw.param_registry[p]["procedencia"] or "").lower()
-              or "convención" in (gw.param_registry[p]["procedencia"] or "").lower()
-              for p in protegidos),
-          "declarando que su procedencia es la convención del proyecto",
-          [gw.param_registry[p]["procedencia"][:60] for p in protegidos[:2]])
-
+    check(not protegidos,
+          "hoy ningún parámetro está bloqueado: los del DI se liberaron",
+          protegidos)
+    # Se protege uno a mano y tiene que rechazar la escritura y la reposición.
+    gw.param_registry["di.umbral"]["protegido"] = True
+    try:
+        gw.set_param("di.umbral", 9.9)
+        check(False, "un parámetro protegido tenía que rechazar la escritura")
+    except gw.ParametroProtegido:
+        check(True, "un parámetro protegido rechaza la escritura")
+    try:
+        gw.reset_param("di.umbral")
+        check(False, "y también la reposición")
+    except gw.ParametroProtegido:
+        check(True, "y también la reposición")
+    check(gw.get_param("di.umbral") == 1.5, "sin haberse movido")
+    gw.seed_param_registry(force=True)
+    check(not gw.param_registry["di.umbral"].get("protegido"),
+          "y al resembrar vuelve a estar libre")
 
 def se_valida_antes_de_escribir():
     section("Perfil — un valor fuera de rango se rechaza, no se acepta a medias")

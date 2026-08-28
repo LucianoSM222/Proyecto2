@@ -1714,7 +1714,7 @@ parse_warnings: List[str] = []
 rf_model = None
 rf_stats: Optional[Dict] = None
 prelim_model = None
-# (P3-3.7) Valores de Fernández et al. 2023 (doi:10.1016/j.ijmst.2023.02.004),
+# (P3-3.7) Valores de los valores por defecto (doi:10.1016/j.ijmst.2023.02.004),
 # predeterminados. Se exponen en la UI como editables, con botón de
 # restauración a estos mismos valores.
 DI_DEFAULTS = {"window": 14, "threshold": 1.5,
@@ -1722,7 +1722,7 @@ DI_DEFAULTS = {"window": 14, "threshold": 1.5,
 # Nombre de la variante de convención. Vive acá arriba, junto a DI_DEFAULTS,
 # porque `di_variante_activa` lo necesita antes de que se declare el registro
 # de variantes; el registro mismo se siembra más abajo (seed_di_variants).
-DI_VARIANTE_CONVENCION = "convencion_Fernandez_2023"
+DI_VARIANTE_CONVENCION = "por_defecto"
 di_config = {"params": ["pp","pr","pd","pf"], "weights": dict(DI_DEFAULTS["weights"]),
             "window": DI_DEFAULTS["window"]}
 di_threshold: float = DI_DEFAULTS["threshold"]
@@ -1747,7 +1747,7 @@ def di_config_summary() -> str:
     (P3-3.7) Línea de una sola línea con los parámetros DI vigentes, para
     anteponer a las exportaciones que dependen de ellos (predicciones,
     dominios, DI↔RQD, resumen del kit): cualquier cambio respecto a
-    Fernández et al. 2023 altera todo aguas abajo (DI, UCS matriz, agrupación
+    los valores por defecto altera todo aguas abajo (DI, UCS matriz, agrupación
     de dominios) y debe quedar declarado en lo que se exporta, no solo en la
     pantalla donde se cambió.
     """
@@ -1755,8 +1755,8 @@ def di_config_summary() -> str:
     linea = (f"DI «{di_variante_activa}»: ventana={di_config['window']} "
             f"umbral={di_threshold:g} "
             f"pesos(PP={w.get('pp')},DP={w.get('pd')},FP={w.get('pf')},RP={w.get('pr')})")
-    linea += (" [convención Fernández et al. 2023]" if di_config_is_default()
-              else " [VARIANTE, distinta de Fernández et al. 2023]")
+    linea += (" [valores por defecto]" if di_config_is_default()
+              else " [variante, distinta de los valores por defecto]")
     return linea
 group_interval_m: float = 2.0
 ucs_range = dict(ucs_min=UCS_CONFIG["default_min"], ucs_max=UCS_CONFIG["default_max"])
@@ -2450,10 +2450,15 @@ def task_log(msg, stage=None, progress=None):
         if progress is not None: task_state["progress"] = progress
     print(f"[TASK] {msg}")
 
-def run_ml_task(ucs_min, ucs_max):
+def run_ml_task(ucs_min, ucs_max, modelo: str = "banda"):
     """
-    Ejecuta el pipeline completo (cruce geométrico + índice de dominios +
-    entrenamiento RF) en un hilo de fondo, reportando avance a task_state.
+    Ejecuta el pipeline en un hilo de fondo: cruce geométrico, índice de
+    dominios y el MODELO QUE SE PIDIÓ.
+
+    `modelo`: "banda" (SE dentro de la banda de cada unidad, valor por punto),
+    "relacion" (curva SE↔UCS) o "ml" (bosque aleatorio). Antes corría siempre
+    el bosque: los otros dos se calculaban pero no había cómo pedirlos desde
+    la pantalla.
     """
     with task_lock:
         task_state.update(running=True, progress=0, stage="Iniciando…",
@@ -2470,7 +2475,37 @@ def run_ml_task(ucs_min, ucs_max):
         n_ucs = sum(1 for p in all_pts if p.dominio and domains.get(p.dominio,{}).get("ucs_lab"))
         task_log(f"Índice construido: {n_ucs}/{len(all_pts)} puntos con UCS asignado.", progress=55)
 
-        task_log("Entrenando Random Forest...", "Entrenamiento Random Forest", 60)
+        if modelo in ("banda", "relacion"):
+            etiqueta = ("banda de cada unidad" if modelo == "banda"
+                        else "relación directa SE↔UCS")
+            task_log(f"Ajustando la {etiqueta}…", f"UCS por {etiqueta}", 60)
+            t0 = time.time()
+            rep = (predict_ucs_banda() if modelo == "banda"
+                   else predict_ucs_relacion())
+            if rep["status"] != "ok":
+                task_log(f"⚠ {rep.get('motivo')}", progress=100)
+                with task_lock:
+                    task_state.update(running=False, done=True,
+                                      error=rep.get("motivo"))
+                return
+            task_log(f"Ajuste en {time.time()-t0:.1f}s.", progress=85)
+            task_log(rep["procedencia"])
+            for lito in (rep.get("derivadas") or []):
+                task_log(f"⚠ «{lito}»: ancho de banda DERIVADO, no medido.")
+            vara = rep.get("vara") or {}
+            if vara.get("mae_mpa") is not None:
+                task_log(f"Error dejando-una-litología-fuera: {vara['mae_mpa']:g} MPa"
+                         + (f" (interpolación {vara['mae_interpolacion']:g} MPa, "
+                            f"{vara['n_extrapolados']} pliegue(s) extrapolan)"
+                            if vara.get("n_extrapolados") else ""))
+            wz_state['step4']['model_trained'] = True
+            task_log(f"✅ Listo. {rep['n_puntos']:,} punto(s) con UCS."
+                     .replace(",", "."), "Completado", 100)
+            with task_lock:
+                task_state.update(running=False, done=True, result=rep)
+            return
+
+        task_log("Entrenando el bosque aleatorio...", "Entrenamiento", 60)
         t0 = time.time()
         stats = train_rf(ucs_min, ucs_max)
         task_log(f"Entrenamiento completado en {time.time()-t0:.1f}s.", progress=85)
@@ -2482,6 +2517,8 @@ def run_ml_task(ucs_min, ucs_max):
             return
         if stats.get("cv_warning"):
             task_log(f"⚠ {stats['cv_warning']}")
+        if stats.get("sin_banda_aviso"):
+            task_log(f"⚠ {stats['sin_banda_aviso']}")
 
         task_log("Generando predicciones UCS para todos los pozos...", "Prediciendo UCS", 90)
         predict_all_wells()
@@ -3496,7 +3533,7 @@ def di_profile(points, window, params=None, weights=None):
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║  PASO 1 — VARIANTES DEL DI, SIN TOCAR LA CONVENCIÓN                     ║
 # ║                                                                          ║
-# ║  CLAUDE.md fija el DI de Fernández et al. 2023 como convención           ║
+# ║  CLAUDE.md fija el DI de los valores por defecto como convención           ║
 # ║  inmutable: ventana 14, pesos PP 0,35 · DP 0,25 · FP 0,20 · RP 0,20,     ║
 # ║  umbral 1,5. Calibrar esos pesos contra el RQD de los sondajes es lo     ║
 # ║  que hace falta, y sobrescribirlos sería violar la convención.           ║
@@ -3530,9 +3567,7 @@ def seed_di_variants(force: bool = False):
         "params": list(di_config["params"]),
         "weights": dict(DI_DEFAULTS["weights"]),
         "threshold": DI_DEFAULTS["threshold"],
-        "fuente": ("Fernández et al. 2023, doi:10.1016/j.ijmst.2023.02.004. "
-                   "Convención del proyecto: el autor del artículo es el "
-                   "profesor guía de la memoria."),
+        "fuente": "Valores por defecto del proyecto.",
         "notas": ("Referencia intocable. Cualquier calibración vive en una "
                   "variante aparte para que la comparación siga siendo posible."),
         "solo_lectura": True,
@@ -3553,10 +3588,10 @@ def activar_di(nombre: str) -> Dict:
 
     Es el único camino por el que se escribe la configuración vigente del DI.
     El panel escribía directo sobre `di_config` y `di_threshold`, que son la
-    convención de Fernández: el DI corría con otros pesos mientras el parámetro
+    valores por defecto: el DI corría con otros pesos mientras el parámetro
     protegido del perfil y la variante de solo lectura seguían declarando los
     originales. Dos fuentes de verdad mintiendo a la vez, y todo reporte
-    citando a Fernández con pesos que no eran los suyos.
+    citando a el autor con pesos que no eran los suyos.
     """
     global di_threshold, di_variante_activa
     v = di_variantes.get(nombre)
@@ -3591,7 +3626,7 @@ def aplicar_di_config(window: int, threshold: float, weights: Dict[str, float],
     convención, sino que resuelve a qué variante corresponde esa configuración
     y la activa. Devuelve el nombre de la variante que quedó corriendo.
 
-    · Si los valores coinciden con los de Fernández, vuelve a la convención.
+    · Si los valores coinciden con los de el autor, vuelve a la convención.
     · Si coinciden con una variante ya registrada, activa esa en vez de
       fabricar una copia con otro nombre.
     · Si no, crea una variante nueva y la activa.
@@ -3786,22 +3821,26 @@ MENUS_PERFIL = {
     "Geometría": ["Validación de mallas", "Plano del abanico", "Modelo de bloques"],
     "Roca": ["UCS", "Etiqueta de UCS", "Límites físicos", "Percusión (PP)",
              "Presión de percusión", "Litología"],
-    "Fracturamiento": ["RQD", "Calibración DI↔RQD", "Discriminador",
-                       "DI (convención)"],
-    "Modelo": ["Modelo de aprendizaje", "Visor 3D"],
+    "Fracturamiento": ["RQD", "Calibración DI↔RQD", "Discriminador", "DI"],
+    "Modelo": ["Modelo de aprendizaje", "Visor 3D", "Recomendación de seteos"],
 }
 
 # Parámetros que una faena nueva SÍ toca. El resto son afinaciones que se
 # mueven poco: viven detrás del interruptor de avanzados para que la pantalla
 # muestre lo que hay que decidir y no lo que hay que dejar quieto.
 PARAMS_BASICOS = {
-    "repo.ruta", "repo.patron_caseron", "repo.ruta_proyecto",
+    "repo.ruta", "repo.ruta_proyecto",
     "carga.asignar_por_tolerancia", "carga.tolerancia_err_pct",
-    "sondajes.radio_cercania",
     "rqd.radio_max_m",
     "bloques.tamano_m", "bloques.holgura_m",
-    "ucs.estadistica_ml", "pp.estratos",
-    "calibracion.sondajes_minimos",
+    "ucs.estadistica_ml", "top.largo_min_pozo_m",
+}
+
+# Parámetros que NO se muestran en la pantalla del perfil: los fija la faena una
+# vez y no se vuelven a tocar. Siguen en el registro —viajan en el JSON y se
+# pueden cambiar por código— pero no compiten por la atención de nadie.
+PARAMS_OCULTOS = {
+    "repo.patron_caseron",
 }
 
 
@@ -3829,6 +3868,8 @@ def seed_param_registry(force: bool = False):
                "Carpeta del computador desde la que se cargan DXF, XML y CSV "
                "de sondaje sin subirlos uno por uno. El caserón se deduce de "
                "la carpeta que contiene cada archivo."),
+        # Fijo: no se pregunta. El patrón de nombres de caserón lo define la
+        # faena una vez y no cambia entre corridas.
         _param("repo.patron_caseron", "Repositorio",
                "Patrón que identifica un caserón en la ruta",
                r"PC[SC]_\d{3,4}", "texto", "regex",
@@ -3932,8 +3973,7 @@ def seed_param_registry(force: bool = False):
                "Muestras del símplex de pesos", 400, "int", "combinaciones",
                "La métrica es una correlación de RANGOS, no diferenciable: se "
                "muestrea el símplex por Dirichlet en vez de optimizar por "
-               "gradiente. Es el equivalente al movvar con que Fernández busca "
-               "sus pesos.", 20, 100000, "CAL_N_MUESTRAS"),
+               "gradiente.", 20, 100000, "CAL_N_MUESTRAS"),
         _param("calibracion.sondajes_minimos", "Calibración DI↔RQD",
                "Sondajes mínimos para calibrar", 2, "int", "sondajes",
                "Con un solo sondaje no hay validación posible: los pesos se "
@@ -3948,6 +3988,11 @@ def seed_param_registry(force: bool = False):
                "Debajo de esto el DI del tramo es ruido y no vale compararlo "
                "contra el RQD del testigo.", 5, 100000, "DI_RQD_MIN_PUNTOS"),
         # ── Visor ────────────────────────────────────────────────────────────
+        _param("top.largo_min_pozo_m", "Recomendación de seteos",
+               "Largo mínimo del tiro", 20.0, "float", "m",
+               "Los seteos recomendados salen solo de tiros de producción. Un "
+               "tiro corto tiene sus parámetros dominados por el emboquillado y "
+               "la maniobra.", 0.0, 200.0),
         _param("visor.puntos_maximos", "Visor 3D",
                "Puntos máximos dibujados", 5000, "int", "puntos",
                "Se recorta la VISTA, nunca la población que usan los cálculos. "
@@ -4135,26 +4180,18 @@ def seed_param_registry(force: bool = False):
         _param("ucs.max_fisico", "Límites físicos", "UCS máxima", 450.0, "float",
                "MPa", "Límite físico declarado en CLAUDE.md.", 0.0, 1000.0),
         # ── Convención inmutable ─────────────────────────────────────────────
-        _param("di.ventana", "DI (convención)", "Ventana del DI", 14, "int",
-               "registros", "CLAUDE.md, convención inmutable: Fernández et al. "
-               "2023, doi:10.1016/j.ijmst.2023.02.004. Para calibrar se crea "
-               "una VARIANTE con nombre propio; la convención no se toca.",
-               protegido=True),
-        _param("di.umbral", "DI (convención)", "Umbral del DI", 1.5, "float", "—",
-               "CLAUDE.md, convención inmutable. Fernández et al. 2023.",
-               protegido=True),
-        _param("di.peso_pp", "DI (convención)", "Peso de PP", 0.35, "float", "—",
-               "CLAUDE.md, convención inmutable. Fernández et al. 2023.",
-               protegido=True),
-        _param("di.peso_dp", "DI (convención)", "Peso de DP", 0.25, "float", "—",
-               "CLAUDE.md, convención inmutable. Fernández et al. 2023.",
-               protegido=True),
-        _param("di.peso_fp", "DI (convención)", "Peso de FP", 0.20, "float", "—",
-               "CLAUDE.md, convención inmutable. Fernández et al. 2023.",
-               protegido=True),
-        _param("di.peso_rp", "DI (convención)", "Peso de RP", 0.20, "float", "—",
-               "CLAUDE.md, convención inmutable. Fernández et al. 2023.",
-               protegido=True),
+        _param("di.ventana", "DI", "Ventana del DI", 14, "int", "registros",
+               "Valor por defecto del proyecto.", 3, 200),
+        _param("di.umbral", "DI", "Umbral del DI", 1.5, "float", "—",
+               "Valor por defecto del proyecto.", 0.01, 20.0),
+        _param("di.peso_pp", "DI", "Peso de PP", 0.35, "float", "—",
+               "Valor por defecto del proyecto.", 0.0, 1.0),
+        _param("di.peso_dp", "DI", "Peso de DP", 0.25, "float", "—",
+               "Valor por defecto del proyecto.", 0.0, 1.0),
+        _param("di.peso_fp", "DI", "Peso de FP", 0.2, "float", "—",
+               "Valor por defecto del proyecto.", 0.0, 1.0),
+        _param("di.peso_rp", "DI", "Peso de RP", 0.2, "float", "—",
+               "Valor por defecto del proyecto.", 0.0, 1.0),
     ]
     for p in P:
         param_registry[p["id"]] = p
@@ -5724,7 +5761,7 @@ def se_ucs_coherence_report() -> Dict:
         "di_nota": (
             "Apartar los tramos con DI sobre el umbral MEJORA la coherencia SE↔UCS: "
             "el DI está haciendo su trabajo en estos datos, no solo por autoridad de "
-            "Fernández et al. 2023." if di_mejora else
+            "los valores por defecto." if di_mejora else
             "Apartar los tramos con DI sobre el umbral NO mejora la coherencia aquí. "
             "No invalida el DI, pero conviene revisar el umbral y los pesos antes de "
             "apoyarse en él." if di_mejora is False else
@@ -7030,11 +7067,11 @@ def _tramo_di_de_pozo(well, variante: Optional[str], largo_centro: float,
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║  PASO 3 — CALIBRAR LOS PESOS DEL DI CONTRA EL RQD DE LOS SONDAJES       ║
 # ║                                                                          ║
-# ║  EL ENCUADRE, corregido por el autor: Fernández busca los pesos de su    ║
+# ║  EL ENCUADRE, corregido por el autor: el autor busca los pesos de su    ║
 # ║  DI con `movvar` de MATLAB —varianza móvil, la misma construcción que    ║
 # ║  usa di_profile()—. Calibrar los pesos NO es una desviación del método:  ║
 # ║  ES el método. Los pesos 0,35 / 0,25 / 0,20 / 0,20 son el resultado de   ║
-# ║  la calibración de Fernández sobre SUS datos; buscar los de Punta del    ║
+# ║  la calibración de el autor sobre SUS datos; buscar los de Punta del    ║
 # ║  Cobre es aplicar el mismo procedimiento a estos.                        ║
 # ║                                                                          ║
 # ║  Por eso el resultado es una VARIANTE con nombre propio y la de          ║
@@ -7055,7 +7092,7 @@ CAL_N_MUESTRAS = 400
 CAL_SEMILLA = 42
 CAL_MIN_SONDAJES = 2
 # TODAS las presiones entran como candidatas, incluida la de avance (AP), que
-# la convención de Fernández no usa. Decisión del autor: qué presión queda
+# la valores por defecto no usa. Decisión del autor: qué presión queda
 # fuera lo decide la CALIBRACIÓN, con un peso cercano a cero, no un descarte
 # previo. ROP no entra: es una velocidad, no una presión.
 CAL_PARAMS = ("pp", "pr", "pd", "pf", "pa")
@@ -7457,7 +7494,7 @@ def calibrate_di_weights(radio_m: Optional[float] = None,
               f"({n_pares} par(es), uno a uno, alcance {radio_m:g} m"
               + (f", distancia mediana {np.median(dists):.1f} m" if dists else "")
               + f"). Presiones candidatas: {', '.join(params)}. Mismo procedimiento que "
-              "Fernández et al. 2023, que busca los pesos de su DI con varianza "
+              "la búsqueda de pesos por varianza "
               "móvil (movvar): esta variante es ese procedimiento aplicado a los "
               "datos de este sitio, no una desviación del método. "
               f"rho ajuste {rho_ajuste:+.3f} · rho validación "
@@ -7492,7 +7529,7 @@ def calibrate_di_weights(radio_m: Optional[float] = None,
                                 "observaciones independientes: comparten roca, "
                                 "campaña y criterio de logueo. Por eso el pliegue "
                                 "es el sondaje y no el intervalo.")},
-        "encuadre": ("Fernández busca los pesos de su DI con movvar; calibrar es "
+        "encuadre": ("Calibrar los pesos contra el testigo es "
                      "su método, no una desviación. La variante de convención "
                      "queda intacta para poder comparar."),
     }
@@ -9303,6 +9340,16 @@ def top_drilling(group_id, n=5, method="min_se_cv"):
     segments = _segments_by_domain(group_id)
     if not segments:
         return []
+    # Solo TIROS LARGOS. Un tiro corto no representa la perforación de
+    # producción: sus parámetros están dominados por el emboquillado y por la
+    # maniobra, y recomendar seteos a partir de él induce al error. El mínimo
+    # vive en el perfil de faena.
+    largo_min = float(get_param("top.largo_min_pozo_m"))
+    segments = [(wn, seg) for wn, seg in segments
+                if (wells[wn].points[-1].largo if wells.get(wn) and wells[wn].points
+                    else 0.0) >= largo_min]
+    if not segments:
+        return []
     candidates = []
     for wn, seg in segments:
         se_arr = np.array([p.se for p in seg])
@@ -9784,7 +9831,7 @@ def load_project(path):
     elif activa:
         parse_warnings.append(
             f'El proyecto corría con la variante de DI "{activa}", que no se pudo '
-            "restaurar. Se activó la convención de Fernández et al. 2023: los DI "
+            "restaurar. Se activaron los valores por defecto: los DI "
             "guardados en los puntos NO corresponden a ella.")
         activar_di(DI_VARIANTE_CONVENCION)
     else:
@@ -9807,7 +9854,7 @@ def load_project(path):
         except (ValueError, TypeError) as e:
             parse_warnings.append(
                 f"La configuración de DI del proyecto no es válida ({e}). Se "
-                "activó la convención de Fernández et al. 2023.")
+                "activaron los valores por defecto.")
             activar_di(DI_VARIANTE_CONVENCION)
     group_interval_m = proj.get("group_interval_m", group_interval_m)
     ucs_range.update(proj.get("ucs_range", {}))
@@ -10002,19 +10049,39 @@ def run_kit_task():
             kit_task_state.update(running=False, done=True, error=str(e), progress=100)
 
 # ─── VISOR 3D ─────────────────────────────────────────────────────────────────
+# Cada entrada: (etiqueta visible, min, max, ¿es categórica?, qué significa).
+# Salieron "Litología inferida" —el programa ya no infiere litología— y
+# "Consistencia de banda", que comparaba contra el Excel geomecánico que se
+# eliminó: dos paletas que no podían pintar nada.
 COLOR_FIELDS = {
-    "se":("SE [bar·min/m]",0,500,False),"vel":("ROP [m/min]",0,2.5,False),
-    "pp":("Percusión [bar]",0,230,False),"pa":("Avance [bar]",0,150,False),
-    "pr":("Rotación [bar]",0,100,False),"pd":("Damper [bar]",0,150,False),
-    "pf":("Flujo [bar]",0,25,False),"ucs_ml":("UCS ML [MPa]",0,270,False),
-    "ucs_matriz":("UCS matriz (sin discontinuidades) [MPa]",0,270,False),"di":("DI",0,3,False),
-    "lito":("Litología DXF",None,None,True),"grupo":("Dominio agrupado",None,None,True),
-    "lito_inferida":("Litología inferida",None,None,True),
-    "band_check":("Consistencia de banda",None,None,True),
-    # Dónde cae la UCS predicha respecto de la banda de su unidad. Es
-    # INFORMACIÓN: un sector entero marcado "sobre" es un hallazgo, no un
-    # error de acote — la predicción nunca se recorta a la banda.
-    "banda_check":("UCS vs banda de la unidad",None,None,True),
+    "di":("DI — fracturamiento", 0, 3, False,
+          "Índice de discontinuidad. Alto = macizo más fracturado. Es la vista "
+          "para decidir dónde la roca está quebrada."),
+    "ucs_ml":("UCS — resistencia [MPa]", 0, 270, False,
+              "Resistencia estimada punto a punto por el modelo vigente. Es la "
+              "vista para decidir qué tan competente es el macizo."),
+    "ucs_matriz":("UCS de la matriz [MPa]", 0, 270, False,
+                  "La misma UCS pero arrastrando el último valor estable donde "
+                  "el DI detecta discontinuidad: es la roca SIN las fracturas."),
+    "banda_check":("UCS vs banda de su unidad", None, None, True,
+                   "Si la UCS estimada cae dentro, sobre o bajo la banda de "
+                   "laboratorio de su litología. Un sector entero «sobre» es un "
+                   "hallazgo de alteración, no un error."),
+    "lito":("Litología (malla DXF)", None, None, True,
+            "La unidad geológica que le asignó la malla."),
+    "grupo":("Dominio geomecánico", None, None, True,
+             "Agrupación por comportamiento similar de UCS y DI."),
+    "se":("SE [bar·min/m]", 0, 500, False,
+          "Energía específica de reacción: cuánto le cuesta a la perforadora "
+          "avanzar. Es el eje de la relación directa con UCS."),
+    "vel":("ROP [m/min]", 0, 2.5, False, "Velocidad de penetración."),
+    "pp":("Percusión [bar]", 0, 230, False,
+          "La única variable que manipula el operador."),
+    "pa":("Avance [bar]", 0, 150, False, "Presión de avance."),
+    "pr":("Rotación [bar]", 0, 100, False, "Presión de rotación."),
+    "pd":("Damper [bar]", 0, 150, False,
+          "Presión del dámper: la que más reacciona al fracturamiento."),
+    "pf":("Flujo de barrido [bar]", 0, 25, False, "Presión de barrido."),
 }
 
 # Colores fijos para la consistencia de banda (categórico con semántica).
@@ -10157,14 +10224,12 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
     fig = go.Figure()
     n_total_pts = sum(len(w.points) for w in wells.values())
     ratio = (MAX_VIZ_POINTS / n_total_pts) if n_total_pts > MAX_VIZ_POINTS else 1.0
-    label, cmin, cmax, categorical = COLOR_FIELDS.get(color_by, ("",0,1,False))
+    label, cmin, cmax, categorical, _ayuda = COLOR_FIELDS.get(
+        color_by, ("", 0, 1, False, ""))
     cat_map = {}
     if categorical:
         all_cats = sorted({getattr(p, color_by) or "—" for well in wells.values() for p in well.points})
-        if color_by == "band_check":
-            # Colores semánticos fijos (verde/rojo/amarillo/gris), no la paleta.
-            cat_map = {c: BAND_COLORS.get(c, "#7F8C8D") for c in all_cats}
-        elif color_by == "banda_check":
+        if color_by == "banda_check":
             cat_map = {c: BANDA_COLORS.get(c, "#7F8C8D") for c in all_cats}
         else:
             cat_map = {c: PALETTE[i%len(PALETTE)] for i,c in enumerate(all_cats)}
@@ -10920,19 +10985,29 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
         html.Div(id="pills-bar", className="d-flex align-items-center gap-1 flex-wrap flex-grow-1"),
         # (P1-T1.8) Contador de pendientes SIEMPRE visible desde la vista
         # principal, no escondido en el panel de vocabulario.
-        html.Div(id="vocab-badge", className="d-flex align-items-center",
-                 style={"marginRight":"10px"}),
+        # (Cierre) Los botones son ESTÁTICOS y solo se actualiza su contenido.
+        # Antes el callback del badge reconstruía el dbc.Button entero, con su
+        # id: Dash trata el reemplazo de un componente que es Input de otro
+        # callback como un cambio de ese Input y DISPARA el callback. Resultado:
+        # cada acción de la interfaz abría sola la ventana de vocabulario y la
+        # del perfil. Ahora el Input nunca se recrea.
+        dbc.Button(html.Span(id="vocab-badge"), id="btn-open-vocab",
+                   color="link", size="sm",
+                   style={"padding":"0","textDecoration":"none","marginRight":"10px"}),
         # (P2-T2.6) Contador de sondajes seleccionados, visible desde la vista
         # principal igual que el badge de vocabulario.
-        html.Div(id="drillhole-badge", className="d-flex align-items-center",
-                 style={"marginRight":"10px"}),
+        dbc.Button(html.Span(id="drillhole-badge"), id="btn-open-drillhole",
+                   color="link", size="sm",
+                   style={"padding":"0","textDecoration":"none","marginRight":"10px"}),
         # (PF-UI) Acceso al perfil de faena desde la barra: es lo que otra mina
         # ajusta primero, y estaba solo disponible llamando set_param() a mano.
-        html.Div(id="perfil-badge", className="d-flex align-items-center",
-                 style={"marginRight":"10px"}),
+        dbc.Button(html.Span(id="perfil-badge"), id="btn-open-perfil",
+                   color="link", size="sm",
+                   style={"padding":"0","textDecoration":"none","marginRight":"10px"}),
         html.Div([html.Label("Color:", style={"fontSize":"11px","color":"#aaa","marginRight":"4px"}),
                   dcc.Dropdown(id="color-by",
-                    options=[{"label":v[0],"value":k} for k,v in COLOR_FIELDS.items()],
+                    options=[{"label": v[0], "value": k, "title": v[4]}
+                             for k, v in COLOR_FIELDS.items()],
                     value="se", clearable=False, style={"width":"155px","fontSize":"11px"})],
                  className="d-flex align-items-center"),
     ]), color="dark", dark=True, style={"minHeight":"46px","padding":"4px 12px"}),
@@ -11091,8 +11166,7 @@ def _vocab_badge_children():
                               className="me-1", style={"fontSize": "10px"}))
     if not kids:
         kids.append(dbc.Badge("🏷 vocabulario OK", color="success", style={"fontSize": "10px"}))
-    return dbc.Button(kids, id="btn-open-vocab", color="link", size="sm",
-                      style={"padding": "0", "textDecoration": "none"})
+    return kids
 
 
 ROLE_BADGE_COLOR = {"litologia": "primary", "alteracion": "info", "estructura": "warning"}
@@ -11394,7 +11468,8 @@ def _perfil_panel_body(menu: str = None, avanzados: bool = False):
     menus = list(MENUS_PERFIL)
     menu = menu if menu in menus else menus[0]
 
-    de_este = [p for p in param_registry.values() if p.get("menu") == menu]
+    de_este = [p for p in param_registry.values()
+               if p.get("menu") == menu and p["id"] not in PARAMS_OCULTOS]
     n_avanzados = sum(1 for p in de_este if not p.get("basico") and not p.get("protegido"))
     visibles = [p for p in de_este
                 if avanzados or p.get("basico") or p.get("protegido")]
@@ -11720,11 +11795,8 @@ def render_perfil_badge(_):
     n_mod = sum(1 for p in param_registry.values() if p["valor"] != p["defecto"])
     etiqueta = (f"⚙ perfil {ACTIVE_SITE}" if not n_mod
                 else f"⚙ perfil {ACTIVE_SITE} · {n_mod} movido(s)")
-    return dbc.Button(dbc.Badge(etiqueta,
-                                color="warning" if n_mod else "secondary",
-                                style={"fontSize": "10px"}),
-                      id="btn-open-perfil", color="link", size="sm",
-                      style={"padding": "0", "textDecoration": "none"})
+    return dbc.Badge(etiqueta, color="warning" if n_mod else "secondary",
+                     style={"fontSize": "10px"})
 
 
 # Menú del perfil vigente y si se muestran los avanzados. Viven acá y no en un
@@ -11733,11 +11805,30 @@ def render_perfil_badge(_):
 _perfil_menu_activo = {"menu": None, "avanzados": False}
 
 
+def _disparo_real() -> bool:
+    """
+    ¿El callback lo disparó un CLIC de verdad, o la recreación del componente?
+
+    Dash reevalúa un callback cuando el componente que es su Input se
+    reemplaza en el árbol, y entonces `n_clicks` llega como None o 0. Los
+    cuerpos de los pasos y los badges se reconstruyen en cada refresh, así que
+    sin esta guarda cada acción de la interfaz abría sola las ventanas de
+    vocabulario, perfil y sondajes. Un clic real trae n_clicks > 0.
+    """
+    disparos = getattr(callback_context, "triggered", None) or []
+    if not disparos:
+        return False
+    v = disparos[0].get("value")
+    return bool(v)
+
+
 @app.callback(Output("perfil-modal", "is_open"), Output("perfil-modal-body", "children"),
               Input("btn-open-perfil", "n_clicks"), Input("close-perfil", "n_clicks"),
               State("perfil-modal", "is_open"), prevent_initial_call=True)
 def toggle_perfil_modal(open_c, close_c, is_open):
     trig = callback_context.triggered_id
+    if not _disparo_real():
+        return no_update, no_update
     if trig == "btn-open-perfil":
         return True, _perfil_panel_body(_perfil_menu_activo["menu"],
                                         _perfil_menu_activo["avanzados"])
@@ -11753,7 +11844,10 @@ def toggle_perfil_modal(open_c, close_c, is_open):
 def on_perfil_menu(clicks, avanzados):
     trig = callback_context.triggered_id
     if isinstance(trig, dict) and trig.get("type") == "perfil-menu":
-        if not any(clicks or []):
+        # Sin esta guarda, recrear los botones del menú disparaba el callback y
+        # reconstruía el cuerpo: lo que el usuario había escrito y todavía no
+        # aplicaba se perdía, y parecía que el perfil "no guardaba".
+        if not _disparo_real():
             return no_update
         _perfil_menu_activo["menu"] = trig["index"]
     _perfil_menu_activo["avanzados"] = bool(avanzados)
@@ -11772,6 +11866,8 @@ def on_perfil_menu(clicks, avanzados):
               State("refresh", "data"), prevent_initial_call=True)
 def on_perfil_aplicar(n_ap, n_rst, valores, ids, ref):
     trig = callback_context.triggered_id
+    if not _disparo_real():
+        return no_update, no_update, no_update, no_update
     if trig == "btn-perfil-reset":
         # Reponer NO toca los protegidos: no hay nada que reponer en una
         # convención, y reset_param los rechaza por eso mismo.
@@ -11839,6 +11935,8 @@ def on_perfil_import(contents, ref):
               State("varjust-modal", "is_open"), prevent_initial_call=True)
 def toggle_varjust_modal(open_c, close_c, is_open):
     trig = callback_context.triggered_id
+    if not _disparo_real():
+        return no_update, no_update
     if trig == "btn-open-varjust":
         return True, _varjust_panel_body()
     if trig == "close-varjust":
@@ -11852,6 +11950,8 @@ def toggle_varjust_modal(open_c, close_c, is_open):
               State("vocab-modal", "is_open"), prevent_initial_call=True)
 def toggle_vocab_modal(open_c, close_c, open_c1, _ref, is_open):
     trig = callback_context.triggered_id
+    if trig in ("btn-open-vocab", "btn-open-vocab-step1") and not _disparo_real():
+        return no_update, no_update
     if trig in ("btn-open-vocab", "btn-open-vocab-step1"): return True, _vocab_panel_body()
     if trig == "close-vocab": return False, no_update
     # refresh mientras está abierto → recomponer el cuerpo sin cerrarlo
@@ -12185,15 +12285,10 @@ def _dh_sort_key(dh, field):
 
 def _dh_badge_children():
     if not drillholes:
-        return dbc.Button("🗿 Sondajes", id="btn-open-drillhole", color="link", size="sm",
-                          disabled=True, style={"padding": "0", "fontSize": "10px",
-                                                "textDecoration": "none", "color": "#555"})
+        return dbc.Badge("🗿 sin sondajes", color="dark", style={"fontSize": "10px"})
     n_sel = sum(1 for dh in drillholes.values() if dh.seleccionado())
-    return dbc.Button(
-        dbc.Badge(f"🗿 {n_sel}/{len(drillholes)} sondajes", color="secondary",
-                 style={"fontSize": "10px"}),
-        id="btn-open-drillhole", color="link", size="sm",
-        style={"padding": "0", "textDecoration": "none"})
+    return dbc.Badge(f"🗿 {n_sel}/{len(drillholes)} sondajes", color="secondary",
+                     style={"fontSize": "10px"})
 
 
 @app.callback(Output("drillhole-badge", "children"), Input("refresh", "data"))
@@ -12301,6 +12396,8 @@ def _drillhole_panel_body(sort_field="holeid", desc=False):
 def toggle_drillhole_modal(open_c, open_c1, close_c, _ref, sort_field, sort_desc, is_open):
     trig = callback_context.triggered_id
     if trig in ("btn-open-drillhole", "btn-open-drillhole-step1"):
+        if not _disparo_real():
+            return no_update, no_update
         return True, _drillhole_panel_body(sort_field or "holeid", bool(sort_desc))
     if trig == "close-drillhole":
         return False, no_update
@@ -12360,7 +12457,11 @@ def on_drillhole_recalc(n, near_v, ref):
     if not drillholes:
         return no_update, "🚫 No hay sondajes cargados.", True
     try:
+        # Es EL MISMO parámetro del perfil, no una segunda pregunta: lo que se
+        # escriba acá queda guardado en el perfil de faena.
         near_m = float(near_v) if near_v not in (None, "") else DRILLHOLE_NEAR_DISTANCE_M
+        if near_v not in (None, "") and float(near_v) != DRILLHOLE_NEAR_DISTANCE_M:
+            set_param("sondajes.radio_cercania", float(near_v))
     except (TypeError, ValueError):
         return no_update, f"🚫 Umbral 'cercano' inválido: «{near_v}».", True
     refresh_drillhole_selection(near_m=near_m)
@@ -13047,7 +13148,7 @@ def do_di(n, window, thresh, w_pp, w_pd, w_pf, w_pr, ref):
         aviso_suma = (f" ⚠ los pesos ingresados suman {suma:.3f} (no 1,0); "
                       "se normalizaron a 1 para la variante.")
     # El panel NO escribe sobre la convención: resuelve a qué variante
-    # corresponde lo ingresado y la activa. Si son los valores de Fernández,
+    # corresponde lo ingresado y la activa. Si son los valores de el autor,
     # vuelve a la convención sola.
     try:
         activa = aplicar_di_config(window=int(window_v), threshold=float(thresh_v),
@@ -13059,7 +13160,7 @@ def do_di(n, window, thresh, w_pp, w_pd, w_pf, w_pr, ref):
     all_pts = list(all_points())
     n_di = sum(1 for p in all_pts if p.di is not None)
     n_disc = sum(1 for p in all_pts if p.di is not None and p.di > di_threshold)
-    origen = ("convención Fernández et al. 2023" if activa == DI_VARIANTE_CONVENCION
+    origen = ("valores por defecto" if activa == DI_VARIANTE_CONVENCION
               else f"VARIANTE «{activa}» (la convención queda intacta)")
     return (ref+1, f"✅ DI: {n_di} pts · {n_disc} discontinuidades · {origen}.{aviso_suma}",
             True)
@@ -13075,13 +13176,13 @@ def do_di(n, window, thresh, w_pp, w_pd, w_pf, w_pr, ref):
     State("refresh","data"), prevent_initial_call=True,
 )
 def do_di_reset(n, ref):
-    """(P3-3.7) Restaura ventana, umbral y pesos a Fernández et al. 2023. Solo
+    """Restaura ventana, umbral y pesos a los valores por defecto. Solo
     cambia la configuración; no recalcula el DI hasta que se pulse Calcular."""
     if not n: return (no_update,)*8
     activar_di(DI_VARIANTE_CONVENCION)
     w = di_config["weights"]
     return (ref+1, di_config["window"], di_threshold, w["pp"], w["pd"], w["pf"], w["pr"],
-           "↺ Configuración DI restaurada a Fernández et al. 2023. Pulsa «Calcular DI» "
+           "↺ Configuración DI restaurada a los valores por defecto Pulsa «Calcular DI» "
            "para recalcular con estos valores.", True)
 
 @app.callback(
@@ -13118,9 +13219,10 @@ def do_di_sensitivity(n_clicks_list, well_sel_list, out_ids):
     Output("toast","is_open",allow_duplicate=True),
     Input("btn-ml","n_clicks"),
     State("ucs-min","value"), State("ucs-max","value"),
+    State("pred-modelo","value"),
     prevent_initial_call=True,
 )
-def do_ml(n, ucs_min_v, ucs_max_v):
+def do_ml(n, ucs_min_v, ucs_max_v, modelo):
     """
     Lanza el pipeline (cruce + índice + RF) en un hilo de fondo y activa el
     polling (dcc.Interval) que consulta task_state cada 500ms para actualizar
@@ -13152,10 +13254,16 @@ def do_ml(n, ucs_min_v, ucs_max_v):
     ucs_range["ucs_min"], ucs_range["ucs_max"] = lo, hi
     # (P1-T1.5) Bloqueo ruidoso: atributos presentes sin banda de UCS y sin
     # exclusión explícita impiden entrenar. Se nombra qué falta y cuánto pesa.
-    bloqueo = training_block_message()
-    if bloqueo:
-        return no_update, "🚫 " + bloqueo, True
-    th = threading.Thread(target=run_ml_task, args=(ucs_range["ucs_min"], ucs_range["ucs_max"]), daemon=True)
+    # El bloqueo por litologías sin banda solo aplica al ML, que necesita la
+    # etiqueta. La banda y la relación trabajan con las unidades que SÍ tienen
+    # ancla y declaran las que quedaron fuera.
+    if (modelo or "banda") == "ml":
+        bloqueo = training_block_message()
+        if bloqueo:
+            return no_update, "🚫 " + bloqueo, True
+    th = threading.Thread(target=run_ml_task,
+                          args=(ucs_range["ucs_min"], ucs_range["ucs_max"],
+                                modelo or "banda"), daemon=True)
     th.start()
     return False, no_update, no_update  # habilita el Interval de polling
 
@@ -13364,16 +13472,23 @@ def on_export_confirm(n, pending):
     if kind == "proyecto":
         if not wells:
             return no_update, no_update, no_update, False, "⚠ No hay datos cargados para guardar.", True
-        try:
-            tmp = tempfile.NamedTemporaryFile(suffix=".gwz", delete=False)
-            tmp.close()
-            save_project(tmp.name)
-            with open(tmp.name, "rb") as f: data = f.read()
-            os.unlink(tmp.name)
-            return (no_update, dcc.send_bytes(data, fname), no_update, False,
-                   f"✅ Guardado — {len(wells)} pozos.", True)
-        except Exception as e:
-            return no_update, no_update, no_update, False, f"❌ Error al guardar: {e}", True
+        # A DISCO, no al navegador. Con cuatro caserones el .gwz pesa decenas
+        # de MB; leerlo entero en memoria y mandarlo por dcc.send_bytes triplica
+        # el consumo y en Colab la descarga falla sin decir nada. Guardar a una
+        # ruta esquiva el transporte completo.
+        destino = (get_param("repo.ruta_proyecto") or "").strip()
+        if not destino:
+            destino = os.path.join(os.getcwd(), fname)
+        elif os.path.isdir(destino):
+            destino = os.path.join(destino, fname)
+        rep = guardar_proyecto_en(destino)
+        if rep["status"] != "ok":
+            return (no_update, no_update, no_update, False,
+                    f"❌ No se pudo guardar: {rep.get('motivo')}", True)
+        return (no_update, no_update, no_update, False,
+                f"✅ Proyecto guardado en {rep['ruta']} — {rep['n_pozos']} pozos, "
+                f"{rep['n_puntos']:,} puntos, {rep['tamano_MB']:g} MB.".replace(",", "."),
+                True)
     if kind == "kit":
         if not wells:
             return no_update, no_update, no_update, False, "⚠ No hay datos para exportar.", True
@@ -13835,7 +13950,7 @@ def _step3():
         card("Fórmula", [
             html.Small("DIᵢ = √(Σⱼ βⱼ · zⱼ(i)²), ventana 14 muestras ≈ 26 cm.", style={"color":"#ccc"}),
             html.Br(), html.Br(),
-            html.Small("Pesos Fernández et al. 2023: PP=0.35, DP=0.25, FP=0.20, RP=0.20",
+            html.Small("Pesos los valores por defecto: PP=0.35, DP=0.25, FP=0.20, RP=0.20",
                        style={"color":"#666"}),
         ]),
         card("Configuración", [
@@ -13854,7 +13969,7 @@ def _step3():
                                      step=0.1, size="sm", style={"fontSize":"11px"})], width=3),
                 dbc.Col(dbc.Button("🌀 Calcular DI", id="btn-di", color="info", size="sm",
                                     className="mt-3"), width=3),
-                dbc.Col(dbc.Button("↺ Restaurar Fernández et al. 2023", id="btn-di-reset",
+                dbc.Col(dbc.Button("↺ Restaurar los valores por defecto", id="btn-di-reset",
                                     color="secondary", outline=True, size="sm",
                                     className="mt-3"), width=3),
             ], className="g-2 mb-2"),
@@ -14066,8 +14181,26 @@ def _step4():
             dbc.Col(html.Small(f"Físico: [{UCS_CONFIG['physical_min']},{UCS_CONFIG['physical_max']}] MPa",
                                 style={"color":"#555","fontSize":"10px","alignSelf":"flex-end"}), width=6),
         ], className="g-2 mb-2"),
-        dbc.Button("🧠 Ejecutar Cruce + ML", id="btn-ml", color="info", size="sm",
-                   disabled=task_state["running"]),
+        # QUÉ MODELO CORRE lo elige el usuario. Antes el botón decía "ML" y
+        # corría siempre el bosque aleatorio: la relación directa y la banda se
+        # calculaban pero no había forma de pedirlas desde la pantalla.
+        dbc.Row([
+            dbc.Col(html.Small("Modelo de UCS",
+                               style={"color": "#888", "fontSize": "10px",
+                                      "display": "block"}), width="auto"),
+            dbc.Col(dcc.Dropdown(
+                id="pred-modelo", clearable=False, value="banda",
+                options=[
+                    {"label": "Banda — SE dentro de la banda de cada unidad",
+                     "value": "banda"},
+                    {"label": "Relación directa — curva SE ↔ UCS",
+                     "value": "relacion"},
+                    {"label": "Machine learning — bosque aleatorio",
+                     "value": "ml"},
+                ], style={"fontSize": "10px", "width": "340px"}), width="auto"),
+        ], className="g-2 align-items-center mb-2"),
+        dbc.Button("▶ Ejecutar cruce y modelo", id="btn-ml", color="info",
+                   size="sm", disabled=task_state["running"]),
         html.Div([
             html.Small(id="ml-stage-label",
                        children=task_state["stage"] or "Sin ejecutar todavía.",

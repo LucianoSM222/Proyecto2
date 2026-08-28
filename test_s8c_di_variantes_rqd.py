@@ -2,7 +2,7 @@
 test_s8c_di_variantes_rqd.py — Pasos 1 y 2.
 
 PASO 1 · DI CALIBRABLE SIN ROMPER LA CONVENCIÓN.
-CLAUDE.md fija el DI de Fernández et al. 2023 —ventana 14, pesos PP 0,35 ·
+CLAUDE.md fija el DI de los valores por defecto —ventana 14, pesos PP 0,35 ·
 DP 0,25 · FP 0,20 · RP 0,20, umbral 1,5— como convención inmutable. Para poder
 calibrar los pesos contra el RQD de los sondajes sin violarla, el DI de la
 convención queda INTOCADO como referencia y se agregan VARIANTES con nombre
@@ -104,11 +104,9 @@ def la_convencion_no_se_puede_tocar():
           "con la ventana 14 y el umbral 1,5 de la convención",
           (v.get("window"), v.get("threshold")))
     check(v["weights"] == {"pp": 0.35, "pr": 0.20, "pd": 0.25, "pf": 0.20},
-          "y los pesos de Fernández et al. 2023", v.get("weights"))
+          "y los pesos por defecto", v.get("weights"))
     check(v.get("solo_lectura") is True, "marcada como de solo lectura")
-    check("fernández" in (v.get("fuente") or "").lower()
-          or "fernandez" in (v.get("fuente") or "").lower(),
-          "declarando su fuente", v.get("fuente"))
+    check(v.get("fuente"), "declarando su fuente", v.get("fuente"))
     for fn, etiqueta in ((lambda: gw.update_di_variant(gw.DI_VARIANTE_CONVENCION,
                                                        threshold=2.0), "editarla"),
                          (lambda: gw.delete_di_variant(gw.DI_VARIANTE_CONVENCION),

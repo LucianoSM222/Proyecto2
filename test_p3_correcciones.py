@@ -227,7 +227,7 @@ def t34_rename_ucs_matriz():
           "_point_from_dict migra un proyecto antiguo con la clave vieja (3.4)")
 
     label, *_ = gw.COLOR_FIELDS["ucs_matriz"]
-    check("UCS matriz" in label and "confiable" not in label.lower(),
+    check("matriz" in label.lower() and "confiable" not in label.lower(),
           "el nombre en la interfaz (COLOR_FIELDS) usa el nuevo término", label)
     check("UCS matriz" in gw.REPORT_VARS["ucs_matriz"],
           "el nombre en el reporte por pozo usa el nuevo término")

@@ -127,14 +127,22 @@ def las_convenciones_siguen_siendo_constantes():
     check(gw.MWD_VAL_ORDER == ("LT", "ROP", "PP", "FP", "DP", "RP", "FLP"),
           "el orden de los campos Val es el de CLAUDE.md", gw.MWD_VAL_ORDER)
     check(len(gw.MWD_VAL_ORDER) == 7, "exactamente 7", len(gw.MWD_VAL_ORDER))
-    # Los seis parámetros de convención del DI siguen rechazando la escritura.
+    # EL CONTRATO CAMBIÓ, por decisión del autor: los seis parámetros del DI
+    # traen los valores por defecto del proyecto pero YA NO ESTÁN BLOQUEADOS.
+    # Quien calibra decide, y calibrar contra el testigo es el método.
     for pid in ("di.ventana", "di.umbral", "di.peso_pp", "di.peso_dp",
                 "di.peso_fp", "di.peso_rp"):
-        try:
-            gw.set_param(pid, 99)
-            check(False, f"{pid} tenía que rechazar la escritura")
-        except gw.ParametroProtegido:
-            check(True, f"{pid} sigue protegido")
+        check(pid in gw.param_registry, f"{pid} está en el perfil")
+        check(not gw.param_registry[pid].get("protegido"),
+              f"{pid} es editable, no bloqueado")
+    gw.set_param("di.umbral", 2.0)
+    check(gw.get_param("di.umbral") == 2.0, "y se puede escribir de verdad")
+    gw.seed_param_registry(force=True)
+    check(gw.get_param("di.umbral") == 1.5,
+          "con 1,5 como valor por defecto al que se puede volver")
+    # El mecanismo de protección sigue existiendo para la faena que lo necesite.
+    check(hasattr(gw, "ParametroProtegido"),
+          "el mecanismo de protección sigue disponible aunque hoy no se use")
 
 
 def los_estratos_de_pp_son_de_la_faena():
@@ -238,7 +246,9 @@ def el_perfil_se_edita_desde_el_programa():
         for i in _ids(cuerpo):
             if isinstance(i, dict) and i.get("type") == "perfil-param":
                 vistos.add(i.get("param"))
-    editables = {p["id"] for p in gw.param_registry.values() if not p.get("protegido")}
+    # Los OCULTOS no tienen campo a propósito: la faena los fija una vez.
+    editables = {p["id"] for p in gw.param_registry.values()
+                 if not p.get("protegido") and p["id"] not in gw.PARAMS_OCULTOS}
     faltan = editables - vistos
     check(not faltan,
           "recorriendo los menús, todo parámetro editable tiene su campo: "
@@ -248,9 +258,9 @@ def el_perfil_se_edita_desde_el_programa():
     for sec in ("Sondajes", "Modelo de bloques", "Calibración DI↔RQD",
                 "Modelo de aprendizaje"):
         check(sec in txt, f"la sección «{sec}» aparece agrupada", txt[:200])
-    check("Fernández" in txt,
-          "y los seis protegidos se muestran con su procedencia, en vez de "
-          "esconderse", txt[:200])
+    check("Peso de PP" in txt and "Umbral del DI" in txt,
+          "los seis del DI se muestran y son editables: ya no están bloqueados",
+          txt[:200])
     # Cada sección cae en exactamente un menú, y ningún menú queda vacío.
     secs = {p["seccion"] for p in gw.param_registry.values()}
     cubiertas = {s for lista in gw.MENUS_PERFIL.values() for s in lista}
@@ -264,9 +274,14 @@ def los_basicos_son_los_que_una_faena_toca():
     section("Universalidad — lo que varía poco no compite por la atención")
     basicos = {p["id"] for p in gw.param_registry.values() if p.get("basico")}
     check(basicos, "hay un subconjunto declarado de parámetros básicos", len(basicos))
-    for pid in ("repo.ruta", "sondajes.radio_cercania", "rqd.radio_max_m",
-                "bloques.tamano_m", "ucs.estadistica_ml"):
+    for pid in ("repo.ruta", "rqd.radio_max_m", "bloques.tamano_m",
+                "ucs.estadistica_ml", "top.largo_min_pozo_m"):
         check(pid in basicos, f"{pid} es básico: una faena nueva lo toca sí o sí")
+    # El radio de cercanía de sondajes pasó a AVANZADO: la decisión que sí
+    # importa es el radio con que se asigna el RQD, y preguntar las dos era
+    # preguntar dos veces por lo mismo.
+    check("sondajes.radio_cercania" not in basicos,
+          "y el radio de cercanía quedó en avanzados")
     for pid in ("ml.semilla", "calibracion.semilla", "discriminador.var_factor"):
         if pid in gw.param_registry:
             check(pid not in basicos,
@@ -280,26 +295,23 @@ def los_basicos_son_los_que_una_faena_toca():
         check(n_b <= n_a, f"menú {menu}: básico ({n_b}) ≤ avanzado ({n_a})")
 
 
-def la_pantalla_no_puede_pisar_la_convencion():
-    section("Universalidad — desde la pantalla tampoco se escribe la convención")
-    cuerpo = gw._perfil_panel_body()
-    ids = [i for i in _ids(cuerpo)
-           if isinstance(i, dict) and i.get("type") == "perfil-param"]
-    protegidos = {p["id"] for p in gw.param_registry.values() if p.get("protegido")}
-    colados = [i for i in ids if i.get("param") in protegidos]
-    check(not colados,
-          "ningún parámetro de convención tiene campo escribible", colados)
-    # Y si alguien manda el valor igual, el escritor lo rechaza.
+def la_pantalla_escribe_lo_que_promete():
+    """
+    Antes esta prueba verificaba que la pantalla NO pudiera escribir los seis
+    parámetros del DI. El autor pidió liberarlos: traen los valores por defecto
+    del proyecto, pero quien calibra decide. Lo que sigue valiendo es que un
+    valor RECHAZADO se declare y no bloquee a los demás.
+    """
+    section("Universalidad — la pantalla escribe, y lo rechazado se declara")
     rep = gw.aplicar_perfil_desde_panel({"di.umbral": 2.5,
                                          "sondajes.radio_cercania": 30.0})
-    check(gw.get_param("di.umbral") == 1.5, "el umbral del DI no se mueve",
+    check(gw.get_param("di.umbral") == 2.5,
+          "el umbral del DI ahora SÍ se puede mover desde la pantalla",
           gw.get_param("di.umbral"))
     check(gw.get_param("sondajes.radio_cercania") == 30.0,
-          "y el resto sí se aplica: un valor rechazado no bloquea los demás")
-    check(any("di.umbral" in str(r) for r in rep.get("rechazados", [])),
-          "el rechazo se declara, no se ignora", rep.get("rechazados"))
+          "y el resto también", gw.get_param("sondajes.radio_cercania"))
+    check(rep["n_aplicados"] == 2, "los dos se aplican", rep["n_aplicados"])
     gw.seed_param_registry(force=True)
-
 
 def un_valor_fuera_de_rango_se_declara():
     section("Universalidad — un valor fuera de rango se rechaza con su motivo")
@@ -343,7 +355,7 @@ ALL_TESTS = [
     ningun_parametro_queda_congelado_en_un_default,
     el_perfil_se_edita_desde_el_programa,
     los_basicos_son_los_que_una_faena_toca,
-    la_pantalla_no_puede_pisar_la_convencion,
+    la_pantalla_escribe_lo_que_promete,
     un_valor_fuera_de_rango_se_declara,
     el_perfil_completo_viaja,
 ]
