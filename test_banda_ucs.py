@@ -340,42 +340,53 @@ if __name__ == "__main__":
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-def las_lavas_se_separan_por_cota():
+def las_lavas_se_separan_a_mano_en_el_vocabulario():
     """
-    Pucobre entrega las Lavas Superiores y las Inferiores con el MISMO nombre
-    de malla. La regla del geólogo —inferiores bajo ~320, superiores sobre
-    ~400— es lo único que las separa, y es un criterio trazable, no un filtro
-    estadístico: por eso se aplica donde la convención prohíbe los percentiles.
-
-    Sobre los datos reales, las Lavas de PCS_1043 caen 35 m sobre el techo de
-    las inferiores. Heredaban Kpcli=180 MPa sin que nada lo respaldara: 39.927
-    puntos con un ancla prestada.
+    Hubo una regla automática por cota (inferiores bajo ~320, superiores
+    sobre ~400) que el autor pidió sacar: diferenciar cuál malla "Lavas" es
+    cuál es CONOCIMIENTO de quien configura la faena, no un umbral que el
+    programa adivine. Pucobre entrega ambas con el mismo nombre de malla
+    ("Lavas", "LAVA"), así que la resolución por NOMBRE del vocabulario no
+    las distingue — pero la asignación es POR CAPA (`set_layer_attributes`),
+    así que dos mallas con el mismo nombre pueden llevar litologías distintas
+    igual, elegidas a mano.
     """
-    section("Lavas — las separa la cota, y la franja intermedia no se adivina")
+    section("Lavas — ya no hay regla automática; se separan a mano, por capa")
     reset()
-    casos = [("PCC_1541", 300, 329, "Kpcli"),
-             ("PCC_0042", 268, 311, "Kpcli"),
-             ("PCS_1059", 420, 460, "Kpcls"),
-             ("PCS_1043", 341, 363, None)]
-    for nom, zmin, zmax, esperado in casos:
-        r = gw.clasificar_lavas_por_cota(zmin, zmax)
-        check(r["atributo"] == esperado,
-              f"{nom} (cota {zmin}-{zmax}) → {esperado or 'sin atributo'}",
-              (r["atributo"], r["motivo"]))
-    r = gw.clasificar_lavas_por_cota(341, 363)
-    check("inventar" in r["motivo"] or "intermedia" in r["motivo"],
-          "y la franja intermedia explica POR QUÉ no se asigna", r["motivo"])
-    # Kpcls existe y NO tiene ancla: sus puntos no entrenan, y eso se declara.
+    check(not hasattr(gw, "clasificar_lavas_por_cota"),
+          "la función que decidía por cota ya no existe")
+    check(not hasattr(gw, "aplicar_regla_lavas"),
+          "ni la que la aplicaba al cargar una malla")
+    for pid in ("lito.cota_lavas_inferiores", "lito.cota_lavas_superiores"):
+        check(pid not in gw.param_registry,
+              f"«{pid}» ya no es un parámetro del perfil: era un umbral, no "
+              "conocimiento de faena", pid)
+    check("Litología" not in {s for lista in gw.MENUS_PERFIL.values() for s in lista},
+          "y la sección «Litología» del perfil, que solo tenía esas dos "
+          "cotas, se fue con ellas")
+
+    # Dos mallas con el MISMO nombre —el caso real de Pucobre— pueden llevar
+    # litologías distintas: la asignación es por objeto Layer, no por texto.
+    tris = np.zeros((1, 3, 3))
+    lay_inf = gw.Layer(name="CAS_A:Lavas", kind="litologia", triangles=tris,
+                       bbox_min=np.array([0., 0., 300.]),
+                       bbox_max=np.array([1., 1., 301.]))
+    lay_sup = gw.Layer(name="CAS_A:Lavas_2", kind="litologia", triangles=tris,
+                       bbox_min=np.array([0., 0., 420.]),
+                       bbox_max=np.array([1., 1., 421.]))
+    gw.set_layer_attributes(lay_inf, {"litologia": "Kpcli"})
+    gw.set_layer_attributes(lay_sup, {"litologia": "Kpcls"})
+    check(lay_inf.atributos["litologia"] == "Kpcli"
+          and lay_sup.atributos["litologia"] == "Kpcls",
+          "dos mallas de nombre parecido quedan con la litología que cada "
+          "una recibió a mano, sin que una le gane a la otra")
+
+    # Kpcls existe y NO tiene ancla: sus puntos no entrenan, y eso se declara
+    # igual, sin depender de ninguna regla de cota.
     kpcls = gw.attr_registry["Kpcls"]
     check(kpcls.ucs_ancla() is None,
           "Lavas Superiores sin ancla: no hay ensayo", kpcls.ucs_ancla())
     check(not kpcls.entrenable()[0], "así que no entrena", kpcls.entrenable())
-    # Las cotas son del perfil, no del código.
-    for pid in ("lito.cota_lavas_inferiores", "lito.cota_lavas_superiores"):
-        check(pid in gw.param_registry, f"{pid} es configurable")
-    gw.set_param("lito.cota_lavas_inferiores", 360.0)
-    check(gw.clasificar_lavas_por_cota(341, 363)["atributo"] == "Kpcli",
-          "y moverlas cambia la clasificación: otra mina, otros niveles")
     gw.seed_param_registry(force=True)
 
 
@@ -401,7 +412,7 @@ def bht_feldk_es_litologia_propia():
           "una estructura no necesita banda de UCS para no bloquear")
 
 
-ALL_TESTS += [las_lavas_se_separan_por_cota, bht_feldk_es_litologia_propia]
+ALL_TESTS += [las_lavas_se_separan_a_mano_en_el_vocabulario, bht_feldk_es_litologia_propia]
 
 def la_no_monotonia_se_declara():
     """
@@ -470,6 +481,33 @@ def la_no_monotonia_se_declara():
               and rel["mae_interpolacion"] < rel["mae_mpa"],
               "el error de interpolación es menor que el total, como debe ser",
               (rel.get("mae_interpolacion"), rel["mae_mpa"]))
+
+    # (B) La no monotonía se ve donde se corre el modelo, no solo en un
+    # reporte aparte que hay que saber que existe: el autor corrió Banda y
+    # Relación desde el Paso 4 y dijo que "no tenía ningún sentido" — sin
+    # haber sabido de _monotonia_se_ucs() ni de compare_ucs_methods().
+    for fn, nombre in ((gw.predict_ucs_banda, "banda"),
+                       (gw.predict_ucs_relacion, "relación")):
+        rep = fn()
+        check(rep["status"] == "ok", f"el modelo por {nombre} corre",
+              rep.get("motivo"))
+        tarjeta = gw._render_ml_result_no_bosque(rep)
+
+        def _textos(x, out=None):
+            out = [] if out is None else out
+            if isinstance(x, str): out.append(x); return out
+            if isinstance(x, (list, tuple)):
+                for y in x: _textos(y, out)
+                return out
+            for a in ("children",):
+                v = getattr(x, a, None)
+                if v is not None: _textos(v, out)
+            return out
+        txt = " ".join(_textos(tarjeta))
+        check("Brecha_mixta" in txt and "NO sube con la SE" in txt,
+              f"la tarjeta de resultado de {nombre} en el Paso 4 trae la "
+              "advertencia de no monotonía, sin que haga falta ir a buscarla "
+              "a otro reporte", txt[-300:])
 
 
 ALL_TESTS.append(la_no_monotonia_se_declara)

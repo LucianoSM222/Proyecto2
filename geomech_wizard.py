@@ -12,7 +12,7 @@
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
-import os, sys, json, time, base64, tempfile, re, warnings, threading, traceback, math, hashlib, collections, io
+import os, sys, json, time, base64, tempfile, re, warnings, threading, traceback, math, hashlib, collections, io, unicodedata
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Tuple, Set
@@ -254,6 +254,13 @@ SINGLE_SPECIMEN_PI_FACTOR = 1.35
 # y el intervalo debe reflejar eso en vez de fingir la misma precisión.
 HIGH_CV_THRESHOLD = 0.35
 HIGH_CV_PI_FACTOR = 1.30
+# Caída relativa mínima, respecto del promedio de sus dos vecinos inmediatos,
+# para que una medición se marque "golpe de barra": el primer golpe de
+# percusión tras agregar una barra nueva al varillaje, una única muestra que
+# cae y se recupera en la siguiente. No es un corte por percentil —prohibido
+# por convención—, es un patrón LOCAL y trazable: una muestra hundida entre
+# dos vecinas parecidas entre sí.
+PP_GOLPE_BARRA_CAIDA_REL = 0.30
 
 
 # (A.1) Roles del vocabulario. Enumeración EXTENSIBLE: agregar un rol nuevo es
@@ -1445,58 +1452,16 @@ def layer_role_ids(layer) -> Dict[str, str]:
     return {kind: layer.name}
 
 
-# ─── Lavas Superiores vs Inferiores: las separa la COTA, no el nombre ────────
-# Pucobre entrega ambas con el mismo nombre de malla ("Lavas", "LAVA"), pero
-# son unidades distintas: las INFERIORES bajo la cota ~320 y las SUPERIORES
-# sobre la ~400. Es la regla del geólogo, no un criterio estadístico, y por eso
-# se aplica —a diferencia de un filtro por percentiles, que la convención del
-# proyecto prohíbe—. Las dos cotas viven en el perfil de faena: otra mina tiene
-# otros niveles, o ninguno.
-#
-# Una malla que cae ENTRE las dos cotas no se asigna a ninguna: se declara
-# indeterminada y queda sin ancla, en vez de heredar en silencio la de las
-# inferiores. Sobre los datos reales eso es exactamente PCS_1043, cuyas Lavas
-# están 35 m sobre el techo de las inferiores.
-
-def clasificar_lavas_por_cota(z_min: float, z_max: float) -> Dict:
-    """
-    ¿Superiores, Inferiores o indeterminadas? Decide por la cota de la malla.
-
-    Devuelve {"atributo": id|None, "motivo": str}. Nunca adivina: si la malla
-    cruza la franja intermedia, el atributo es None y el motivo lo explica.
-    """
-    techo_inf = float(get_param("lito.cota_lavas_inferiores"))
-    piso_sup = float(get_param("lito.cota_lavas_superiores"))
-    z_med = (float(z_min) + float(z_max)) / 2.0
-    if z_med < techo_inf:
-        return {"atributo": "Kpcli",
-                "motivo": (f"cota media {z_med:.0f} m, bajo el techo de las "
-                           f"Lavas Inferiores ({techo_inf:.0f} m)")}
-    if z_med > piso_sup:
-        return {"atributo": "Kpcls",
-                "motivo": (f"cota media {z_med:.0f} m, sobre el piso de las "
-                           f"Lavas Superiores ({piso_sup:.0f} m)")}
-    return {"atributo": None,
-            "motivo": (f"cota media {z_med:.0f} m, en la franja intermedia "
-                       f"({techo_inf:.0f}-{piso_sup:.0f} m) donde no aplica "
-                       "ninguna de las dos reglas. Queda SIN atributo y sin "
-                       "ancla: asignarla a las Inferiores sería inventar.")}
-
-
-def aplicar_regla_lavas(layer) -> Optional[str]:
-    """
-    Reasigna una malla de Lavas según su cota. Devuelve el motivo declarado, o
-    None si la malla no es de Lavas y no hay nada que decidir.
-    """
-    aid = (getattr(layer, "atributos", None) or {}).get("litologia")
-    if aid not in ("Kpcli", "Kpcls"):
-        return None
-    r = clasificar_lavas_por_cota(layer.bbox_min[2], layer.bbox_max[2])
-    if r["atributo"] is None:
-        layer.atributos.pop("litologia", None)
-    else:
-        layer.atributos["litologia"] = r["atributo"]
-    return f'"{layer.name}": {r["atributo"] or "SIN ATRIBUTO"} — {r["motivo"]}.'
+# ─── Lavas Superiores vs Inferiores: SE SEPARAN A MANO, en el vocabulario ───
+# Hubo una regla automática por cota (inferiores bajo ~320, superiores sobre
+# ~400) que el autor pidió sacar: diferenciar cuál malla "Lavas" es cuál es
+# CONOCIMIENTO de quien configura la faena, no un umbral que el programa
+# adivine. Pucobre entrega ambas con el mismo nombre de malla ("Lavas",
+# "LAVA"), así que la resolución POR NOMBRE del vocabulario no las distingue
+# — pero el árbol de capas ya asigna el atributo de litología POR CAPA
+# (`set_layer_attributes`, `on_layer_meta`), no por nombre: cada malla, aunque
+# comparta nombre con otra, tiene su propio selector de litología en la
+# pantalla, y ahí es donde se elige Kpcli o Kpcls a mano.
 
 
 def set_layer_attributes(layer, atributos: Dict[str, str]):
@@ -2525,6 +2490,15 @@ def run_ml_task(ucs_min, ucs_max, modelo: str = "banda"):
                          + (f" (interpolación {vara['mae_interpolacion']:g} MPa, "
                             f"{vara['n_extrapolados']} pliegue(s) extrapolan)"
                             if vara.get("n_extrapolados") else ""))
+            # Si la SE no ordena las litologías por UCS, este método —una
+            # curva o una banda ajustadas contra esas anclas— no puede dar un
+            # resultado que "tenga sentido": no es un defecto del ajuste, es
+            # que la premisa (más SE → más UCS) no se cumple en estos datos.
+            # Se declara ACÁ, donde se ve el resultado, no solo en un reporte
+            # aparte que hay que saber que existe.
+            mono = _monotonia_se_ucs()
+            if mono.get("status") == "ok" and not mono.get("monotona"):
+                task_log(f"⚠ {mono['lectura']}")
             wz_state['step4']['model_trained'] = True
             task_log(f"✅ Listo. {rep['n_puntos']:,} punto(s) con UCS."
                      .replace(",", "."), "Completado", 100)
@@ -3493,7 +3467,56 @@ def apply_inicio_filter(cut_m):
             if p.largo < cut_m: p.entrenable = False
             elif not p.norm_excluded: p.entrenable = True
 
+def detectar_golpes_de_barra(pts_ordenados, caida_rel):
+    """Índices de `pts_ordenados` (un pozo, YA ordenado por `largo`) que son
+    golpe de barra: una muestra hundida frente al promedio de sus dos
+    vecinas, con esas dos vecinas parecidas ENTRE SÍ (la firma de "cae y se
+    recupera"). Una caída sostenida de varias muestras —o una vecina que no
+    se recupera— no cumple la segunda condición y no se marca: es la roca,
+    no el varillaje."""
+    idxs = []
+    n = len(pts_ordenados)
+    for i in range(1, n-1):
+        a, b, c = pts_ordenados[i-1].pp, pts_ordenados[i].pp, pts_ordenados[i+1].pp
+        if a is None or b is None or c is None: continue
+        if not (np.isfinite(a) and np.isfinite(b) and np.isfinite(c)): continue
+        vecino_prom = (a+c)/2.0
+        if vecino_prom <= 0: continue
+        cae = b <= vecino_prom*(1.0-caida_rel)
+        vecinas_parecidas = min(a,c) >= vecino_prom*(1.0-0.5*caida_rel)
+        if cae and vecinas_parecidas:
+            idxs.append(i)
+    return idxs
+
+def add_golpe_barra_filter():
+    """Filtro de limpieza para el golpe de barra (P7): recorre cada pozo
+    ordenado por profundidad y marca no-entrenable la muestra única que cae y
+    se recupera, con `detectar_golpes_de_barra`. Se registra en
+    `clean_filters` como cualquier otro filtro —mismo listado, mismo botón de
+    quitar, mismo `recompute_filters()`— aunque no sea un corte de rango:
+    `lo`/`hi` quedan en None y la pantalla lo muestra sin rango."""
+    caida_rel = PP_GOLPE_BARRA_CAIDA_REL
+    all_pts = list(all_points())
+    before = sum(1 for p in all_pts if p.entrenable)
+    marcados = 0
+    for well in wells.values():
+        pts = sorted(well.points, key=lambda p: p.largo)
+        for i in detectar_golpes_de_barra(pts, caida_rel):
+            if pts[i].entrenable:
+                pts[i].entrenable = False
+                pts[i].norm_excluded = True
+                marcados += 1
+    after = sum(1 for p in all_points() if p.entrenable)
+    filt = {"varName":"pp","method":"golpe_barra",
+            "label":f"Golpe de barra (caída ≥{caida_rel*100:.0f}% y recuperación)",
+            "lo":None,"hi":None,
+            "removed":before-after,"after":after,"total":len(all_pts)}
+    clean_filters.append(filt)
+    return filt
+
 def add_norm_filter(var_name, method):
+    if method == "golpe_barra":
+        return add_golpe_barra_filter()
     all_pts = list(all_points())
     vals = np.array([getattr(p, var_name) for p in all_pts
                      if getattr(p, var_name, None) is not None and
@@ -3846,13 +3869,32 @@ class ParametroProtegido(Exception):
 MENUS_PERFIL = {
     "Datos": ["Repositorio", "Carga de datos", "Carga de pozos", "Sondajes"],
     "Geometría": ["Validación de mallas", "Plano del abanico", "Modelo de bloques"],
+    # "Litología" salió: sus dos cotas de las Lavas eran una regla automática
+    # que el autor pidió sacar — diferenciar las dos Lavas es conocimiento de
+    # quien configura, y se aplica a mano por capa en el vocabulario, no por
+    # un umbral de cota en el perfil.
     "Roca": ["UCS", "Etiqueta de UCS", "Límites físicos", "Percusión (PP)",
-             "Presión de percusión", "Litología"],
+             "Presión de percusión"],
     # "DI" salió: sus seis parámetros ya no viven en el perfil —se escribían
     # acá y no los usaba nadie— y el menú los muestra en vivo, solo lectura.
     "Fracturamiento": ["RQD", "Calibración DI↔RQD", "Discriminador"],
     "Modelo": ["Modelo de aprendizaje", "Visor 3D", "Recomendación de seteos"],
 }
+
+# Slug ASCII de cada menú, para el id de sus pestañas (componente
+# pattern-matching): "Geometría" es la única clave con tilde, y un id de
+# componente no tiene por qué llevar una. _MENU_POR_SLUG es la vuelta.
+_MENU_SLUG = {m: unicodedata.normalize("NFKD", m).encode("ascii", "ignore").decode("ascii")
+             for m in MENUS_PERFIL}
+_MENU_POR_SLUG = {slug: m for m, slug in _MENU_SLUG.items()}
+
+
+def _menu_slug(m: str) -> str:
+    return _MENU_SLUG.get(m, m)
+
+
+def _menu_desde_slug(slug: str) -> Optional[str]:
+    return _MENU_POR_SLUG.get(slug)
 
 # Parámetros que una faena nueva SÍ toca. El resto son afinaciones que se
 # mueven poco: viven detrás del interruptor de avanzados para que la pantalla
@@ -4207,18 +4249,26 @@ def seed_param_registry(force: bool = False):
                "diagnóstico de coherencia SE↔UCS sigue reportando por estrato "
                "pase lo que pase: ahí estratificar es la prueba, no el método.",
                opciones=["directo", "por_estrato"]),
-        # ── Litología ────────────────────────────────────────────────────────
-        _param("lito.cota_lavas_inferiores", "Litología",
-               "Techo de las Lavas Inferiores", 320.0, "float", "m.s.n.m.",
-               "Regla del geólogo de Pucobre: las Lavas Inferiores están bajo "
-               "esta cota. Pucobre entrega ambas lavas con el mismo nombre de "
-               "malla, así que la cota es lo único que las separa. Otra mina "
-               "tiene otros niveles, o ninguno.", -2000.0, 6000.0),
-        _param("lito.cota_lavas_superiores", "Litología",
-               "Piso de las Lavas Superiores", 400.0, "float", "m.s.n.m.",
-               "Las Lavas Superiores están sobre esta cota. Una malla que cae "
-               "ENTRE las dos queda sin atributo y sin ancla: heredar la de las "
-               "inferiores sería inventar.", -2000.0, 6000.0),
+        # Golpe de barra: al añadir una barra nueva al varillaje, el primer
+        # golpe de percusión es UNA sola medición fuera de régimen —cae y se
+        # recupera en la muestra siguiente—. El ML la ve como dispersión real
+        # y la propaga a la confianza y al reporte de avance. No es un corte
+        # por percentil: es un patrón local (una muestra hundida entre dos
+        # vecinas parecidas entre sí), disponible como filtro en el Paso 2.
+        _param("pp.golpe_barra_caida_rel", "Percusión (PP)",
+               "Caída mínima para marcar golpe de barra",
+               0.30, "float", "fracción",
+               "Fracción de caída de PP respecto del promedio de sus dos "
+               "vecinos inmediatos para marcar la muestra central como golpe "
+               "de barra (excluida del entrenamiento, no borrada). Solo se "
+               "aplica a una muestra AISLADA cuyos dos vecinos son parecidos "
+               "entre sí —la firma de una recuperación—, nunca a una caída "
+               "sostenida de varias muestras, que es información real de la "
+               "roca.", 0.05, 0.95, "PP_GOLPE_BARRA_CAIDA_REL"),
+        # lito.cota_lavas_inferiores / lito.cota_lavas_superiores SALIERON: la
+        # regla automática por cota que decidía Kpcli vs Kpcls se reemplazó
+        # por asignación manual, por capa, en el vocabulario — es
+        # conocimiento de quien configura, no un umbral de faena.
         _param("ucs.min_fisico", "Límites físicos", "UCS mínima", 0.0, "float",
                "MPa", "Límite físico declarado en CLAUDE.md. Sin truncamiento "
                "silencioso jamás.", 0.0, 1000.0),
@@ -7816,6 +7866,13 @@ def _muestras_bloques(fuente: str = "ucs_matriz") -> Dict:
     `fuente` elige entre "ucs_matriz" (UCS de la matriz rocosa, sin
     discontinuidades) y "ucs_ml" (predicción cruda). Los puntos sin UCS no se
     rellenan con nada: quedan fuera y se cuentan.
+
+    Caer de "ucs_matriz" a "ucs_ml" cuando el primero falta MEZCLARÍA las dos
+    variables que el selector existe para separar: la matriz sin
+    discontinuidades y la predicción cruda, que en un tramo de DI alto puede
+    venir hundida por la propia discontinuidad. Es distinta magnitud de la
+    misma unidad de medida y no se completa una con la otra en silencio —el
+    punto queda fuera y se cuenta en `sin_ucs`, igual que un punto sin UCS.
     """
     P, ucs, di, lito, pozo, caseron = [], [], [], [], [], []
     sin_ucs = 0
@@ -7823,7 +7880,6 @@ def _muestras_bloques(fuente: str = "ucs_matriz") -> Dict:
         for p in w.points:
             if not p.entrenable: continue
             v = getattr(p, fuente, None)
-            if v is None: v = p.ucs_ml
             if v is None or not np.isfinite(v):
                 sin_ucs += 1; continue
             if v < UCS_CONFIG["physical_min"] or v > UCS_CONFIG["physical_max"]:
@@ -8831,6 +8887,8 @@ def _monotonia_se_ucs() -> Dict:
     creciente = all(a <= b for a, b in zip(ucs_ordenada, ucs_ordenada[1:]))
     rompen = [pares[i][0] for i in range(1, len(pares))
               if pares[i][2] < pares[i - 1][2]]
+    verbo = "invierte" if len(rompen) == 1 else "invierten"
+    tiene = "tiene" if len(rompen) == 1 else "tienen"
     return {"status": "ok", "monotona": creciente,
             "orden_por_se": [(l, round(s, 1), u) for l, s, u in pares],
             "rompen": rompen,
@@ -8838,7 +8896,7 @@ def _monotonia_se_ucs() -> Dict:
                         "directa se sostiene."
                         if creciente else
                         f"La UCS NO sube con la SE. {', '.join(rompen)} "
-                        "invierte(n) la relación: tiene(n) más SE y menos UCS. "
+                        f"{verbo} la relación: {tiene} más SE y menos UCS. "
                         "Ninguna curva monótona pasa por todos los puntos, así "
                         "que el error de la relación directa está acotado por "
                         "abajo por esa inversión, no por el ajuste.")}
@@ -9981,6 +10039,16 @@ def save_project(path):
                 "well_name": w.well_name, "plan_id": w.plan_id, "hole_id": w.hole_id,
                 "collar": w.collar, "final_pt": w.final_pt, "origin": w.origin,
                 "dq_candidates": w.dq_candidates,
+                # (P9) Faltaban los dos: sin "caseron" un proyecto guardado y
+                # recargado perdía la agrupación de LOCO-CV declarada en el
+                # pozo (caseron_de_pozo() cae de vuelta a derivarla del
+                # plan_id, una heurística, no lo que se guardó) y el árbol de
+                # capas/viewport 3D —que lee w.caseron directo, sin ese
+                # respaldo— mandaba TODOS los pozos a "sin caserón asignado".
+                # Sin "asignacion_err_pct" una posición aproximada volvía a
+                # verse igual que una exacta tras recargar.
+                "caseron": w.caseron,
+                "asignacion_err_pct": w.asignacion_err_pct,
                 "points": [_point_to_dict(p) for p in w.points],
             }
             for wn, w in wells.items()
@@ -10059,6 +10127,8 @@ def load_project(path):
         w = Well(well_name=wd["well_name"], plan_id=wd["plan_id"], hole_id=wd["hole_id"],
                  points=pts, collar=wd.get("collar"), final_pt=wd.get("final_pt"),
                  origin=wd.get("origin","loaded"), dq_candidates=wd.get("dq_candidates",[]))
+        w.caseron = wd.get("caseron")
+        w.asignacion_err_pct = wd.get("asignacion_err_pct")
         wells[wn] = w
 
     # Restaurar capas (meta + triángulos)
@@ -10530,13 +10600,35 @@ def _submuestrear_indices(n: int, max_n: int) -> List[int]:
 def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
     """
     hidden_layers / hidden_wells: sets de nombres a OCULTAR (checkbox destildado).
-    Se usa 'visible' (no se omite la traza) para que Plotly conserve el índice
-    de trazas estable entre renders y uirevision funcione correctamente.
+
+    Un pozo o malla oculto SIGUE en la figura, en visible="legendonly": el
+    número y el orden de trazas no puede cambiar entre renders porque
+    `uirevision="viewport"` (fijo, en render_viewport) depende de eso para
+    conservar la cámara y el estado de interacción del usuario entre un
+    refresco del servidor y el siguiente — omitir la traza directamente
+    reordenaría los índices cada vez que cambia qué está tildado, y eso es
+    justo lo que uirevision no tolera bien.
+
+    (P9) Lo que SÍ se recorta a nada es el CONTENIDO de esa traza cuando está
+    oculta: un pozo apagado manda un solo punto (su collar) en vez de su serie
+    completa, y una malla apagada manda un único triángulo en vez de sus hasta
+    MAX_VIZ_TRIANGULOS_POR_MALLA. Antes mandaban el contenido COMPLETO igual
+    de apagados que encendidos —"legendonly" solo le decía a Plotly que no lo
+    dibujara, no que no lo armara ni que no lo mandara— así que apagar 400 de
+    463 pozos no ahorraba un byte de JSON ni un milisegundo de armado en
+    Python. Medido sobre PCS_1043+PCC_0042 reales (601.324 puntos, 463 pozos,
+    17 mallas): con un caserón completo apagado (338 de 463 pozos) el armado
+    bajó de 1,13 s a 0,60 s y el JSON de 18,3 a 13,3 MB — sin perder la
+    posibilidad de reactivarlo con el mismo checkbox de siempre.
 
     (E.4) La VISTA se recorta a MAX_VIZ_POINTS puntos en total, repartidos
-    proporcionalmente entre pozos (uno con más metraje aporta más puntos a
-    la vista). well.points NUNCA se toca — el recorte vive solo en las
-    listas locales que arma esta función para dibujar.
+    proporcionalmente entre los pozos VISIBLES (uno con más metraje aporta más
+    puntos a la vista). well.points NUNCA se toca — el recorte vive solo en
+    las listas locales que arma esta función para dibujar. El presupuesto se
+    reparte contra el total de los pozos visibles, no contra el total del
+    proyecto: con la mitad de los pozos ocultos, la mitad visible ahora
+    aprovecha el presupuesto completo en vez de seguir repartido como si los
+    ocultos también compitieran por puntos que nunca iban a dibujarse.
 
     (B5) Las MALLAS DXF también se recortan, y esto es lo que de verdad
     bloqueaba el visor: medido sobre PCS_1043 real, un solo caserón trae
@@ -10553,13 +10645,14 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
     hidden_wells  = hidden_wells or set()
     fig = go.Figure()
     n_total_pts = sum(len(w.points) for w in wells.values())
+    wells_visibles = {wn: w for wn, w in wells.items() if wn not in hidden_wells}
+    n_visible_pts = sum(len(w.points) for w in wells_visibles.values())
     # Los collares son marcadores y cuentan contra el tope. Antes iban en una
     # traza de un punto cada uno y el conteo los pasaba por alto: la vista
     # dibujaba MAX_VIZ_POINTS + un marcador por pozo. Ahora se reservan.
-    n_collares = sum(1 for wn, w in wells.items()
-                     if w.points and wn not in hidden_wells)
+    n_collares = sum(1 for w in wells_visibles.values() if w.points)
     presupuesto = max(1, MAX_VIZ_POINTS - n_collares)
-    ratio = (presupuesto / n_total_pts) if n_total_pts > presupuesto else 1.0
+    ratio = (presupuesto / n_visible_pts) if n_visible_pts > presupuesto else 1.0
     label, cmin, cmax, categorical, _ayuda = COLOR_FIELDS.get(
         color_by, ("", 0, 1, False, ""))
     cat_map = {}
@@ -10573,11 +10666,16 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
         tris_full = layer.triangles
         n_tris_full = len(tris_full)
         if n_tris_full == 0: continue
-        # (B5) Recorte SOLO de la vista, idéntico en técnica al de los puntos
-        # MWD: índices espaciados, nunca al azar, para no perder la forma
-        # general del sólido. layer.triangles NUNCA se toca.
-        if n_tris_full > MAX_VIZ_TRIANGULOS_POR_MALLA:
-            idx_tris = _submuestrear_indices(n_tris_full, MAX_VIZ_TRIANGULOS_POR_MALLA)
+        oculta = name in hidden_layers
+        # (B5/P9) Recorte SOLO de la vista, idéntico en técnica al de los
+        # puntos MWD: índices espaciados, nunca al azar, para no perder la
+        # forma general del sólido. layer.triangles NUNCA se toca. Una malla
+        # OCULTA no necesita forma: manda un único triángulo de relleno para
+        # que la traza exista (mismo índice, mismo nombre en la leyenda) sin
+        # pagar sus miles de triángulos mientras nadie la ve.
+        tope = 1 if oculta else MAX_VIZ_TRIANGULOS_POR_MALLA
+        if n_tris_full > tope:
+            idx_tris = _submuestrear_indices(n_tris_full, tope)
             tris = tris_full[idx_tris]
         else:
             tris = tris_full
@@ -10601,7 +10699,7 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
         fig.add_trace(go.Mesh3d(x=x,y=y,z=z,i=ii,j=jj,k=kk,opacity=0.28,name=name,color=col,
             hoverinfo="name+text",text=f"{name} | {ucs_txt}",
             showlegend=True,legendgroup="dxf",
-            visible=True if name not in hidden_layers else "legendonly"))
+            visible=True if not oculta else "legendonly"))
     n_dibujados = 0
     # Los collares iban en UNA TRAZA POR POZO para dibujar un punto negro cada
     # uno: con 600 pozos, 600 objetos Scatter3d para 600 puntos. Se juntan en
@@ -10614,8 +10712,14 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
     for wn, well in wells.items():
         pts_full = well.points
         if not pts_full: continue
-        # (E.4) Recorte SOLO de la vista: `pts` local, well.points intacto.
-        if ratio < 1.0:
+        oculto = wn in hidden_wells
+        # (E.4/P9) Recorte SOLO de la vista: `pts` local, well.points intacto.
+        # Un pozo OCULTO no necesita su serie: manda solo el collar, para que
+        # la traza exista (mismo índice, mismo nombre) sin pagar sus puntos
+        # mientras nadie los ve.
+        if oculto:
+            pts = [pts_full[0]]
+        elif ratio < 1.0:
             # int() (piso), no round(): redondear cada pozo hacia arriba de
             # forma independiente puede acumular y superar MAX_VIZ_POINTS
             # entre varios pozos aunque cada uno individualmente respete la
@@ -10625,11 +10729,12 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
             pts = [pts_full[i] for i in idx_view]
         else:
             pts = pts_full
-        n_dibujados += len(pts)
-        is_visible = True if wn not in hidden_wells else "legendonly"
+        is_visible = True if not oculto else "legendonly"
         xs = [p.este for p in pts]; ys = [p.norte for p in pts]; zs = [p.cota for p in pts]
         # collar — se acumula y se dibuja todo junto al final del bucle.
+        # Un pozo oculto no aporta el suyo: no se dibuja, no debe contarse.
         if is_visible is True:
+            n_dibujados += len(pts)
             col_x.append(xs[0]); col_y.append(ys[0]); col_z.append(zs[0])
             col_hover.append(
                 f"Collar {wn}: E={xs[0]:.1f} N={ys[0]:.1f} Z={zs[0]:.1f}")
@@ -10717,10 +10822,14 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
             showlegend=False, legendgroup="sondajes", visible=True))
         n_sondajes_dibujados += 1
 
-    # (E.4) El conteo real se declara SIEMPRE, se haya recortado la vista o
+    # (E.4/P9) El conteo real se declara SIEMPRE, se haya recortado la vista o
     # no — omitirlo cuando "por suerte" cabe entero sería el mismo default
     # silencioso que el proyecto prohíbe en todo lo demás: el usuario nunca
-    # debería tener que adivinar si está viendo el 100% o una muestra.
+    # debería tener que adivinar si está viendo el 100% o una muestra. Y ahora
+    # esto también es cierto frente a los checkboxes: n_dibujados cuenta solo
+    # los pozos VISIBLES, así que si hay pozos ocultos el título ya lo refleja
+    # contra el total del proyecto, no contra un total artificialmente
+    # recortado a lo visible.
     titulo_conteo = (f"Mostrando {n_dibujados:,} de {n_total_pts:,} puntos MWD"
                      .replace(",", "."))
     if n_sondajes_dibujados:
@@ -12362,26 +12471,51 @@ def _perfil_panel_body(menu: str = None, avanzados: bool = False):
     visibles = [p for p in de_este
                 if avanzados or p.get("basico") or p.get("protegido")]
 
+    # TODAS las secciones del menú, tengan o no un campo básico. Antes una
+    # sección sin ningún campo básico —«Validación de mallas», «Plano del
+    # abanico»— desaparecía ENTERA con avanzados apagado: ni el título
+    # quedaba. Quien entraba a Geometría buscando esos campos no encontraba
+    # ni un rastro de que existían, y eso se leyó como "el cuadro está roto".
+    secciones_todas: Dict[str, list] = {}
+    for p in de_este:
+        secciones_todas.setdefault(p["seccion"], []).append(p)
     secciones: Dict[str, list] = {}
     for p in visibles:
         secciones.setdefault(p["seccion"], []).append(p)
     bloques = []
-    for sec in sorted(secciones):
-        ps = sorted(secciones[sec], key=lambda x: x["etiqueta"])
+    for sec in sorted(secciones_todas):
+        ps = sorted(secciones.get(sec, []), key=lambda x: x["etiqueta"])
+        ocultos = len(secciones_todas[sec]) - len(ps)
+        contenido = [_perfil_protegido(p) if p.get("protegido") else _perfil_campo(p)
+                    for p in ps]
+        if not ps:
+            contenido = [html.Small(
+                f"{ocultos} parámetro(s) detrás de «avanzados» — activa el "
+                "interruptor de más abajo para verlos.",
+                style={"fontSize": "10px", "color": "#888"})]
+        elif ocultos:
+            contenido.append(html.Small(
+                f"+{ocultos} más detrás de «avanzados».",
+                style={"fontSize": "9px", "color": "#666"}))
         bloques.append(html.Div([
             html.Div(sec, style={"fontSize": "11px", "fontWeight": "bold",
                                  "color": "#3B8BD4", "marginTop": "10px",
                                  "borderBottom": "1px solid #333",
                                  "paddingBottom": "3px", "marginBottom": "6px"}),
-            *[_perfil_protegido(p) if p.get("protegido") else _perfil_campo(p)
-              for p in ps],
+            *contenido,
         ]))
     if not bloques:
         bloques = [html.Small("Nada que ajustar acá sin avanzados.",
                               style={"fontSize": "10px", "color": "#888"})]
 
+    # El id de cada pestaña es un slug SIN TILDE: son datos de un componente
+    # pattern-matching, y "Geometría" era la única clave de MENUS_PERFIL con
+    # una letra acentuada. No hay evidencia de que Dash la maneje mal, pero
+    # tampoco hay motivo para arriesgarlo en el único id que la lleva — el
+    # resto de las claves ya eran ASCII puro.
     pestanas = dbc.Row([
-        dbc.Col(dbc.Button(m, id={"type": "perfil-menu", "index": m}, size="sm",
+        dbc.Col(dbc.Button(m, id={"type": "perfil-menu", "index": _menu_slug(m)},
+                           size="sm",
                            color="primary" if m == menu else "secondary",
                            outline=m != menu, style={"fontSize": "10px"}),
                 width="auto")
@@ -12844,7 +12978,9 @@ def on_perfil_menu(clicks, avanzados):
         # aplicaba se perdía, y parecía que el perfil "no guardaba".
         if not _disparo_real():
             return no_update
-        _perfil_menu_activo["menu"] = trig["index"]
+        nombre = _menu_desde_slug(trig["index"])
+        if nombre is not None:
+            _perfil_menu_activo["menu"] = nombre
     _perfil_menu_activo["avanzados"] = bool(avanzados)
     return _perfil_panel_body(_perfil_menu_activo["menu"],
                               _perfil_menu_activo["avanzados"])
@@ -14378,6 +14514,16 @@ def _render_ml_result_no_bosque(result: Dict):
             style={"color": "#aaa", "lineHeight": "1.5"})
         ], color="dark", style={"fontSize": "10px", "padding": "6px 10px", "marginTop": "6px"}),
     ])
+    # Si la SE no ordena las litologías por su UCS de laboratorio, ni una
+    # curva ni una banda ajustadas contra esas anclas pueden dar un resultado
+    # coherente — no es el ajuste, es la premisa. Se declara ACÁ, donde se ve
+    # el resultado del modelo, no solo en un reporte aparte.
+    mono = _monotonia_se_ucs()
+    if mono.get("status") == "ok" and not mono.get("monotona"):
+        badges.children.append(dbc.Alert(
+            html.Small(mono["lectura"], style={"lineHeight": "1.5"}),
+            color="warning", style={"fontSize": "10px", "padding": "6px 10px",
+                                    "marginTop": "6px"}))
     return badges
 
 
@@ -14965,7 +15111,8 @@ def _step2():
         html.Small("fijo", style={"color":"#555","fontSize":"9px","padding":"0 7px"}),
     ], className="d-flex align-items-center py-1 px-2")]
     filter_items += [dbc.ListGroupItem([
-        html.Small(f"{f['varName']} — {f['label']} [{f['lo']}, {f['hi']}]",
+        html.Small(f"{f['varName']} — {f['label']}" +
+                   (f" [{f['lo']}, {f['hi']}]" if f['lo'] is not None else ""),
                    style={"fontSize":"11px","marginRight":"6px","flex":1}),
         dbc.Badge(f"-{f['removed']} pts", color="danger", className="me-2"),
         dbc.Button("✕", id={"type":"rm-filt","index":i}, size="sm", color="danger",
@@ -14996,11 +15143,19 @@ def _step2():
                 dbc.Col(dcc.Dropdown(id="sel-norm-method", value="outliers_iqr", clearable=False,
                     options=[{"label":l,"value":v} for l,v in
                              [("IQR 1.5×","outliers_iqr"),("Q25-Q75","q25_q75"),
-                              ("5%-95%","whisker5"),("Q10-Q90","quantile_reg")]],
+                              ("5%-95%","whisker5"),("Q10-Q90","quantile_reg"),
+                              ("Golpe de barra (1 medición)","golpe_barra")]],
                     style={"fontSize":"11px"}), width=5),
                 dbc.Col(dbc.Button("+", id="btn-add-filt", size="sm",
                                     color="secondary", outline=True), width=3),
             ], className="g-1 mb-2"),
+            html.Small("«Golpe de barra» ignora la variable de arriba: siempre "
+                       "revisa PP, muestra por muestra dentro de cada pozo — "
+                       "marca la medición única que cae y se recupera al "
+                       "agregar una barra nueva, según "
+                       "«Caída mínima para marcar golpe de barra» del perfil.",
+                       style={"color":"#888","fontSize":"10px","display":"block",
+                              "marginBottom":"6px"}),
             dbc.ListGroup(filter_items, flush=True),
         ]),
         dbc.Row([

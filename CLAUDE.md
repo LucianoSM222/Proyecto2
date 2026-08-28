@@ -52,11 +52,15 @@ Aportadas por el autor y confirmadas contra el registro:
 | `Ka_caliza` / `Ka_arenisca` | 60 / 120 | — | sin puntos MWD hoy |
 | `Dique` (DQ1) | — | — | rol estructura |
 
-LAS DOS LAVAS SE SEPARAN POR COTA, no por nombre: Pucobre entrega ambas como
-«Lavas»/«LAVA». Inferiores bajo `lito.cota_lavas_inferiores` (320), superiores
-sobre `lito.cota_lavas_superiores` (400). Una malla en la franja intermedia
-queda SIN atributo y sin ancla — es el caso de PCS_1043, 35 m sobre el techo de
-las inferiores. Es la regla del geólogo, criterio trazable, no un percentil.
+LAS DOS LAVAS SE SEPARAN A MANO, por capa, en el vocabulario — no por una
+regla automática. Pucobre entrega ambas como «Lavas»/«LAVA», con el mismo
+nombre de malla, así que la resolución por nombre no las distingue; hubo una
+regla por cota (inferiores bajo 320, superiores sobre 400) y el autor pidió
+sacarla: diferenciar cuál malla es cuál es conocimiento de quien configura la
+faena, no un umbral que el programa adivine. `set_layer_attributes` asigna la
+litología POR CAPA (por objeto `Layer`, no por texto del nombre), así que dos
+mallas de nombre idéntico pueden llevar litologías distintas igual, elegidas
+a mano en el árbol de vocabulario.
 
 ## Sitio activo
 
@@ -143,6 +147,12 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | C6 | Visor 3D: mallas recortadas a la vista, 52→13 MB por caserón | — | ✅ |
 | C7 | KeyError en r2_train con el modelo Banda | — | ✅ |
 | C8 | Aviso de tronadura dinámico · fuente de UCS · exportar DXF con atributos | — | ✅ |
+| D1 | Pestaña Geometría del perfil: slug ASCII · secciones ya no se esfuman | — | ✅ |
+| D2 | Lavas: cota automática fuera, asignación manual por capa en vocabulario | — | ✅ |
+| D3 | Golpe de barra: filtro local (cae y se recupera) para el Paso 2 | — | ✅ |
+| D4 | Tronadura por UCS de matriz: deja de mezclarse con la UCS cruda | — | ✅ |
+| D5 | Visor: ocultar en el árbol aliviana la traza, no solo la esconde | — | ✅ |
+| D6 | Persistencia: caserón y error de asignación viajan en el .gwz | — | ✅ |
 
 Hallazgos que condicionan la interpretación, no defectos pendientes:
 
