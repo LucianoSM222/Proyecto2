@@ -1,6 +1,6 @@
 """
 cargar_caserones.py — Carga masiva de los caserones reales de Punta del Cobre
-desde test_data/reales/, preparatoria de la sesión 5 (entrenamiento + LOCO-CV).
+desde test_data/reales/, preparatoria de la sesión 5 (entrenamiento + LOOCV).
 
 No es parte de la aplicación: es el guion de ingesta que toma los ~1.900 XML
 IREDES y las mallas DXF entregadas por Pucobre, los cruza, y deja el estado
@@ -200,7 +200,7 @@ def cargar_xml(caseron: str, dq_paths: List[str], mw_paths: List[str],
     antes = set(gw.wells)
     counts = gw.match_and_place_wells(dq_results, mw_by_hole)
     # El caserón se DECLARA en el pozo, no se deja derivar del nombre: es la
-    # agrupación de LOCO-CV, y una litología cruza caserones pero un pozo no.
+    # agrupación de LOOCV, y una litología cruza caserones pero un pozo no.
     for wn in set(gw.wells) - antes:
         gw.wells[wn].caseron = caseron
     return {"dq": dq_rep, "n_pozos_mw": len(mw_by_hole), "n_puntos": n_pts,

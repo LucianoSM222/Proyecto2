@@ -15,7 +15,7 @@ Cubre las nueve tareas, cada una independiente:
   3.7  Pesos y umbral del DI configurables desde la interfaz, con reset
   3.8  Emboquillado declarado en la lista de filtros
   3.9  Armazón del reporte de justificación de variables (correlación,
-       importancia, comparación de modelos, ablación de cota con LOCO-CV)
+       importancia, comparación de modelos, ablación de cota con LOOCV)
 
 Usa fixtures sintéticas — estas correcciones son de comportamiento general,
 no dependen de los datos reales de un sitio en particular.
@@ -415,7 +415,7 @@ def t39_reporte_justificacion_variables():
     body_vacio = gw._varjust_panel_body()
     check(body_vacio is not None, "el panel se arma igual sin datos (armazón, no bloqueo)")
 
-    # 3.9b — datos suficientes, un solo caserón: LOCO-CV declara por qué no corre.
+    # 3.9b — datos suficientes, un solo caserón: LOOCV declara por qué no corre.
     add_domain("Kfa", 120.0)
     gw.wells["P0"] = FakeWell([mk_point(i, "Kfa", pp=float(i % 7)) for i in range(30)])
     gw.wells["P1"] = FakeWell([mk_point(30+i, "Kfa", pp=float(i % 5)) for i in range(30)])
@@ -425,7 +425,7 @@ def t39_reporte_justificacion_variables():
     try:
         abl_un_caseron = gw.cota_ablation_report()
         check(abl_un_caseron["status"] == "sin_caserones",
-              "con un solo caserón (o ninguno resoluble), LOCO-CV se declara pendiente",
+              "con un solo caserón (o ninguno resoluble), LOOCV se declara pendiente",
               abl_un_caseron.get("motivo"))
         check("segundo caserón" in abl_un_caseron["motivo"],
               "el motivo explica exactamente qué falta para poder correr la ablación")
@@ -461,9 +461,9 @@ def t39_reporte_justificacion_variables():
           "con 3 caserones agrupados POR POZO, la ablación sí corre", abl.get("motivo"))
     if abl["status"] == "ok":
         check(sorted(abl["caserones"]) == ["CAS_A", "CAS_B", "CAS_C"],
-              "los tres caserones entran al LOCO-CV", abl["caserones"])
+              "los tres caserones entran al LOOCV", abl["caserones"])
         check(abl["loco_sin_cota"][0] is not None,
-              "LOCO-CV produce un R² real, no un motivo de omisión", abl["loco_sin_cota"])
+              "LOOCV produce un R² real, no un motivo de omisión", abl["loco_sin_cota"])
 
     # 3.9c — correlación: par colineal detectado y sugerencia razonable.
     reset()

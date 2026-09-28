@@ -12,7 +12,7 @@ plan_id, hole_id, collar, final_pt, origin, dq_candidates y points, pero no
 esos dos.
 
 El efecto es silencioso porque `caseron_de_pozo()` —la función que usa el
-entrenamiento y el LOCO-CV— tiene una heurística de respaldo que deriva el
+entrenamiento y el LOOCV— tiene una heurística de respaldo que deriva el
 caserón del `plan_id` cuando el pozo no lo trae declarado, así que el
 entrenamiento seguía viendo un caserón razonable y el defecto no saltaba ahí.
 Pero el árbol de capas y el visor 3D (`resolver_ocultos`, `_layer_tree`) leen

@@ -10,7 +10,7 @@ el MWD no está midiendo lo que creemos y ningún modelo lo arregla.
 
 Separa dos preguntas que hoy están confundidas en el R² del modelo:
   · ¿el MWD tiene señal física?        -> esto
-  · ¿las etiquetas alcanzan para entrenar? -> el R² y el LOCO-CV
+  · ¿las etiquetas alcanzan para entrenar? -> el R² y el LOOCV
 
 Y entrega un segundo resultado que valida el DI empíricamente: la MISMA
 comparación con y sin apartar las discontinuidades. Si apartarlas mejora la

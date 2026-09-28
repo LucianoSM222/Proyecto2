@@ -1714,7 +1714,7 @@ class Well:
     # nunca se confunda con una exacta.
     asignacion_err_pct: Optional[float] = None
     # Caserón al que pertenece el pozo. Es la agrupación correcta para
-    # LOCO-CV: una litología cruza varios caserones, un pozo no. Si queda
+    # LOOCV: una litología cruza varios caserones, un pozo no. Si queda
     # None, caseron_de_pozo() lo deriva del prefijo del plan_id.
     caseron: Optional[str] = None
 
@@ -5264,7 +5264,7 @@ def train_rf(ucs_min=None, ucs_max=None):
     # entrenaba con otra configuración (100 árboles, min_samples_* y
     # max_features por defecto), de modo que ni siquiera evaluaba el modelo de
     # producción. Los esquemas defendibles son los dos que quedan: GroupKFold
-    # por pozo (arriba) y LOCO-CV por caserón (ablacion_cota / LOCO). Las
+    # por pozo (arriba) y LOOCV por caserón (ablacion_cota / LOOCV). Las
     # claves "rmse_test" y "overfit" desaparecen de rf_stats a propósito: nadie
     # las leía, y publicarlas invitaba a citarlas.
     feat_imp = {}
@@ -5834,7 +5834,7 @@ def concordance_full_report(fuente: str = "sondajes", capas=None) -> Dict:
 # ║                                                                          ║
 # ║  Separa dos preguntas que el R² del modelo confunde:                    ║
 # ║    · ¿el MWD tiene señal física?           -> este reporte              ║
-# ║    · ¿las etiquetas alcanzan para entrenar? -> el R² y el LOCO-CV       ║
+# ║    · ¿las etiquetas alcanzan para entrenar? -> el R² y el LOOCV       ║
 # ║                                                                          ║
 # ║  EL CONFUNDIMIENTO A SORTEAR: SE_reacción = (PP + RP + AP) / ROP, y PP  ║
 # ║  es la ÚNICA variable que el operador manipula — y la sube en roca      ║
@@ -8502,7 +8502,7 @@ def export_concordance_csv(full: Optional[Dict] = None) -> str:
 # ║                                                                          ║
 # ║  Cada función calcula sobre los datos vigentes y devuelve un resultado  ║
 # ║  REAL en cuanto hay datos suficientes. Donde no los hay (p.ej. un solo  ║
-# ║  caserón etiquetado para LOCO-CV), lo declara explícitamente — nunca    ║
+# ║  caserón etiquetado para LOOCV), lo declara explícitamente — nunca    ║
 # ║  inventa un número. Es el mismo principio que el resto del proyecto:    ║
 # ║  nunca un default silencioso.                                          ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
@@ -8706,8 +8706,8 @@ def cota_ablation_report(ucs_min=None, ucs_max=None):
     producción (train_rf/ML_FEATURES), prohibido por diseño porque el
     yacimiento es estratiforme y la cota es casi un proxy directo de la
     litología. Compara desempeño DENTRO-DEL-CASERÓN (GroupKFold por pozo,
-    igual que siempre) contra LOCO-CV (dejando un caserón completo fuera),
-    con y sin cota. Si "con cota" degrada mucho más en LOCO-CV que "sin
+    igual que siempre) contra LOOCV (dejando un caserón completo fuera),
+    con y sin cota. Si "con cota" degrada mucho más en LOOCV que "sin
     cota", es evidencia de que el modelo memorizaba la posición en vez de
     leer el MWD — la razón de la prohibición.
 
@@ -8735,7 +8735,7 @@ def cota_ablation_report(ucs_min=None, ucs_max=None):
     caserones = sorted({c for c in caseron_map.values() if c})
     if len(caserones) < 2:
         return {"status": "sin_caserones",
-                "motivo": ("LOCO-CV (dejando-un-caserón-fuera) requiere ≥2 caserones "
+                "motivo": ("LOOCV (dejando-un-caserón-fuera) requiere ≥2 caserones "
                           f"distintos con puntos etiquetados; hay {len(caserones)}"
                           + (f" ({caserones[0]})" if caserones else "") + ". Esta ablación "
                           "queda lista para correr en cuanto haya un segundo caserón con "
@@ -9315,7 +9315,7 @@ def ml_seed_sensitivity(semillas=None, metodos=("ml",)) -> Dict:
                 "se arma el bosque. Repetir la misma vara cambiando SOLO eso "
                 "separa lo que aporta el método de lo que aporta la suerte."),
             "que_no_mide": (
-                "No mide si el modelo generaliza a otro caserón —eso es LOCO-CV— "
+                "No mide si el modelo generaliza a otro caserón —eso es LOOCV— "
                 "ni si las bandas de UCS asignadas son correctas. Una dispersión "
                 "chica con anclas equivocadas es un resultado estable y falso.")}
 
@@ -10269,7 +10269,7 @@ def save_project(path):
                 "collar": w.collar, "final_pt": w.final_pt, "origin": w.origin,
                 "dq_candidates": w.dq_candidates,
                 # (P9) Faltaban los dos: sin "caseron" un proyecto guardado y
-                # recargado perdía la agrupación de LOCO-CV declarada en el
+                # recargado perdía la agrupación de LOOCV declarada en el
                 # pozo (caseron_de_pozo() cae de vuelta a derivarla del
                 # plan_id, una heurística, no lo que se guardó) y el árbol de
                 # capas/viewport 3D —que lee w.caseron directo, sin ese
@@ -11258,12 +11258,12 @@ def _kit_ablacion_cota() -> str:
             filas.append({"clave": k, "valor": v, "detalle": ""})
     if rep.get("caserones"):
         filas.append({"clave": "caserones", "valor": ", ".join(rep["caserones"]),
-                      "detalle": "grupos de la LOCO-CV"})
+                      "detalle": "grupos de la LOOCV"})
     if not filas:
         raise KitSinDatos("La ablación no produjo métricas.")
     cab = "\n".join("# " + l for l in [
         "Ablación de cota: cuánto cambia el modelo al AGREGAR la cota como "
-        "predictora, dentro de un caserón y entre caserones (LOCO-CV).",
+        "predictora, dentro de un caserón y entre caserones (LOOCV).",
         "No es una configuración admisible: es la medición de por qué la "
         "prohibición existe. Si agregar cota sube el R² dentro del caserón y "
         "lo hunde entre caserones, la cota está memorizando el yacimiento.",
@@ -11842,7 +11842,7 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
     ], id="export-confirm-modal", is_open=False),
     # (P3-3.9) Reporte de justificación de variables: armazón que muestra
     # correlación/multicolinealidad, importancia, comparación de modelos
-    # con/sin SE y ablación de cota (LOCO-CV), con resultados en cuanto
+    # con/sin SE y ablación de cota (LOOCV), con resultados en cuanto
     # existan datos suficientes.
     dbc.Modal([
         dbc.ModalHeader(dbc.ModalTitle("Reporte de justificación de variables")),
@@ -16083,7 +16083,7 @@ def _varjust_panel_body():
         _cmp_table(rep["comparacion_sin_se"]),
     ]))
 
-    # 4) Ablación de cota (LOCO-CV) ---------------------------------------
+    # 4) Ablación de cota (LOOCV) ---------------------------------------
     abl = rep["ablacion_cota"]
     if abl["status"] != "ok":
         body = [_varjust_section_alert(abl)]
@@ -16095,7 +16095,7 @@ def _varjust_panel_body():
             html.Tr([html.Td(html.Small("Dentro del caserón (GroupKFold por pozo)", style={"fontSize":"10px"})),
                     html.Td(html.Small(_fmt(abl["dentro_caseron_sin_cota"]), style={"fontSize":"10px"})),
                     html.Td(html.Small(_fmt(abl["dentro_caseron_con_cota"]), style={"fontSize":"10px"}))]),
-            html.Tr([html.Td(html.Small("LOCO-CV (deja un caserón fuera)", style={"fontSize":"10px"})),
+            html.Tr([html.Td(html.Small("LOOCV (deja un caserón fuera)", style={"fontSize":"10px"})),
                     html.Td(html.Small(_fmt(abl["loco_sin_cota"]), style={"fontSize":"10px"})),
                     html.Td(html.Small(_fmt(abl["loco_con_cota"]), style={"fontSize":"10px"}))]),
         ]
@@ -16109,14 +16109,14 @@ def _varjust_panel_body():
         ]
         if abl["memorizacion_espacial_sospechosa"] is True:
             body.append(dbc.Alert(
-                "La cota mejora mucho más el desempeño dentro-del-caserón que en LOCO-CV: "
+                "La cota mejora mucho más el desempeño dentro-del-caserón que en LOOCV: "
                 "señal de que el modelo memoriza posición en vez de leer el MWD. Confirma "
                 "que ML_FEATURES nunca incluya coordenadas en producción.",
                 color="danger", className="mt-2", style={"fontSize":"11px"}))
         elif abl["memorizacion_espacial_sospechosa"] is False:
             body.append(html.Small("Sin señal de memorización espacial con este umbral.",
                                    style={"color":"#5cb85c","fontSize":"10px","display":"block","marginTop":"6px"}))
-    sections.append(card("4. Ablación de cota — prueba de memorización espacial (LOCO-CV)", body))
+    sections.append(card("4. Ablación de cota — prueba de memorización espacial (LOOCV)", body))
 
     return html.Div(sections)
 

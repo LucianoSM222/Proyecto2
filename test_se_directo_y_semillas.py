@@ -274,7 +274,7 @@ def el_veredicto_dice_si_el_orden_esta_decidido():
               "y el veredicto se sigue de los números, no de una impresión",
               (disp, d, rep["orden_decidido"]))
     check(rep.get("que_no_mide"),
-          "y declara qué NO mide: no es LOCO-CV, y una dispersión chica con "
+          "y declara qué NO mide: no es LOOCV, y una dispersión chica con "
           "anclas equivocadas es un resultado estable y falso",
           (rep.get("que_no_mide") or "")[:80])
 
