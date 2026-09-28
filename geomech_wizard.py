@@ -46,7 +46,28 @@ NS_DR = "http://www.iredes.org/xml/DrillRig"
 IR, DR = f"{{{NS_IR}}}", f"{{{NS_DR}}}"
 
 ML_FEATURES = ["vel","pp","pa","pd","pr","pf","se"]
-ML_LABELS   = ["ROP","PP","AP","DP","RP","FP","SE"]
+# Siglas IREDES, en el MISMO orden posicional que ML_FEATURES. `pf` rotulaba
+# "FP" —que en IREDES es el AVANCE— cuando `pf` guarda el BARRIDO: es FLP. Y
+# `se` es SE_r (energía específica RELATIVA, de presiones de reacción), no la
+# SE de Teale 1965. La sigla canónica de cada presión vive en CAL_SIGLAS.
+ML_LABELS   = ["ROP","PP","AP","DP","RP","FLP","SE_r"]
+# (B4.2) CONFIGURACIÓN ÚNICA DEL BOSQUE. Había cuatro RandomForestRegressor
+# con hiperparámetros distintos —comparador del Paso 4, holdout interno,
+# ablación de cota y mediana del diagnóstico SE↔UCS—, de modo que las cifras
+# publicadas no venían todas del mismo modelo: la ablación de cota corría con
+# 150 árboles y max_features por defecto. Ahora todos parten de acá y cualquier
+# excepción se documenta en el sitio donde se aparta.
+# max_features="sqrt" es DELIBERADO, no heredado: el default del REGRESOR es
+# 1.0 (todas las variables por corte); "sqrt" es el del clasificador. Con 7
+# variables son 2 candidatas por corte, que decorrelaciona los árboles a costa
+# de comprimir hacia la media.
+RF_PRODUCCION = dict(n_estimators=200, max_depth=8, min_samples_split=6,
+                     min_samples_leaf=3, max_features="sqrt",
+                     n_jobs=-1, random_state=42)
+# (B3.1) Importancia por permutación: semilla fija y muestra grande. Antes eran
+# 300 puntos sin semilla sobre 845.550, medidos contra el propio ajuste.
+PERM_IMP_SEMILLA = 42
+PERM_IMP_N_MUESTRAS = 20000
 # (P1-T1.6) Límites físicos de UCS: 0 a 450 MPa. El rango anterior (25–280)
 # no era físico sino operacional, y al estar cableado como `min`/`max` del
 # componente Dash provocaba que un valor superior devolviera None y la
@@ -255,12 +276,28 @@ SINGLE_SPECIMEN_PI_FACTOR = 1.35
 HIGH_CV_THRESHOLD = 0.35
 HIGH_CV_PI_FACTOR = 1.30
 # Caída relativa mínima, respecto del promedio de sus dos vecinos inmediatos,
-# para que una medición se marque "golpe de barra": el primer golpe de
-# percusión tras agregar una barra nueva al varillaje, una única muestra que
+# para que una medición se marque PERCUSIÓN DE EMPATE: el primer golpe de
+# percusión tras empatar una barra nueva al varillaje, una única muestra que
 # cae y se recupera en la siguiente. No es un corte por percentil —prohibido
 # por convención—, es un patrón LOCAL y trazable: una muestra hundida entre
 # dos vecinas parecidas entre sí.
-PP_GOLPE_BARRA_CAIDA_REL = 0.30
+# (B2.2) VALOR NO FIJADO AÚN: el código traía 0,30 y el documento decía 0,25.
+# La tabla de sensibilidad (scripts de diagnóstico) contrasta cada umbral
+# contra el teórico de uniones de barra; la decisión la toma el autor. Mientras
+# tanto se mantiene 0,30, que es lo que corrió en los resultados publicados.
+PP_PERCUSION_EMPATE_CAIDA_REL = 0.30
+# Largo de barra del Simba E70S: referencia geométrica para contrastar las
+# marcas contra los empates físicos del varillaje.
+LARGO_BARRA_M = 1.756
+# Ids de parámetro que cambiaron de nombre. Un perfil de faena exportado antes
+# del renombre se sigue pudiendo importar: el id viejo se traduce al nuevo.
+PARAM_ALIAS = {"pp.golpe_barra_caida_rel": "pp.percusion_empate_caida_rel"}
+# Distancia bajo la cual dos superaciones consecutivas del umbral se cuentan
+# como UN solo pico de DI. Estaba escrita como default de argumento en cuatro
+# funciones distintas (di_peaks, _count_fused_peaks, discriminate_peaks,
+# discriminate_all), de modo que el conteo de picos publicado dependía de cuál
+# se hubiera llamado. Una sola constante, visible.
+DI_PICOS_MIN_GAP_M = 0.5
 
 
 # (A.1) Roles del vocabulario. Enumeración EXTENSIBLE: agregar un rol nuevo es
@@ -1706,17 +1743,39 @@ parse_warnings: List[str] = []
 rf_model = None
 rf_stats: Optional[Dict] = None
 prelim_model = None
-# (P3-3.7) Valores de los valores por defecto (doi:10.1016/j.ijmst.2023.02.004),
-# predeterminados. Se exponen en la UI como editables, con botón de
-# restauración a estos mismos valores.
-DI_DEFAULTS = {"window": 14, "threshold": 1.5,
+# (P3-3.7) Valores por defecto del DI. Se exponen en la UI como editables, con
+# botón de restauración a estos mismos valores.
+#
+# QUÉ ES DE LA FUENTE Y QUÉ ES DE ESTE TRABAJO. Fernández et al. 2023
+# (doi:10.1016/j.ijmst.2023.02.004) aporta la FORMA del índice —suma ponderada
+# de varianzas móviles estandarizadas— y el método para hallar los pesos
+# (`movvar`, ajustado contra imagen de pozo). NO aporta estos números:
+#   · La fuente usa PERCUSIÓN, DÁMPER y ROTACIÓN, y en una variante agrega el
+#     AVANCE. DESCARTA el FLUJO de barrido porque en su macizo no hay fracturas
+#     abiertas que provoquen pérdida de presión, y descarta el AVANCE por el
+#     efecto del cilindro de dos pasos que controla el nivel para evitar
+#     desviaciones del tiro.
+#   · ESTE TRABAJO usa cuatro presiones: PP, RP, DP y FLP. Incluye el flujo de
+#     barrido —en MPC sí hay fracturas abiertas que lo hacen caer— y excluye el
+#     avance, coincidiendo con la fuente en ese punto por la misma razón del
+#     cilindro de dos pasos. Los pesos de abajo son una ADAPTACIÓN, no una cita.
+# Umbral 1,0: es el usado en todo el estudio. El DI está estandarizado POR
+# POZO, así que 1,0 significa "una desviación estándar sobre el comportamiento
+# propio del tiro". No está validado posicionalmente (ver docs): es una
+# convención declarada, con efecto medido sobre el tamaño del entrenamiento.
+DI_DEFAULTS = {"window": 14, "threshold": 1.0,
               "weights": {"pp": 0.35, "pr": 0.20, "pd": 0.25, "pf": 0.20}}
+# Espaciamiento nominal del registro MWD y largo de la ventana del DI en metros.
+# 14 muestras × 2 cm = 28 cm. Medido sobre los 4 caserones: el 62,6% de los
+# pasos es exactamente 2,0 cm y el 93,3% cae en 2,0-2,1 cm.
+MWD_PASO_NOMINAL_M = 0.02
+DI_VENTANA_CM = DI_DEFAULTS["window"] * MWD_PASO_NOMINAL_M * 100.0  # 28 cm
 # Sigla IREDES de cada presión, y el ORDEN en que se muestran. Vive acá arriba
 # —y no junto a CAL_ETIQUETAS, que se arma desde ella— porque la sigla se
 # escribía en dos lugares y volvieron a cruzarse: di_config_summary() rotulaba
 # `pf` como «FP», que en IREDES es el AVANCE. FLP es el BARRIDO, que es lo que
 # `pf` guarda. Una sola fuente para la sigla evita repetir ese cruce.
-CAL_SIGLAS = {"pp": "PP", "pd": "DP", "pf": "FLP", "pr": "RP", "pa": "FP/AP"}
+CAL_SIGLAS = {"pp": "PP", "pd": "DP", "pf": "FLP", "pr": "RP", "pa": "AP"}
 # Nombre de la variante de convención. Vive acá arriba, junto a DI_DEFAULTS,
 # porque `di_variante_activa` lo necesita antes de que se declare el registro
 # de variantes; el registro mismo se siembra más abajo (seed_di_variants).
@@ -3503,9 +3562,9 @@ def apply_inicio_filter(cut_m):
             if p.largo < cut_m: p.entrenable = False
             elif not p.norm_excluded: p.entrenable = True
 
-def detectar_golpes_de_barra(pts_ordenados, caida_rel):
+def detectar_percusion_de_empate(pts_ordenados, caida_rel):
     """Índices de `pts_ordenados` (un pozo, YA ordenado por `largo`) que son
-    golpe de barra: una muestra hundida frente al promedio de sus dos
+    percusión de empate: una muestra hundida frente al promedio de sus dos
     vecinas, con esas dos vecinas parecidas ENTRE SÍ (la firma de "cae y se
     recupera"). Una caída sostenida de varias muestras —o una vecina que no
     se recupera— no cumple la segunda condición y no se marca: es la roca,
@@ -3524,35 +3583,98 @@ def detectar_golpes_de_barra(pts_ordenados, caida_rel):
             idxs.append(i)
     return idxs
 
-def add_golpe_barra_filter():
-    """Filtro de limpieza para el golpe de barra (P7): recorre cada pozo
+def add_percusion_empate_filter():
+    """Filtro de limpieza para la percusión de empate (P7): recorre cada pozo
     ordenado por profundidad y marca no-entrenable la muestra única que cae y
-    se recupera, con `detectar_golpes_de_barra`. Se registra en
+    se recupera, con `detectar_percusion_de_empate`. Se registra en
     `clean_filters` como cualquier otro filtro —mismo listado, mismo botón de
     quitar, mismo `recompute_filters()`— aunque no sea un corte de rango:
     `lo`/`hi` quedan en None y la pantalla lo muestra sin rango."""
-    caida_rel = PP_GOLPE_BARRA_CAIDA_REL
+    caida_rel = PP_PERCUSION_EMPATE_CAIDA_REL
     all_pts = list(all_points())
     before = sum(1 for p in all_pts if p.entrenable)
     marcados = 0
     for well in wells.values():
         pts = sorted(well.points, key=lambda p: p.largo)
-        for i in detectar_golpes_de_barra(pts, caida_rel):
+        for i in detectar_percusion_de_empate(pts, caida_rel):
             if pts[i].entrenable:
                 pts[i].entrenable = False
                 pts[i].norm_excluded = True
                 marcados += 1
     after = sum(1 for p in all_points() if p.entrenable)
-    filt = {"varName":"pp","method":"golpe_barra",
-            "label":f"Golpe de barra (caída ≥{caida_rel*100:.0f}% y recuperación)",
+    filt = {"varName":"pp","method":"percusion_empate",
+            "label":f"Percusión de empate (caída ≥{caida_rel*100:.0f}% y recuperación)",
             "lo":None,"hi":None,
             "removed":before-after,"after":after,"total":len(all_pts)}
     clean_filters.append(filt)
     return filt
 
+# ─── (B5.5) FILTRO DE CONTINUIDAD — IMPLEMENTADO Y APAGADO ──────────────────
+# La ventana móvil del DI son 14 muestras CONSECUTIVAS POR ÍNDICE:
+# _moving_variance() convoluciona sobre el arreglo y nunca lee p.largo. El
+# algoritmo asume muestreo uniforme de 2 cm, supuesto que el dato cumple en el
+# 93,3% de los pasos pero no siempre. Medido sobre los cuatro caserones:
+#   · 0,625% de los valores de DI (6.145 de 982.420) sale de ventanas que
+#     abarcan al menos un salto de registro, comparando roca no vecina.
+#   · 268 m de los 17.161 m que la regla de Deere contabiliza como "roca sana"
+#     (1,564%) son saltos sin ninguna medición intermedia.
+# El interruptor queda VISIBLE y en False: activarlo cambia cifras ya
+# publicadas, y esa decisión es del autor, no de la herramienta.
+CONTINUIDAD_ACTIVA = False
+# Sobre este salto entre muestras consecutivas se considera que el registro se
+# interrumpió. 2,95 cm deja pasar el régimen nominal completo (2,0-2,2 cm
+# concentra el 97,4%) y marca lo que viene después.
+CONTINUIDAD_SALTO_MAX_M = 0.0295
+
+
+def puntos_tras_salto(well, salto_max_m: Optional[float] = None) -> List[int]:
+    """Índices de `well.points` cuya ventana de DI abarcaría un salto de
+    registro. No modifica nada: informa. Lo consume `add_continuidad_filter`."""
+    salto_max_m = CONTINUIDAD_SALTO_MAX_M if salto_max_m is None else salto_max_m
+    pts = well.points
+    n = len(pts)
+    if n < 2:
+        return []
+    half = di_config["window"] // 2
+    d = np.diff(np.array([p.largo for p in pts], dtype=np.float64))
+    malo = d > salto_max_m
+    if not malo.any():
+        return []
+    cum = np.concatenate(([0], np.cumsum(malo.astype(np.int64))))
+    return [i for i in range(n)
+            if cum[min(n - 1, i + half)] - cum[max(0, i - half)] > 0]
+
+
+def add_continuidad_filter(salto_max_m: Optional[float] = None) -> Dict:
+    """Marca no-entrenable todo punto cuya ventana de DI cruce un salto de
+    registro. NO se llama solo: hay que pedirlo, y `CONTINUIDAD_ACTIVA`
+    documenta que por defecto no corre."""
+    salto_max_m = CONTINUIDAD_SALTO_MAX_M if salto_max_m is None else salto_max_m
+    all_pts = list(all_points())
+    before = sum(1 for p in all_pts if p.entrenable)
+    for well in wells.values():
+        for i in puntos_tras_salto(well, salto_max_m):
+            p = well.points[i]
+            if p.entrenable:
+                p.entrenable = False
+                p.norm_excluded = True
+    after = sum(1 for p in all_points() if p.entrenable)
+    filt = {"varName": "largo", "method": "continuidad",
+            "label": f"Continuidad del registro (ventana que cruza un salto "
+                     f">{salto_max_m*100:.2f} cm)",
+            "lo": None, "hi": None,
+            "removed": before - after, "after": after, "total": len(all_pts)}
+    clean_filters.append(filt)
+    return filt
+
+
 def add_norm_filter(var_name, method):
-    if method == "golpe_barra":
-        return add_golpe_barra_filter()
+    # Alias hacia atrás: los proyectos guardados antes del renombre traen
+    # "golpe_barra" como método. Se acepta y se resuelve al nombre nuevo.
+    if method in ("percusion_empate", "golpe_barra"):
+        return add_percusion_empate_filter()
+    if method == "continuidad":
+        return add_continuidad_filter()
     all_pts = list(all_points())
     vals = np.array([getattr(p, var_name) for p in all_pts
                      if getattr(p, var_name, None) is not None and
@@ -4285,22 +4407,23 @@ def seed_param_registry(force: bool = False):
                "diagnóstico de coherencia SE↔UCS sigue reportando por estrato "
                "pase lo que pase: ahí estratificar es la prueba, no el método.",
                opciones=["directo", "por_estrato"]),
-        # Golpe de barra: al añadir una barra nueva al varillaje, el primer
+        # Percusión de empate: al empatar una barra nueva al varillaje, el primer
         # golpe de percusión es UNA sola medición fuera de régimen —cae y se
         # recupera en la muestra siguiente—. El ML la ve como dispersión real
         # y la propaga a la confianza y al reporte de avance. No es un corte
         # por percentil: es un patrón local (una muestra hundida entre dos
         # vecinas parecidas entre sí), disponible como filtro en el Paso 2.
-        _param("pp.golpe_barra_caida_rel", "Percusión (PP)",
-               "Caída mínima para marcar golpe de barra",
+        _param("pp.percusion_empate_caida_rel", "Percusión (PP)",
+               "Caída mínima para marcar percusión de empate",
                0.30, "float", "fracción",
                "Fracción de caída de PP respecto del promedio de sus dos "
-               "vecinos inmediatos para marcar la muestra central como golpe "
-               "de barra (excluida del entrenamiento, no borrada). Solo se "
+               "vecinos inmediatos para marcar la muestra central como "
+               "percusión de empate (excluida del entrenamiento, no borrada). "
+               "Solo se "
                "aplica a una muestra AISLADA cuyos dos vecinos son parecidos "
                "entre sí —la firma de una recuperación—, nunca a una caída "
                "sostenida de varias muestras, que es información real de la "
-               "roca.", 0.05, 0.95, "PP_GOLPE_BARRA_CAIDA_REL"),
+               "roca.", 0.05, 0.95, "PP_PERCUSION_EMPATE_CAIDA_REL"),
         # lito.cota_lavas_inferiores / lito.cota_lavas_superiores SALIERON: la
         # regla automática por cota que decidía Kpcli vs Kpcls se reemplazó
         # por asignación manual, por capa, en el vocabulario — es
@@ -4457,6 +4580,10 @@ def import_site_profile(texto: str) -> Dict:
                 "n_aplicados": 0, "rechazados": []}
     aplicados, rechazados = [], []
     for pid, valor in params.items():
+        # Alias hacia atrás: un perfil exportado antes del renombre trae el id
+        # viejo. Se traduce en silencio —el parámetro es el mismo, cambió su
+        # nombre— en vez de rechazarlo y dejar la faena con el default.
+        pid = PARAM_ALIAS.get(pid, pid)
         try:
             set_param(pid, valor)
             aplicados.append(pid)
@@ -4538,13 +4665,14 @@ def compute_di():
 # ─── SENSIBILIDAD DE LA VENTANA DEL DI (T7) ────────────────────────────────────
 DI_SENSITIVITY_WINDOWS = (10, 14, 20)
 
-def _count_fused_peaks(largos, di_arr, threshold, min_gap_m=0.5):
+def _count_fused_peaks(largos, di_arr, threshold, min_gap_m=None):
     """
     (T7c) Cuenta picos DI > threshold sobre un array (largos, di) arbitrario
     —no ligado a p.di ni a Well—, fusionando eventos consecutivos separados
     menos de min_gap_m en un solo pico (mismo criterio de agrupación que
     di_peaks, T4b, pero aplicado a un perfil recalculado en memoria).
     """
+    min_gap_m = DI_PICOS_MIN_GAP_M if min_gap_m is None else min_gap_m
     idx = [i for i in range(len(di_arr)) if di_arr[i] > threshold]
     if not idx: return 0
     count = 1
@@ -4666,7 +4794,7 @@ def well_mesh_crossings(well, layer):
             crossings.append((float(lc), cc))
     return crossings
 
-def di_peaks(well, min_gap_m=0.5, variante: Optional[str] = None):
+def di_peaks(well, min_gap_m=None, variante: Optional[str] = None):
     """
     (T4b) Profundidades de picos con DI > umbral. Picos separados menos de
     min_gap_m se fusionan en un solo evento (se toma el largo del máximo DI
@@ -4679,6 +4807,7 @@ def di_peaks(well, min_gap_m=0.5, variante: Optional[str] = None):
     respuesta es vacía —no se cae a la convención en silencio, que sería
     devolver los picos de otra configuración sin decirlo—.
     """
+    min_gap_m = DI_PICOS_MIN_GAP_M if min_gap_m is None else min_gap_m
     if variante is not None:
         v = di_variantes.get(variante)
         if v is None:
@@ -5101,8 +5230,7 @@ def train_rf(ucs_min=None, ucs_max=None):
     degenerado = _degenerate_training_check(y)
     if degenerado:
         return {"error": f"Entrenamiento degenerado: {degenerado}", "funnel": funnel}
-    model = RandomForestRegressor(n_estimators=200, max_depth=8, min_samples_split=6,
-                                    min_samples_leaf=3, max_features="sqrt", n_jobs=-1, random_state=42)
+    model = RandomForestRegressor(**RF_PRODUCCION)
     model.fit(X, y)
     rf_model = model
     y_pred = model.predict(X)
@@ -5129,18 +5257,55 @@ def train_rf(ucs_min=None, ucs_max=None):
             cv_warning = f"CV agrupada falló: {e}"
     else:
         cv_warning = (f"CV agrupada requiere ≥3 pozos con etiqueta (hay {n_grupos}).")
-    n_tr = int(len(X)*0.7); rmse_te = None
-    if n_tr >= 5 and len(X)-n_tr >= 3:
-        m2 = RandomForestRegressor(n_estimators=100, max_depth=8, n_jobs=-1, random_state=0)
-        m2.fit(X[:n_tr], y[:n_tr])
-        rmse_te = float(np.sqrt(np.mean((y[n_tr:] - m2.predict(X[n_tr:]))**2)))
+    # (B3.2) EL HOLDOUT 70/30 INTERNO SE ELIMINÓ. Cortaba `X[:n_tr]` por ORDEN
+    # DE ÍNDICE —que es orden de pozo, no aleatorio ni agrupado—, así que el
+    # "test" eran los últimos pozos del recorrido y el número no medía
+    # generalización sino qué pozos quedaron al final de la lista. Encima
+    # entrenaba con otra configuración (100 árboles, min_samples_* y
+    # max_features por defecto), de modo que ni siquiera evaluaba el modelo de
+    # producción. Los esquemas defendibles son los dos que quedan: GroupKFold
+    # por pozo (arriba) y LOCO-CV por caserón (ablacion_cota / LOCO). Las
+    # claves "rmse_test" y "overfit" desaparecen de rf_stats a propósito: nadie
+    # las leía, y publicarlas invitaba a citarlas.
     feat_imp = {}
     feat_imp_motivo = None
     try:
-        n_samp = min(len(X), 300)
-        idx = np.random.choice(len(X), n_samp, replace=False)
-        perm = permutation_importance(model, X[idx], y[idx], n_repeats=10, random_state=42, n_jobs=-1)
+        # (B3.1) Importancia por permutación REPRODUCIBLE y sobre datos NO
+        # VISTOS. Antes: np.random.choice sin semilla (resultado distinto en
+        # cada corrida) sobre 300 puntos de los 845.550 del ajuste, es decir
+        # midiendo el modelo contra su propio conjunto de entrenamiento.
+        # Ahora: generador con semilla fija, muestra de PERM_IMP_N_MUESTRAS, y
+        # las filas se toman de los pozos que la CV agrupada dejó fuera.
+        rng_perm = np.random.default_rng(PERM_IMP_SEMILLA)
+        pozos = np.unique(groups) if groups.size else np.array([])
+        mask_fuera = np.zeros(len(X), dtype=bool)
+        if pozos.size >= 3:
+            # Un 30% de los POZOS se aparta; se reajusta sin ellos y se mide
+            # sobre ellos. Agrupar por pozo evita que dos muestras a 2 cm
+            # queden repartidas entre ajuste y medición.
+            n_out = max(1, int(round(0.3 * pozos.size)))
+            fuera = set(rng_perm.choice(pozos, n_out, replace=False).tolist())
+            mask_fuera = np.array([g in fuera for g in groups])
+        if mask_fuera.sum() >= 50 and (~mask_fuera).sum() >= 50:
+            modelo_imp = RandomForestRegressor(**RF_PRODUCCION)
+            modelo_imp.fit(X[~mask_fuera], y[~mask_fuera])
+            Xe, ye = X[mask_fuera], y[mask_fuera]
+            base_vista = False
+        else:
+            # Sin pozos suficientes para apartar, se mide sobre el ajuste y se
+            # DECLARA: un número optimista rotulado es mejor que uno mudo.
+            modelo_imp, Xe, ye = model, X, y
+            base_vista = True
+        n_samp = min(len(Xe), PERM_IMP_N_MUESTRAS)
+        idx = rng_perm.choice(len(Xe), n_samp, replace=False)
+        perm = permutation_importance(modelo_imp, Xe[idx], ye[idx], n_repeats=10,
+                                      random_state=PERM_IMP_SEMILLA, n_jobs=-1)
         feat_imp = {ML_LABELS[i]: round(float(perm.importances_mean[i]), 4) for i in range(len(ML_FEATURES))}
+        feat_imp_motivo = (f"Permutación sobre {n_samp:,} puntos".replace(",", ".") +
+                           (" DEL PROPIO AJUSTE (sin pozos suficientes para apartar): "
+                            "optimista." if base_vista else
+                            f" de {len(np.unique(groups[mask_fuera]))} pozos NO vistos en el ajuste.") +
+                           f" Semilla {PERM_IMP_SEMILLA}, 10 repeticiones.")
     except Exception as e:
         # Sin esto, la importancia de variables quedaba vacía y la pantalla la
         # mostraba como "no hay nada que destacar" en vez de "no se pudo
@@ -5165,8 +5330,6 @@ def train_rf(ucs_min=None, ucs_max=None):
         "cv_r2_mean": round(float(cv_scores.mean()), 3) if cv_scores.size else None,
         "cv_r2_std": round(float(cv_scores.std()), 3) if cv_scores.size else None,
         "cv_n_grupos": n_grupos, "cv_warning": cv_warning,
-        "rmse_test": round(rmse_te, 1) if rmse_te else None,
-        "overfit": round(rmse_te-rmse_tr, 1) if rmse_te else None,
         "feat_imp": feat_imp,
         "feat_imp_motivo": feat_imp_motivo,
     }
@@ -6395,12 +6558,13 @@ def classify_peak_signature(firma: Optional[Dict]) -> Dict:
             "motivo": motivo, "score_fractura": sf, "score_contacto": sc}
 
 
-def discriminate_peaks(well, min_gap_m: float = 0.5) -> List[Dict]:
+def discriminate_peaks(well, min_gap_m: Optional[float] = None) -> List[Dict]:
     """
     (8.3) Clasifica cada pico DI del pozo. Reutiliza di_peaks() tal cual: los
     picos son los que el DI ya definió con la ventana y el umbral de la
     convención — esta función no los redefine.
     """
+    min_gap_m = DI_PICOS_MIN_GAP_M if min_gap_m is None else min_gap_m
     salida = []
     for largo, coord, di_max in di_peaks(well, min_gap_m=min_gap_m):
         firma = peak_signature(well, largo)
@@ -6589,7 +6753,7 @@ def marcar_picos_de_abanico(picos: List[Dict], eps_m: Optional[float] = None,
                          "discriminar exige cruzar varios abanicos.")}
 
 
-def discriminate_all(min_gap_m: float = 0.5,
+def discriminate_all(min_gap_m: Optional[float] = None,
                      eps_m: Optional[float] = None,
                      min_picos: Optional[int] = None,
                      planaridad_tiros: Optional[float] = None,
@@ -6597,6 +6761,7 @@ def discriminate_all(min_gap_m: float = 0.5,
                      tol_plano_m: Optional[float] = None,
                      factor_dispersion: Optional[float] = None) -> Dict:
     """(8.4) Discriminación sobre todos los pozos cargados, con sus conteos."""
+    min_gap_m = DI_PICOS_MIN_GAP_M if min_gap_m is None else min_gap_m
     picos, por_pozo = [], {}
     for wn, w in wells.items():
         pk = discriminate_peaks(w, min_gap_m=min_gap_m)
@@ -8424,9 +8589,7 @@ def _make_comparison_model(name):
     if name == "KNN":
         return make_pipeline(StandardScaler(), KNeighborsRegressor(n_neighbors=7))
     if name == "Random Forest":
-        return RandomForestRegressor(n_estimators=200, max_depth=8, min_samples_split=6,
-                                     min_samples_leaf=3, max_features="sqrt", n_jobs=-1,
-                                     random_state=42)
+        return RandomForestRegressor(**RF_PRODUCCION)
     if name == "HistGradientBoosting":
         return HistGradientBoostingRegressor(max_depth=6, random_state=42)
     if name == "MLP (control)":
@@ -8589,7 +8752,10 @@ def cota_ablation_report(ucs_min=None, ucs_max=None):
     idx_con_cota = list(range(len(ML_FEATURES) + 1))
 
     def _cv(X_sub, groups_arr, splitter):
-        model = RandomForestRegressor(n_estimators=150, max_depth=8, n_jobs=-1, random_state=42)
+        # (B4.1) Antes: 150 arboles y max_features por defecto (TODAS las
+        # variables por corte). Los R2 publicados de la ablacion no venian del
+        # modelo de produccion. Ahora si.
+        model = RandomForestRegressor(**RF_PRODUCCION)
         try:
             scores = cross_val_score(model, X_sub, y, cv=splitter, groups=groups_arr, scoring="r2")
             return round(float(scores.mean()), 3), None
@@ -8920,8 +9086,11 @@ def _ml_predice_litologia_fuera(fuera: str, entrena: Dict[str, float],
         X, y = X[idx], y[idx]
     if len(Xf) > COMPARISON_MAX_N:
         Xf = Xf[rng.choice(len(Xf), COMPARISON_MAX_N, replace=False)]
-    m = RandomForestRegressor(n_estimators=120, max_depth=10, n_jobs=-1,
-                              random_state=seed)
+    # EXCEPCION DOCUMENTADA (B4.2): misma configuracion de produccion salvo
+    # random_state, que aqui es el parametro barrido por ml_seed_sensitivity()
+    # para medir cuanto mueve la semilla al resultado. Fijarla anularia la
+    # prueba.
+    m = RandomForestRegressor(**{**RF_PRODUCCION, "random_state": seed})
     m.fit(X, y)
     return float(np.median(m.predict(Xf))), nota
 
@@ -15481,22 +15650,23 @@ def _step2():
             dbc.Row([
                 dbc.Col(dcc.Dropdown(id="sel-norm-var", value="se", clearable=False,
                     options=[{"label":l,"value":k} for k,l in
-                             {"se":"SE","vel":"ROP","pp":"PP","pa":"AP","pr":"RP","pd":"DP","pf":"FP"}.items()],
+                             {"se":"SE_r","vel":"ROP","pp":"PP","pa":"AP","pr":"RP","pd":"DP","pf":"FLP"}.items()],
                     style={"fontSize":"11px"}), width=4),
                 dbc.Col(dcc.Dropdown(id="sel-norm-method", value="outliers_iqr", clearable=False,
                     options=[{"label":l,"value":v} for l,v in
                              [("IQR 1.5×","outliers_iqr"),("Q25-Q75","q25_q75"),
                               ("5%-95%","whisker5"),("Q10-Q90","quantile_reg"),
-                              ("Golpe de barra (1 medición)","golpe_barra")]],
+                              ("Percusión de empate (1 medición)","percusion_empate"),
+                              ("Continuidad del registro (B5.5)","continuidad")]],
                     style={"fontSize":"11px"}), width=5),
                 dbc.Col(dbc.Button("+", id="btn-add-filt", size="sm",
                                     color="secondary", outline=True), width=3),
             ], className="g-1 mb-2"),
-            html.Small("«Golpe de barra» ignora la variable de arriba: siempre "
-                       "revisa PP, muestra por muestra dentro de cada pozo — "
-                       "marca la medición única que cae y se recupera al "
-                       "agregar una barra nueva, según "
-                       "«Caída mínima para marcar golpe de barra» del perfil.",
+            html.Small("«Percusión de empate» ignora la variable de arriba: "
+                       "siempre revisa PP, muestra por muestra dentro de cada "
+                       "pozo — marca la medición única que cae y se recupera al "
+                       "empatar una barra nueva, según "
+                       "«Caída mínima para marcar percusión de empate» del perfil.",
                        style={"color":"#888","fontSize":"10px","display":"block",
                               "marginBottom":"6px"}),
             dbc.ListGroup(filter_items, flush=True),
@@ -15714,7 +15884,8 @@ def _step3():
     return html.Div([
         html.H6("Paso 3 — Índice de discontinuidad (DI)", className="mb-3"),
         card("Fórmula", [
-            html.Small("DIᵢ = √(Σⱼ βⱼ · zⱼ(i)²), ventana 14 muestras ≈ 26 cm.", style={"color":"#ccc"}),
+            html.Small(f"DIᵢ = √(Σⱼ βⱼ · zⱼ(i)²), ventana {DI_DEFAULTS['window']} muestras "
+                       f"= {DI_VENTANA_CM:g} cm.", style={"color":"#ccc"}),
             html.Br(), html.Br(),
             html.Small("Pesos los valores por defecto: PP=0.35, DP=0.25, FP=0.20, RP=0.20",
                        style={"color":"#666"}),
