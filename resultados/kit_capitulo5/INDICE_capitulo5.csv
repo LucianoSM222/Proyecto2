@@ -1,0 +1,27 @@
+# Kit del Capítulo 5 — modelo geológico informado por MWD.
+# generados: 19 · no generados: 3 de 22 ítem(s) declarados.
+# Todo ítem declarado aparece acá, generado o no. Un ítem sin archivo trae su motivo: nada falta en silencio.
+# generado: 2026-08-26 06:31
+id,seccion,titulo,tipo,archivo,estado,tamano_MB,motivo,nota
+T5.1,5.1 Vocabulario y bandas de UCS,Registro de vocabulario y bandas de UCS,tabla,T5_1_registro_de_vocabulario_y_bandas_de_ucs.csv,ok,0.01,,
+T5.2,5.1 Vocabulario y bandas de UCS,Matriz de traslape de bandas de UCS (ambos criterios),tabla,T5_2_matriz_de_traslape_de_bandas_de_ucs_ambos_criterios.csv,ok,0.0,,
+T5.3,5.2 Datos y escala,Composición del conjunto de entrenamiento,tabla,T5_3_composicion_del_conjunto_de_entrenamiento.csv,ok,0.0,,
+F5.1,5.2 Datos y escala,Vista 3D de pozos y mallas,figura,F5_1_vista_3d_de_pozos_y_mallas.html,ok,73.33,,"PNG no disponible (ValueError); se exportó HTML interactivo. Instalar kaleido para obtener PNG. 73 MB: pesado para adjuntar. Un HTML interactivo embebe toda la geometría de las mallas. Instalar kaleido produce el PNG, mucho más liviano, sin cambiar la figura."
+F5.2,5.3 Índice de discontinuidad,Perfil de DI de un pozo representativo,figura,F5_2_perfil_de_di_de_un_pozo_representativo.html,ok,0.06,,PNG no disponible (ValueError); se exportó HTML interactivo. Instalar kaleido para obtener PNG.
+F5.3,5.3 Índice de discontinuidad,Sensibilidad de la ventana del DI,figura,F5_3_sensibilidad_de_la_ventana_del_di.html,ok,0.12,,PNG no disponible (ValueError); se exportó HTML interactivo. Instalar kaleido para obtener PNG.
+T5.4,5.3 Índice de discontinuidad,Validación independiente DI contra RQD de laboratorio,tabla,,sin_datos,,Ningún caserón reúne RQD de laboratorio del Excel geomecánico y puntos MWD suficientes: sin las dos fuentes no hay contraste independiente que hacer.,
+F5.4,5.3 Índice de discontinuidad,DI medio contra RQD por caserón,figura,,sin_datos,,Ningún caserón reúne RQD de laboratorio y puntos MWD suficientes para el contraste independiente.,
+T5.5,5.4 Modelo de caracterización,Matriz de correlación entre variables MWD,tabla,T5_5_matriz_de_correlacion_entre_variables_mwd.csv,ok,0.0,,
+T5.6,5.4 Modelo de caracterización,Comparación de los cinco modelos,tabla,T5_6_comparacion_de_los_cinco_modelos.csv,ok,0.0,,
+T5.7,5.4 Modelo de caracterización,Reporte de justificación de variables,tabla,T5_7_reporte_de_justificacion_de_variables.csv,ok,0.0,,
+T5.8,5.4 Modelo de caracterización,Ablación de cota dentro y entre caserones,tabla,T5_8_ablacion_de_cota_dentro_y_entre_caserones.csv,ok,0.0,,
+T5.9,5.4 Modelo de caracterización,Validación por pozo (GroupKFold),tabla,,sin_datos,,No se corrió la validación multipozo de posición de mallas: sin resultados no hay detalle por pozo.,
+T5.10,5.5 Concordancia con el modelo geológico,Diagnósticos de concordancia (C.3 a C.7),tabla,T5_10_diagnosticos_de_concordancia_c3_a_c7.csv,ok,0.0,,
+T5.11,5.6 Coherencia energía específica contra UCS,Coherencia SE contra UCS por dominio,tabla,T5_11_coherencia_se_contra_ucs_por_dominio.csv,ok,0.0,,
+T5.12,5.7 Respuesta a la presión de percusión,Curvas de respuesta a PP por dominio,tabla,T5_12_curvas_de_respuesta_a_pp_por_dominio.csv,ok,0.0,,
+T5.13,5.8 Discriminación de discontinuidades,Discriminador fractura contra contacto,tabla,T5_13_discriminador_fractura_contra_contacto.csv,ok,1.36,,
+T5.14,5.8 Discriminación de discontinuidades,RQD_MWD por pozo y por caserón,tabla,T5_14_rqd_mwd_por_pozo_y_por_caseron.csv,ok,0.04,,
+T5.15,5.9 Modelo de bloques,"Modelo de bloques: X, Y, Z, tamaño, UCS, DI, confianza",tabla,T5_15_modelo_de_bloques_x_y_z_tamano_ucs_di_confianza.csv,ok,1.43,,
+T5.16,5.9 Modelo de bloques,Resumen del modelo de bloques por banda ISRM,tabla,T5_16_resumen_del_modelo_de_bloques_por_banda_isrm.csv,ok,0.0,,
+T5.17,5.9 Modelo de bloques,Predicciones punto a punto,tabla,T5_17_predicciones_punto_a_punto.csv,ok,155.57,,"156 MB: pesado para adjuntar. Un HTML interactivo embebe toda la geometría de las mallas. Instalar kaleido produce el PNG, mucho más liviano, sin cambiar la figura."
+D5.1,5.9 Modelo de bloques,Modelo de bloques en DXF con capas por banda,dxf,D5_1_modelo_de_bloques_en_dxf_con_capas_por_banda.dxf,ok,19.06,,

@@ -1,0 +1,1351 @@
+{
+  "schema": "mwd-geomech-vocabulario",
+  "schema_version": 2,
+  "sitio_activo": "MPC",
+  "sitio": {
+    "id": "MPC",
+    "display": "Punta del Cobre",
+    "este_min": 376521.0,
+    "este_max": 377005.0,
+    "norte_min": 6958752.0,
+    "norte_max": 6959323.0,
+    "margen_m": 1500.0,
+    "notas": "Mina Pucobre (SLS de Cobre)"
+  },
+  "exportado": "2026-08-28 13:02:32",
+  "calidad_catalogo": {
+    "0": "sin_asignar",
+    "1": "ensayo_del_sitio",
+    "2": "componente_RMR_local",
+    "3": "analogo_del_distrito",
+    "4": "literatura"
+  },
+  "atributos": [
+    {
+      "id": "Kfa",
+      "nombre_oficial": "Albitófiro",
+      "sitio": "MPC",
+      "rol": "litologia",
+      "nivel": "unidad",
+      "padre": null,
+      "ucs_min": 274.3,
+      "ucs_max": 304.9,
+      "ucs_media": 289.6,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "Karzulovic & Asoc. 2005, Tabla 3.2 (roca intacta)",
+      "calidad": 1,
+      "fecha": "",
+      "mi": 11.3,
+      "modulo_E": 71.6,
+      "poisson": 0.15,
+      "densidad": 2.85,
+      "notas": "La tabla no reporta desviación estándar, lo que sugiere una única probeta. Se acepta el valor, pero el intervalo de predicción se ensancha (ucs_n desconocido → marcar). 66% del metraje de sondaje MPC (1.176,3 m). ⚠ COLISIÓN DE NOMENCLATURA Fk ↔ Kfa: 'Fk' es feldespato potásica, una ALTERACIÓN; 'Kfa' es Albitófiro, una LITOLOGÍA. Son strings casi invertidos con roles OPUESTOS. Esta colisión originó una confusión que estuvo a punto de invalidar el 66% del metraje de sondaje (los 1.176,3 m de Albitófiro). El campo `rol` existe en buena medida por este caso: distingue los dos aunque el texto se parezca, y hace que un traslape entre ellos sea composición (roles distintos) y no conflicto.",
+      "ucs_central": null,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "Fk",
+      "nombre_oficial": "Feldespato potásica",
+      "sitio": "MPC",
+      "rol": "alteracion",
+      "nivel": "unidad",
+      "padre": null,
+      "ucs_min": null,
+      "ucs_max": null,
+      "ucs_media": null,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "",
+      "calidad": 0,
+      "fecha": "",
+      "mi": null,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": null,
+      "notas": "Alteración potásica. Sin banda de UCS y NUNCA la tendrá: Karzulovic reporta por litología, no por litología×alteración. Por eso no participa del chequeo de bloqueo (A.4). ⚠ COLISIÓN DE NOMENCLATURA Fk ↔ Kfa: 'Fk' es feldespato potásica, una ALTERACIÓN; 'Kfa' es Albitófiro, una LITOLOGÍA. Son strings casi invertidos con roles OPUESTOS. Esta colisión originó una confusión que estuvo a punto de invalidar el 66% del metraje de sondaje (los 1.176,3 m de Albitófiro). El campo `rol` existe en buena medida por este caso: distingue los dos aunque el texto se parezca, y hace que un traslape entre ellos sea composición (roles distintos) y no conflicto.",
+      "ucs_central": null,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "Bht",
+      "nombre_oficial": "Brecha Hidrotermal",
+      "sitio": "MPC",
+      "rol": "litologia",
+      "nivel": "unidad",
+      "padre": null,
+      "ucs_min": 100.0,
+      "ucs_max": 145.0,
+      "ucs_media": null,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "Hoek-Brown ajustado sobre 25 ensayos, BRECHA_2.XLS, Laboratorio Punta del Cobre 19-06-2022. Corroborado por carga puntual n=16 rotura por matriz, CAS1004S nivel 175, marzo-abril 2026. σt ajustado -7,8 MPa (validado contra 18 ensayos brasileños no usados en el ajuste).",
+      "calidad": 1,
+      "fecha": "",
+      "mi": 14.77,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": 2.97,
+      "notas": "33% del metraje MPC (576,9 m). No es una brecha débil: RQD mediana 92,0 (mejor que el Albitófiro) y densidad media 2,97 t/m³ (máx 4,09), coherente con brecha mineralizada bien cementada (magnetita/sulfuros). ALERTA DE VARIABILIDAD (B.5, CV=0,57>0,35): la granularidad de la etiqueta acota el techo del modelo — con todo Bht etiquetado en 128,1, el modelo no puede predecir nada distinto de eso dentro de Bht. Esto NO es un defecto de resolución punto a punto (esa sí se cumple para dominio y DI): es que la variabilidad interna de Bht excede la resolución alcanzable para UCS, y se declara como limitación, no se oculta ensanchando la banda de confianza.",
+      "ucs_central": 128.1,
+      "dispersion_min": 64.5,
+      "dispersion_max": 296.9,
+      "ucs_cv": 0.57
+    },
+    {
+      "id": "Kpcli",
+      "nombre_oficial": "Lavas Inferiores",
+      "sitio": "MPC",
+      "rol": "litologia",
+      "nivel": "unidad",
+      "padre": null,
+      "ucs_min": 150.0,
+      "ucs_max": 230.0,
+      "ucs_media": null,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "autor de la memoria",
+      "calidad": 2,
+      "fecha": "",
+      "mi": null,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": null,
+      "notas": "UCS 180 MPa, rango 150-230, aportados por el autor. En MPC hay Lavas Superiores e Inferiores: las INFERIORES bajo la cota ~320 y las superiores sobre la ~400. Sobre los datos reales, las Lavas de PCC_1541 caen 93,4% bajo la cota 320 —son estas— mientras que las de PCS_1043 están 99,6% entre 320 y 400, o sea 35 m sobre el techo de las inferiores: NO se pueden dar por Kpcli sin confirmarlo.",
+      "ucs_central": 180.0,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "Ka",
+      "nombre_oficial": "Calizas Fm. Abundancia",
+      "sitio": "MPC",
+      "rol": "litologia",
+      "nivel": "unidad",
+      "padre": null,
+      "ucs_min": 60.0,
+      "ucs_max": 140.0,
+      "ucs_media": 80.0,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "autor de la memoria",
+      "calidad": 4,
+      "fecha": "",
+      "mi": null,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": null,
+      "notas": "Dos niveles con resistencias distintas: caliza ~60 MPa y un nivel de arenisca media de ~20 m de espesor a ~120 MPa. La unidad padre no lleva ancla: se etiqueta por el nivel, no por el promedio.",
+      "ucs_central": 80.0,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "Ka_caliza",
+      "nombre_oficial": "Caliza (Fm. Abundancia)",
+      "sitio": "MPC",
+      "rol": "litologia",
+      "nivel": "subunidad",
+      "padre": "Ka",
+      "ucs_min": null,
+      "ucs_max": null,
+      "ucs_media": null,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "autor de la memoria",
+      "calidad": 2,
+      "fecha": "",
+      "mi": null,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": null,
+      "notas": "~60 MPa. Nivel de caliza propiamente tal.",
+      "ucs_central": 60.0,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "Ka_arenisca",
+      "nombre_oficial": "Arenisca media (Fm. Abundancia)",
+      "sitio": "MPC",
+      "rol": "litologia",
+      "nivel": "subunidad",
+      "padre": "Ka",
+      "ucs_min": null,
+      "ucs_max": null,
+      "ucs_media": null,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "autor de la memoria",
+      "calidad": 2,
+      "fecha": "",
+      "mi": null,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": null,
+      "notas": "~120 MPa. Nivel de arenisca media, ~20 m de espesor. PENDIENTE DE CONFIRMAR: la descripción del autor llegó parcialmente ininteligible en este punto y estos dos niveles son mi lectura de ella.",
+      "ucs_central": 120.0,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "Kpcls",
+      "nombre_oficial": "Lavas Superiores",
+      "sitio": "MPC",
+      "rol": "litologia",
+      "nivel": "unidad",
+      "padre": null,
+      "ucs_min": 40.0,
+      "ucs_max": 95.0,
+      "ucs_media": 60.0,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "autor de la memoria",
+      "calidad": 3,
+      "fecha": "",
+      "mi": null,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": null,
+      "notas": "SIN ancla de UCS: no hay ensayo de las Lavas Superiores. Se separan de las Inferiores por COTA —inferiores bajo ~320, superiores sobre ~400—, que es la regla del geólogo, no un criterio estadístico. Sus puntos quedan fuera del entrenamiento y eso se declara.",
+      "ucs_central": 60.0,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "Bht_feldk",
+      "nombre_oficial": "Brecha hidrotermal feldespatizada",
+      "sitio": "MPC",
+      "rol": "litologia",
+      "nivel": "unidad",
+      "padre": null,
+      "ucs_min": 130.0,
+      "ucs_max": 180.0,
+      "ucs_media": null,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "autor de la memoria",
+      "calidad": 2,
+      "fecha": "",
+      "mi": null,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": null,
+      "notas": "UCS 130-180 MPa aportada por el autor. Se trata como LITOLOGÍA DISTINTA de Bht por decisión del autor, no como Bht con alteración: la descomposición en litología+alteración era posible pero complicaba sin aportar, y el ensayo es propio de esta unidad.",
+      "ucs_central": 155.0,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "DL",
+      "nombre_oficial": "Sin identificar",
+      "sitio": "MPC",
+      "rol": "litologia",
+      "nivel": "unidad",
+      "padre": null,
+      "ucs_min": null,
+      "ucs_max": null,
+      "ucs_media": null,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "",
+      "calidad": 0,
+      "fecha": "",
+      "mi": null,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": null,
+      "notas": "Código sin identificar en los sondajes. 0,2% del metraje MPC (3,1 m).",
+      "ucs_central": null,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "Kpcsb_basal",
+      "nombre_oficial": "Brecha basal",
+      "sitio": "MPC",
+      "rol": "litologia",
+      "nivel": "unidad",
+      "padre": null,
+      "ucs_min": null,
+      "ucs_max": null,
+      "ucs_media": null,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "Marschik (nomenclatura)",
+      "calidad": 0,
+      "fecha": "",
+      "mi": null,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": null,
+      "notas": "AMBIGÜEDAD DE NOMENCLATURA: el código 'Kpcsb' se usa en la literatura tanto para la Brecha basal (unidad padre, Marschik) como para la Brecha sedimentaria (subunidad, Ortiz et al.). Aquí se distinguen con ids explícitos.",
+      "ucs_central": null,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "Brecha_mixta",
+      "nombre_oficial": "Brecha mixta",
+      "sitio": "MPC",
+      "rol": "litologia",
+      "nivel": "subunidad",
+      "padre": "Kpcsb_basal",
+      "ucs_min": 82.6,
+      "ucs_max": 141.7,
+      "ucs_media": 111.5,
+      "ucs_mediana": null,
+      "ucs_sd": 23.6,
+      "ucs_n": null,
+      "fuente": "Karzulovic & Asoc. 2005, Tabla 3.2 (roca intacta)",
+      "calidad": 1,
+      "fecha": "",
+      "mi": 7.6,
+      "modulo_E": 17.3,
+      "poisson": 0.2,
+      "densidad": 2.8,
+      "notas": "CV = 0,212.",
+      "ucs_central": null,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "Kpcsb_sedimentaria",
+      "nombre_oficial": "Brecha sedimentaria",
+      "sitio": "MPC",
+      "rol": "litologia",
+      "nivel": "subunidad",
+      "padre": "Kpcsb_basal",
+      "ucs_min": 77.4,
+      "ucs_max": 98.7,
+      "ucs_media": 83.6,
+      "ucs_mediana": null,
+      "ucs_sd": 8.6,
+      "ucs_n": null,
+      "fuente": "Karzulovic & Asoc. 2005, Tabla 3.2 (roca intacta)",
+      "calidad": 1,
+      "fecha": "",
+      "mi": 19.1,
+      "modulo_E": 12.8,
+      "poisson": 0.22,
+      "densidad": 2.76,
+      "notas": "CV = 0,103. AMBIGÜEDAD DE NOMENCLATURA: el código 'Kpcsb' se usa en la literatura tanto para la Brecha basal (unidad padre, Marschik) como para la Brecha sedimentaria (subunidad, Ortiz et al.). Aquí se distinguen con ids explícitos.",
+      "ucs_central": null,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "Kpcs",
+      "nombre_oficial": "Miembro Trinidad",
+      "sitio": "MPC",
+      "rol": "litologia",
+      "nivel": "unidad",
+      "padre": null,
+      "ucs_min": null,
+      "ucs_max": null,
+      "ucs_media": null,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "",
+      "calidad": 0,
+      "fecha": "",
+      "mi": null,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": null,
+      "notas": "Unidad padre de las lutitas.",
+      "ucs_central": null,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "Lutitas_normales",
+      "nombre_oficial": "Lutitas normales",
+      "sitio": "MPC",
+      "rol": "litologia",
+      "nivel": "subunidad",
+      "padre": "Kpcs",
+      "ucs_min": 117.1,
+      "ucs_max": 134.9,
+      "ucs_media": 126.0,
+      "ucs_mediana": null,
+      "ucs_sd": 12.6,
+      "ucs_n": null,
+      "fuente": "Karzulovic & Asoc. 2005, Tabla 3.2 (roca intacta)",
+      "calidad": 1,
+      "fecha": "",
+      "mi": 15.8,
+      "modulo_E": 16.4,
+      "poisson": 0.28,
+      "densidad": 2.45,
+      "notas": "CV = 0,100.",
+      "ucs_central": null,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "Lutitas_metamorfoseadas",
+      "nombre_oficial": "Lutitas metamorfoseadas",
+      "sitio": "MPC",
+      "rol": "litologia",
+      "nivel": "subunidad",
+      "padre": "Kpcs",
+      "ucs_min": 186.8,
+      "ucs_max": 221.8,
+      "ucs_media": 204.3,
+      "ucs_mediana": null,
+      "ucs_sd": 24.8,
+      "ucs_n": null,
+      "fuente": "Karzulovic & Asoc. 2005, Tabla 3.2 (roca intacta)",
+      "calidad": 1,
+      "fecha": "",
+      "mi": 20.8,
+      "modulo_E": 89.0,
+      "poisson": 0.115,
+      "densidad": 2.5,
+      "notas": "CV = 0,121.",
+      "ucs_central": null,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "ZFR",
+      "nombre_oficial": "Zona fracturada",
+      "sitio": "MPC",
+      "rol": "estructura",
+      "nivel": "unidad",
+      "padre": null,
+      "ucs_min": null,
+      "ucs_max": null,
+      "ucs_media": null,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "",
+      "calidad": 0,
+      "fecha": "",
+      "mi": null,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": null,
+      "notas": "",
+      "ucs_central": null,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "FRI",
+      "nombre_oficial": "Fractura interna",
+      "sitio": "MPC",
+      "rol": "estructura",
+      "nivel": "unidad",
+      "padre": null,
+      "ucs_min": null,
+      "ucs_max": null,
+      "ucs_media": null,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "",
+      "calidad": 0,
+      "fecha": "",
+      "mi": null,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": null,
+      "notas": "",
+      "ucs_central": null,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "FM",
+      "nombre_oficial": "Falla menor",
+      "sitio": "MPC",
+      "rol": "estructura",
+      "nivel": "unidad",
+      "padre": null,
+      "ucs_min": null,
+      "ucs_max": null,
+      "ucs_media": null,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "",
+      "calidad": 0,
+      "fecha": "",
+      "mi": null,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": null,
+      "notas": "",
+      "ucs_central": null,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "V",
+      "nombre_oficial": "Veta",
+      "sitio": "MPC",
+      "rol": "estructura",
+      "nivel": "unidad",
+      "padre": null,
+      "ucs_min": null,
+      "ucs_max": null,
+      "ucs_media": null,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "",
+      "calidad": 0,
+      "fecha": "",
+      "mi": null,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": null,
+      "notas": "Sinónimo logueado como 'vet' en algunos sondajes.",
+      "ucs_central": null,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "ZF",
+      "nombre_oficial": "Zona de falla",
+      "sitio": "MPC",
+      "rol": "estructura",
+      "nivel": "unidad",
+      "padre": null,
+      "ucs_min": null,
+      "ucs_max": null,
+      "ucs_media": null,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "",
+      "calidad": 0,
+      "fecha": "",
+      "mi": null,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": null,
+      "notas": "",
+      "ucs_central": null,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "FI",
+      "nombre_oficial": "Falla interna",
+      "sitio": "MPC",
+      "rol": "estructura",
+      "nivel": "unidad",
+      "padre": null,
+      "ucs_min": null,
+      "ucs_max": null,
+      "ucs_media": null,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "",
+      "calidad": 0,
+      "fecha": "",
+      "mi": null,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": null,
+      "notas": "",
+      "ucs_central": null,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "SD",
+      "nombre_oficial": "Zona de cizalle",
+      "sitio": "MPC",
+      "rol": "estructura",
+      "nivel": "unidad",
+      "padre": null,
+      "ucs_min": null,
+      "ucs_max": null,
+      "ucs_media": null,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "",
+      "calidad": 0,
+      "fecha": "",
+      "mi": null,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": null,
+      "notas": "",
+      "ucs_central": null,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "Dique",
+      "nombre_oficial": "Dique",
+      "sitio": "MPC",
+      "rol": "estructura",
+      "nivel": "unidad",
+      "padre": null,
+      "ucs_min": null,
+      "ucs_max": null,
+      "ucs_media": null,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "malla DXF de Pucobre",
+      "calidad": 1,
+      "fecha": "",
+      "mi": null,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": null,
+      "notas": "Cuerpo intrusivo tabular. Rol estructura: no lleva banda de UCS.",
+      "ucs_central": null,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    },
+    {
+      "id": "Cto",
+      "nombre_oficial": "Contacto",
+      "sitio": "MPC",
+      "rol": "estructura",
+      "nivel": "unidad",
+      "padre": null,
+      "ucs_min": null,
+      "ucs_max": null,
+      "ucs_media": null,
+      "ucs_mediana": null,
+      "ucs_sd": null,
+      "ucs_n": null,
+      "fuente": "",
+      "calidad": 0,
+      "fecha": "",
+      "mi": null,
+      "modulo_E": null,
+      "poisson": null,
+      "densidad": null,
+      "notas": "Los contactos casi no están logueados como estructura en los sondajes; la mayoría se DERIVAN de los límites de la tabla de litología (P2-T2.3, tipo='contacto_derivado').",
+      "ucs_central": null,
+      "dispersion_min": null,
+      "dispersion_max": null,
+      "ucs_cv": null
+    }
+  ],
+  "alias": [
+    {
+      "texto_crudo": "KFA",
+      "atributos": {
+        "litologia": "Kfa"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Albitófiro",
+      "atributos": {
+        "litologia": "Kfa"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "ALB",
+      "atributos": {
+        "litologia": "Kfa"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "BHT",
+      "atributos": {
+        "litologia": "Bht"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Brecha Hidrotermal",
+      "atributos": {
+        "litologia": "Bht"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Bx Hidrotermal",
+      "atributos": {
+        "litologia": "Bht"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "BXH",
+      "atributos": {
+        "litologia": "Bht"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "KPCLI",
+      "atributos": {
+        "litologia": "Kpcli"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Lavas Inferiores",
+      "atributos": {
+        "litologia": "Kpcli"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Lavas",
+      "atributos": {
+        "litologia": "Kpcli"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "LAVA",
+      "atributos": {
+        "litologia": "Kpcli"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Lavas_0042",
+      "atributos": {
+        "litologia": "Kpcli"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "KA",
+      "atributos": {
+        "litologia": "Ka"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Calizas",
+      "atributos": {
+        "litologia": "Ka"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "dl",
+      "atributos": {
+        "litologia": "DL"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "FK",
+      "atributos": {
+        "alteracion": "Fk"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Feldespato potásica",
+      "atributos": {
+        "alteracion": "Fk"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Potásica",
+      "atributos": {
+        "alteracion": "Fk"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "K-feldespato",
+      "atributos": {
+        "alteracion": "Fk"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "BHT_FELDK",
+      "atributos": {
+        "litologia": "Bht_feldk"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Bht feldk",
+      "atributos": {
+        "litologia": "Bht_feldk"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Lavas Superiores",
+      "atributos": {
+        "litologia": "Kpcls"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "KPCLS",
+      "atributos": {
+        "litologia": "Kpcls"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "DQ1",
+      "atributos": {
+        "estructura": "Dique"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Dique",
+      "atributos": {
+        "estructura": "Dique"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "DQ",
+      "atributos": {
+        "estructura": "Dique"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Brecha mixta",
+      "atributos": {
+        "litologia": "Brecha_mixta"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Bx mixta",
+      "atributos": {
+        "litologia": "Brecha_mixta"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "KPCMIX",
+      "atributos": {
+        "litologia": "Brecha_mixta"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Brecha sedimentaria",
+      "atributos": {
+        "litologia": "Kpcsb_sedimentaria"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Bx sedimentaria",
+      "atributos": {
+        "litologia": "Kpcsb_sedimentaria"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "KPCSB",
+      "atributos": {
+        "litologia": "Kpcsb_sedimentaria"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Brecha basal",
+      "atributos": {
+        "litologia": "Kpcsb_basal"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Miembro Trinidad",
+      "atributos": {
+        "litologia": "Kpcs"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Trinidad",
+      "atributos": {
+        "litologia": "Kpcs"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "VOLSED_KPCS",
+      "atributos": {
+        "litologia": "Kpcs"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "VOLSED",
+      "atributos": {
+        "litologia": "Kpcs"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Lutitas normales",
+      "atributos": {
+        "litologia": "Lutitas_normales"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Lutita normal",
+      "atributos": {
+        "litologia": "Lutitas_normales"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Lutitas metamorfoseadas",
+      "atributos": {
+        "litologia": "Lutitas_metamorfoseadas"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Lutita metamorfoseada",
+      "atributos": {
+        "litologia": "Lutitas_metamorfoseadas"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "ZFR",
+      "atributos": {
+        "estructura": "ZFR"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Zona fracturada",
+      "atributos": {
+        "estructura": "ZFR"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "FRI",
+      "atributos": {
+        "estructura": "FRI"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Fractura interna",
+      "atributos": {
+        "estructura": "FRI"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "FM",
+      "atributos": {
+        "estructura": "FM"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Falla menor",
+      "atributos": {
+        "estructura": "FM"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "V",
+      "atributos": {
+        "estructura": "V"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Vet",
+      "atributos": {
+        "estructura": "V"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Veta",
+      "atributos": {
+        "estructura": "V"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "ZF",
+      "atributos": {
+        "estructura": "ZF"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Zona de falla",
+      "atributos": {
+        "estructura": "ZF"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "FI",
+      "atributos": {
+        "estructura": "FI"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Falla interna",
+      "atributos": {
+        "estructura": "FI"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "SD",
+      "atributos": {
+        "estructura": "SD"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Zona de cizalle",
+      "atributos": {
+        "estructura": "SD"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Cizalle",
+      "atributos": {
+        "estructura": "SD"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "CTO",
+      "atributos": {
+        "estructura": "Cto"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Contacto",
+      "atributos": {
+        "estructura": "Cto"
+      },
+      "origen": "manual"
+    },
+    {
+      "texto_crudo": "Bht_0042",
+      "atributos": {
+        "litologia": "Bht"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "Bht_1043",
+      "atributos": {
+        "litologia": "Bht"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "Bht_1541",
+      "atributos": {
+        "litologia": "Bht"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "Bht_feldk_1059",
+      "atributos": {
+        "litologia": "Bht_feldk"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "DQ1_1059",
+      "atributos": {
+        "estructura": "Dique"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FChavito_0042",
+      "atributos": {
+        "estructura": "ZF"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FI1_0042",
+      "atributos": {
+        "estructura": "FI"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FI1_1043",
+      "atributos": {
+        "estructura": "FI"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FI1_1059",
+      "atributos": {
+        "estructura": "FI"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FI1_1541",
+      "atributos": {
+        "estructura": "FI"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FI2_0042",
+      "atributos": {
+        "estructura": "FI"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FI2_1043",
+      "atributos": {
+        "estructura": "FI"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FI2_1541",
+      "atributos": {
+        "estructura": "FI"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FI3_1541",
+      "atributos": {
+        "estructura": "FI"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FM1_0042",
+      "atributos": {
+        "estructura": "FM"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FM1_1043",
+      "atributos": {
+        "estructura": "FM"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FM1_1059",
+      "atributos": {
+        "estructura": "FM"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FM1_1541",
+      "atributos": {
+        "estructura": "FM"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FM2_0042",
+      "atributos": {
+        "estructura": "FM"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FM2_1043",
+      "atributos": {
+        "estructura": "FM"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FM2_1059",
+      "atributos": {
+        "estructura": "FM"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FM2_1541",
+      "atributos": {
+        "estructura": "FM"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FM3_0042",
+      "atributos": {
+        "estructura": "FM"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FM3_1043",
+      "atributos": {
+        "estructura": "FM"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FM4_1043",
+      "atributos": {
+        "estructura": "FM"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FM5_1043",
+      "atributos": {
+        "estructura": "FM"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FM6_1043",
+      "atributos": {
+        "estructura": "FM"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "FPaola_1043",
+      "atributos": {
+        "estructura": "ZF"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "Ka_1043",
+      "atributos": {
+        "litologia": "Ka"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "Kpcmix_1043",
+      "atributos": {
+        "litologia": "Brecha_mixta"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "Kpcmix_1059",
+      "atributos": {
+        "litologia": "Brecha_mixta"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "Kpcsb_1043",
+      "atributos": {
+        "litologia": "Kpcsb_sedimentaria"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "Kpcs_1043",
+      "atributos": {
+        "litologia": "Lutitas_normales"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "Lavas_1541",
+      "atributos": {
+        "litologia": "Kpcls"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "LAVA_1059",
+      "atributos": {
+        "litologia": "Kpcli"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "Lavas_1043",
+      "atributos": {
+        "litologia": "Kpcli"
+      },
+      "origen": "dxf_layer"
+    },
+    {
+      "texto_crudo": "VOLSED_KPCS_1059",
+      "atributos": {
+        "litologia": "Kpcsb_sedimentaria"
+      },
+      "origen": "dxf_layer"
+    }
+  ],
+  "exclusiones": [],
+  "pendientes": []
+}
