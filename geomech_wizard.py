@@ -281,11 +281,15 @@ HIGH_CV_PI_FACTOR = 1.30
 # cae y se recupera en la siguiente. No es un corte por percentil —prohibido
 # por convención—, es un patrón LOCAL y trazable: una muestra hundida entre
 # dos vecinas parecidas entre sí.
-# (B2.2) VALOR NO FIJADO AÚN: el código traía 0,30 y el documento decía 0,25.
-# La tabla de sensibilidad (scripts de diagnóstico) contrasta cada umbral
-# contra el teórico de uniones de barra; la decisión la toma el autor. Mientras
-# tanto se mantiene 0,30, que es lo que corrió en los resultados publicados.
-PP_PERCUSION_EMPATE_CAIDA_REL = 0.30
+# (B2.2) VALOR FIJADO POR EL AUTOR: 0,20, criterio CONSERVADOR. No es el que
+# minimiza la desviación contra el teórico de uniones de barra —ese es 0,30,
+# con −4,9% frente al +26,2% de 0,20— y marca 14.738 muestras en vez de 11.100,
+# o sea 3.638 más. La razón de preferirlo: el costo de los dos errores no es
+# simétrico. Dejar pasar una medición sin sentido físico mete al modelo a
+# buscarle relación a un artefacto del varillaje; sacar de más solo cuesta
+# datos, y de esos hay 982.420. Se entrena con menos roca antes que con roca
+# falsa.
+PP_PERCUSION_EMPATE_CAIDA_REL = 0.20
 # Largo de barra del Simba E70S: referencia geométrica para contrastar las
 # marcas contra los empates físicos del varillaje.
 LARGO_BARRA_M = 1.756
@@ -3618,9 +3622,12 @@ def add_percusion_empate_filter():
 #     abarcan al menos un salto de registro, comparando roca no vecina.
 #   · 268 m de los 17.161 m que la regla de Deere contabiliza como "roca sana"
 #     (1,564%) son saltos sin ninguna medición intermedia.
-# El interruptor queda VISIBLE y en False: activarlo cambia cifras ya
-# publicadas, y esa decisión es del autor, no de la herramienta.
-CONTINUIDAD_ACTIVA = False
+# ACTIVADO POR DECISIÓN DEL AUTOR (2026-09-29): mismo criterio conservador que
+# el umbral de percusión de empate. Un DI calculado sobre una ventana que cruza
+# un salto de registro compara roca que no es vecina; vale más perder el 0,625%
+# de los puntos que dejar que el modelo les busque relación. Con el
+# interruptor en True, recompute_filters() lo aplica solo.
+CONTINUIDAD_ACTIVA = True
 # Sobre este salto entre muestras consecutivas se considera que el registro se
 # interrumpió. 2,95 cm deja pasar el régimen nominal completo (2,0-2,2 cm
 # concentra el 97,4%) y marca lo que viene después.
@@ -4415,7 +4422,7 @@ def seed_param_registry(force: bool = False):
         # vecinas parecidas entre sí), disponible como filtro en el Paso 2.
         _param("pp.percusion_empate_caida_rel", "Percusión (PP)",
                "Caída mínima para marcar percusión de empate",
-               0.30, "float", "fracción",
+               0.20, "float", "fracción",
                "Fracción de caída de PP respecto del promedio de sus dos "
                "vecinos inmediatos para marcar la muestra central como "
                "percusión de empate (excluida del entrenamiento, no borrada). "
@@ -9756,6 +9763,13 @@ def recompute_filters(cut_m=None):
     clean_filters.clear()
     for f in filters_copy:
         add_norm_filter(f["varName"], f["method"])
+    # (B5.5) El filtro de continuidad no es un corte de rango que el usuario
+    # agregue: es una condición de validez de la ventana del DI. Con el
+    # interruptor activo se reaplica siempre, para que borrar otro filtro no lo
+    # arrastre. Si ya está en la lista no se duplica.
+    if CONTINUIDAD_ACTIVA and not any(f.get("method") == "continuidad"
+                                      for f in clean_filters):
+        add_continuidad_filter()
 
 def remove_filter(idx):
     """Elimina el filtro en la posición idx y recalcula entrenable desde cero."""
