@@ -1,5 +1,5 @@
 """
-test_se_ucs_coherencia.py — Coherencia física entre energía específica y UCS
+test_se_ucs_coherencia.py — Coherencia física entre PEP y UCS
 de laboratorio, sobre roca intacta.
 
 Propuesto por el autor como el análisis que de verdad sostiene la
@@ -17,7 +17,7 @@ comparación con y sin apartar las discontinuidades. Si apartarlas mejora la
 coherencia, el DI deja de ser un índice aplicado por autoridad (Fernández et
 al. 2023) y pasa a ser algo que demostró servir en estos datos.
 
-LA TRAMPA que el análisis debe sortear: SE_reacción = (PP + RP + AP) / ROP, y
+LA TRAMPA que el análisis debe sortear: PEP = (PP + RP + AP) / ROP, y
 PP es la ÚNICA variable que el operador manipula — y la sube en roca dura.
 Parte de la correlación SE↔UCS podría venir de la RESPUESTA DEL OPERADOR y no
 de la roca. Por eso el reporte estratifica por PP y mira ROP por separado:
@@ -117,7 +117,7 @@ def coherencia_detecta_la_incoherencia():
     reset()
     for dom, ucs in (("Kpcsb_sedimentaria", 83.6), ("Bht", 128.1), ("Kpcli", 190.0)):
         gw.domains[dom] = {"ucs_lab": ucs, "atributo_id": dom, "nombre": dom}
-    # SE al REVÉS del UCS: la roca más dura sale con menos energía específica.
+    # PEP al REVÉS del UCS: la roca más dura sale con menos PEP.
     _mk_pozo("W1", "Kpcsb_sedimentaria", se_medio=240.0, seed=1)
     _mk_pozo("W2", "Bht", se_medio=160.0, seed=2)
     _mk_pozo("W3", "Kpcli", se_medio=100.0, seed=3)
