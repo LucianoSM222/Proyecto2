@@ -112,7 +112,7 @@
     "pp.max_bar": "Rango operacional de COPROD Pucobre para MPC.",
     "pp.paso_bar": "Resolución de las curvas de respuesta.",
     "pp.min_puntos_bin": "Bajo esto la mediana del bin no significa nada.",
-    "rop.min_fisica": "Bajo esto la energía específica no tiene significado físico: SE = (PP+RP+AP)/ROP se dispara. Criterio físico y trazable, NO un percentil.",
+    "rop.min_fisica": "Bajo esto la presión específica de penetración (PEP) no tiene significado físico: PEP = (PP+RP+AP)/ROP se dispara. Criterio físico y trazable, NO un percentil.",
     "ucs.estadistica_ml": "Una banda de UCS es una estadística, no un número: cuál se usa como etiqueta es una decisión de la faena. 'auto' es la cadena histórica —central, si no media, si no el punto medio del rango— y es el defecto porque los modos estrictos dejan sin etiqueta a los atributos que no documentan esa estadística, y esos puntos saldrían del entrenamiento sin que nada lo delate. NINGUNA opción construye la etiqueta desde SE: SE es una PREDICTORA y describe la roca —una caída de SE hace esperar menos resistencia o más discontinuidades—, así que derivar la etiqueta de ella haría que el modelo aprendiera esa aritmética en vez de la roca, y obligaría a sacar SE de las predictoras. Las dos cosas son inaceptables.",
     "ucs.factor_probeta_unica": "Un ancla sin desviación estándar sugiere una sola probeta: se acepta el valor, pero el intervalo tiene que reflejar que no hay dispersión medida. Cuánto ensanchar depende de cómo ensaya la faena.",
     "ucs.cv_alto": "Sobre este CV la banda es intrínsecamente ancha, no menos confiable, y el intervalo debe reflejarlo en vez de fingir la misma precisión. Las unidades con banda en MPC están en 0,10-0,21.",

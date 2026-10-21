@@ -48,7 +48,7 @@ IR, DR = f"{{{NS_IR}}}", f"{{{NS_DR}}}"
 ML_FEATURES = ["vel","pp","pa","pd","pr","pf","se"]
 # Siglas IREDES, en el MISMO orden posicional que ML_FEATURES. `pf` rotulaba
 # "FP" —que en IREDES es el AVANCE— cuando `pf` guarda el BARRIDO: es FLP. Y
-# `se` es PEP, PRESIÓN DE ENERGÍA ESPECÍFICA: (PP+RP+AP)/ROP sobre presiones
+# `se` es PEP, PRESIÓN ESPECÍFICA DE PENETRACIÓN: (PP+RP+AP)/ROP sobre presiones
 # de REACCIÓN hidráulica, no la energía específica de Teale 1965, que usa
 # empuje y torque IMPUESTOS. El identificador interno sigue siendo `se` —
 # cambiarlo rompería los .gwz y los perfiles ya exportados—; lo que cambia es
@@ -4360,7 +4360,7 @@ def seed_param_registry(force: bool = False):
                2, 10000, "PP_MIN_PUNTOS_BIN"),
         # ── Límites físicos ──────────────────────────────────────────────────
         _param("rop.min_fisica", "Límites físicos", "ROP mínima con sentido físico",
-               0.05, "float", "m/min", "Bajo esto la presión de energía específica (PEP) no tiene "
+               0.05, "float", "m/min", "Bajo esto la presión específica de penetración (PEP) no tiene "
                "significado físico: PEP = (PP+RP+AP)/ROP se dispara. Criterio "
                "físico y trazable, NO un percentil.",
                0.001, 1.0, "ROP_MIN_FISICA"),
@@ -5988,7 +5988,7 @@ _VALIDADORES_TEXTO["pp.estratos"] = _parsear_estratos_pp
 
 def se_ucs_coherence_report() -> Dict:
     """
-    Coherencia entre la presión de energía específica (PEP) y el UCS de
+    Coherencia entre la presión específica de penetración (PEP) y el UCS de
     laboratorio, por dominio y sobre ROCA INTACTA.
 
     La regla física que debe cumplirse: a mayor UCS de la matriz, mayor
@@ -10659,7 +10659,7 @@ COLOR_FIELDS = {
     "grupo":("Dominio geomecánico", None, None, True,
              "Agrupación por comportamiento similar de UCS y DI."),
     "se":("SE [bar·min/m]", 0, 500, False,
-          "PEP, presión de energía específica: cuánto le cuesta a la perforadora "
+          "PEP, presión específica de penetración: cuánto le cuesta a la perforadora "
           "avanzar. Es el eje de la relación directa con UCS."),
     "vel":("ROP [m/min]", 0, 2.5, False, "Velocidad de penetración."),
     "pp":("Percusión [bar]", 0, 230, False,
