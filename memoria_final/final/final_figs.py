@@ -251,6 +251,35 @@ a1.set_title("Ordenamiento de la resistencia", fontsize=10.5); a2.set_title("Var
 fig.suptitle("Validación LOOCV-Caserón del Random Forest")
 guardar(fig, "F6_04_LOOCV_caseron.png")
 
+# ── 6.4b los cuatro métodos bajo LOOCV-Caserón (loocv_caseron_metodos.py) ──
+FL = os.path.join(os.path.dirname(SRC), "loocv_caseron_metodos.json")
+if os.path.exists(FL):
+    LM = json.load(open(FL, encoding="utf-8")); MD = LM["medias"]
+    MET = [("linea_base", "Línea base\n(media litología)", "#7F7F7F"), ("banda", "Banda\npor unidad", NARANJA),
+           ("relacion", "Relación directa\nPEP↔UCS", "#2E7D57"), ("ml", "ML\n(Random Forest)", "#2F5597")]
+    fig, axs = plt.subplots(1, 3, figsize=(16, 5.2))
+    for ax, cl, et, nd in ((axs[0], "rmse", "RMSE [MPa]", 1), (axs[1], "pearson", "r de Pearson", 3),
+                           (axs[2], "spearman", "ρ de Spearman", 3)):
+        v = [MD[k][cl] for k, _, _ in MET]
+        bb = ax.bar(range(len(MET)), [0 if x is None else x for x in v], color=[c for _, _, c in MET], width=0.62)
+        for b_, x in zip(bb, v):
+            cx = b_.get_x() + b_.get_width() / 2
+            if x is None:
+                ax.annotate("indefinido\n(predicción\nconstante)", (cx, 0), xytext=(0, 4), textcoords="offset points",
+                            ha="center", va="bottom", fontsize=8.5, color="#595959")
+            else:
+                ax.annotate((("+" if x >= 0 else "") if cl != "rmse" else "") + dec(x, nd), (cx, x),
+                            xytext=(0, 4 if x >= 0 else -13), textcoords="offset points", ha="center", fontsize=9.5)
+        ax.set_xticks(range(len(MET))); ax.set_xticklabels([e for _, e, _ in MET], fontsize=9)
+        ax.set_ylabel(et); ax.axhline(0, color="#333", lw=0.8)
+        if cl != "rmse":
+            dfn = [x for x in v if x is not None]
+            ax.set_ylim(min(0, min(dfn) - 0.1), 1)
+    axs[0].set_title("Error", fontsize=10.5); axs[1].set_title("Correlación lineal", fontsize=10.5)
+    axs[2].set_title("Ordenamiento", fontsize=10.5)
+    fig.suptitle("Comparación de métodos de UCS — LOOCV-Caserón (media de los caserones dejados fuera)")
+    guardar(fig, "F6_04b_LOOCV_caseron_metodos.png")
+
 # ── 6.6 PEP vs UCS predicha ─────────────────────────────────────────────────
 S6 = R["pep_vs_ucs"]
 fig, axs = plt.subplots(1, 2, figsize=(13, 5.2), sharey=True)

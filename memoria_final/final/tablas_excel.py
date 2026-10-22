@@ -159,6 +159,38 @@ for nombre, clave, et in (("GroupKFold", "groupkfold", "Fold"), ("LOOCV-Caserón
         nota(ws, "PCS_1059 tiene una sola etiqueta en la prueba: R² y ρ de Spearman indefinidos (celda vacía); AVERAGE los omite.")
     nota(ws, "Predicción = mediana de los 200 árboles. ρ de Spearman entre UCS predicha y UCS referencial.")
 
+# ── Los cuatro métodos bajo LOOCV-Caserón ──────────────────────────────────
+FL = os.path.join(os.path.dirname(SRC), "loocv_caseron_metodos.json")
+if os.path.exists(FL):
+    LM = json.load(open(FL, encoding="utf-8"))
+    NOM_MET = {"linea_base": "Línea base (media litología)", "banda": "Banda por unidad",
+               "relacion": "Relación directa PEP↔UCS", "ml": "ML (Random Forest)"}
+    ws = hoja("LOOCV-Caserón métodos")
+    titulo(ws, "Comparación de métodos de UCS · LOOCV-Caserón")
+    filas = [[NOM_MET[k], f["caseron"], f["n_prueba"], f["n_etiquetas"], f["metricas"][k]["rmse"], f["metricas"][k]["mae"],
+              f["metricas"][k]["pearson"], f["metricas"][k]["spearman"]]
+             for k in LM["metodos"] for f in LM["pliegues"]]
+    FMT_M = [None, None, "#,##0", "0", "0.0", "0.0", "+0.000;-0.000", "+0.000;-0.000"]
+    _, a, b = tabla(ws, ["Método", "Caserón fuera", "Registros de prueba", "Etiquetas", "RMSE [MPa]", "MAE [MPa]",
+                         "r de Pearson", "ρ de Spearman"], filas, fmt=FMT_M)
+    titulo(ws, "Media de los caserones (correlaciones: solo los definidos)")
+    r0 = ws._fila
+    filas_m = [[NOM_MET[k]] + [f'=AVERAGEIF($A${a}:$A${b},$A{r0 + 1 + i},{col(j)}${a}:{col(j)}${b})' for j in (5, 6)]
+               + ([None, None] if k == "linea_base" else
+                  [f'=AVERAGEIF($A${a}:$A${b},$A{r0 + 1 + i},{col(j)}${a}:{col(j)}${b})' for j in (7, 8)])
+               for i, k in enumerate(LM["metodos"])]
+    tabla(ws, ["Método", "RMSE [MPa]", "MAE [MPa]", "r de Pearson", "ρ de Spearman"], filas_m,
+          fmt=[None, "0.0", "0.0", "+0.000;-0.000", "+0.000;-0.000"])
+    nota(ws, "Celdas vacías: correlación indefinida (PCS_1059 tiene una sola etiqueta; la línea base predice un valor constante).")
+    nota(ws, "Banda y relación: curva PEP→UCS ajustada sin el caserón, evaluada en la PEP mediana de cada litología del caserón excluido; "
+             "la banda aparta cada registro del centro según su PEP.")
+    titulo(ws, "Curva PEP→UCS de cada pliegue")
+    tabla(ws, ["Caserón fuera", "Forma", "Coeficientes", "Pares (PEP mediana, UCS referencial)", "Extrapola"],
+          [[f["caseron"], f["curva"]["forma"], ", ".join(f"{k:.4g}" for k in f["curva"]["coef"]),
+            "; ".join(f"({p[0]:.1f}, {p[1]:.1f})" for p in f["curva"]["pares"]),
+            ", ".join(e["litologia"] for e in f["extrapolacion"]) or "no"] for f in LM["pliegues"]],
+          fmt=[None] * 5)
+
 # ── Importancia, comparación ───────────────────────────────────────────────
 ws = hoja("Importancia"); titulo(ws, "Importancia por permutación de las predictoras")
 tabla(ws, ["Predictora", "Importancia"], sorted(([k, v] for k, v in RF["feat_imp"].items()), key=lambda x: -x[1]),
