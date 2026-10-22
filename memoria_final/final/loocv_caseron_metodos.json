@@ -70,6 +70,84 @@
      "motivo_correlacion": null
     }
    }
+  },
+  {
+   "caseron": "PCC_1541",
+   "n_prueba": 131053,
+   "n_etiquetas": 2,
+   "curva": {
+    "forma": "lineal",
+    "coef": [
+     -0.342994,
+     272.55008
+    ],
+    "pares": [
+     [
+      344.1,
+      128.1
+     ],
+     [
+      453.3,
+      111.5
+     ],
+     [
+      363.1,
+      180.0
+     ]
+    ]
+   },
+   "extrapolacion": [
+    {
+     "litologia": "Bht",
+     "pep_mediana": 310.0,
+     "rango_ajuste": [
+      344.1,
+      453.3
+     ]
+    },
+    {
+     "litologia": "Kpcls",
+     "pep_mediana": 299.3,
+     "rango_ajuste": [
+      344.1,
+      453.3
+     ]
+    }
+   ],
+   "metricas": {
+    "linea_base": {
+     "n": 131053,
+     "rmse": 51.87,
+     "mae": 39.62,
+     "pearson": null,
+     "spearman": null,
+     "motivo_correlacion": "predicción constante"
+    },
+    "relacion": {
+     "n": 131053,
+     "rmse": 76.15,
+     "mae": 67.48,
+     "pearson": -1.0,
+     "spearman": -1.0,
+     "motivo_correlacion": null
+    },
+    "banda": {
+     "n": 131053,
+     "rmse": 105.05,
+     "mae": 88.4,
+     "pearson": 0.009,
+     "spearman": -0.04,
+     "motivo_correlacion": null
+    },
+    "ml": {
+     "n": 131053,
+     "rmse": 75.86,
+     "mae": 67.26,
+     "pearson": 0.04,
+     "spearman": 0.047,
+     "motivo_correlacion": null
+    }
+   }
   }
  ]
 }
