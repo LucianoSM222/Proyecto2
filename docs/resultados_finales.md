@@ -35,6 +35,7 @@ están en `figuras/finales/`; los valores de todas las tablas, en
 | GroupKFold por pozo (k = 5) | **R² +0,290 ± 0,02**, RMSE 30,4 MPa, ρ de Spearman +0,564 |
 | LOOCV-Caserón | **R² −2,766** (PCC_0042 −3,55 · PCC_1541 −4,14 · PCS_1043 −0,61; PCS_1059 tiene una sola etiqueta: indefinido); RMSE medio 50,5 MPa; ρ +0,111 |
 | Línea base «media global» (153,3 MPa) | RMSE 36,1 MPa |
+| Métodos bajo LOOCV-Caserón (media de los caserones) | RMSE: línea base 48,9 · banda 96,5 · relación directa 79,5 · RF 50,6 MPa · r de Pearson: banda +0,110 · relación +0,140 · RF +0,153 · ρ de Spearman: banda +0,024 · relación +0,022 · RF +0,111 (línea base constante: correlación indefinida) |
 | Importancia por permutación | FP 0,223 · RP 0,131 · PEP 0,049 · PP 0,043 · AP 0,041 · ROP 0,016 · DP 0,009 (271 pozos no vistos) |
 | UCS predicha, p50 vs. referencial | Kpcli 167,3 (180) · Bht 137,6 (128,1) · Brecha mixta 154,6 (111,5) · Kpcls 133,0 (60) |
 | Comparación de algoritmos (R² prueba / entrenamiento) | **RF +0,166 / 0,485** · HGB +0,147 / 0,594 · Lineal +0,136 / 0,184 · MLP +0,088 / 0,492 · KNN −0,059 / 0,703 (59.326 registros, 76 pozos) |
@@ -72,6 +73,7 @@ están en `figuras/finales/`; los valores de todas las tablas, en
 | `T6_02_sensibilidad_radio_RQD.png/.csv` | Tabla 6.2 |
 | `F6_03_perfil_DI_calibrado.png` | Fig. 6.3 |
 | `F6_04_LOOCV_caseron.png` | ρ de Spearman y R² por caserón dejado fuera |
+| `F6_04b_LOOCV_caseron_metodos.png` | los cuatro métodos (línea base, banda, relación directa PEP↔UCS, RF) bajo LOOCV-Caserón: RMSE, r de Pearson y ρ de Spearman (`loocv_caseron_metodos.py`) |
 | `F6_05_spearman_por_esquema.png` | ρ del bosque por pozo (GroupKFold) y por caserón (LOOCV-Caserón) |
 | `F6_06_PEP_vs_UCS.png` | Fig. 6.6 |
 | `F6_07_UCS_lab_vs_ML.png` | Fig. 6.7 |

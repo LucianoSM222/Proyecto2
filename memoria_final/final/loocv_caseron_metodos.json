@@ -148,6 +148,175 @@
      "motivo_correlacion": null
     }
    }
+  },
+  {
+   "caseron": "PCS_1043",
+   "n_prueba": 122026,
+   "n_etiquetas": 3,
+   "curva": {
+    "forma": "lineal",
+    "coef": [
+     1.948147,
+     -514.036745
+    ],
+    "pares": [
+     [
+      322.1,
+      128.1
+     ],
+     [
+      359.1,
+      180.0
+     ],
+     [
+      299.3,
+      60.0
+     ]
+    ]
+   },
+   "extrapolacion": [
+    {
+     "litologia": "Brecha_mixta",
+     "pep_mediana": 453.3,
+     "rango_ajuste": [
+      299.3,
+      359.1
+     ]
+    },
+    {
+     "litologia": "Kpcli",
+     "pep_mediana": 431.0,
+     "rango_ajuste": [
+      299.3,
+      359.1
+     ]
+    }
+   ],
+   "metricas": {
+    "linea_base": {
+     "n": 122026,
+     "rmse": 29.99,
+     "mae": 19.87,
+     "pearson": null,
+     "spearman": null,
+     "motivo_correlacion": "predicción constante"
+    },
+    "relacion": {
+     "n": 122026,
+     "rmse": 126.86,
+     "mae": 102.28,
+     "pearson": 0.42,
+     "spearman": 0.066,
+     "motivo_correlacion": null
+    },
+    "banda": {
+     "n": 122026,
+     "rmse": 145.25,
+     "mae": 119.6,
+     "pearson": 0.323,
+     "spearman": 0.057,
+     "motivo_correlacion": null
+    },
+    "ml": {
+     "n": 122026,
+     "rmse": 31.59,
+     "mae": 25.51,
+     "pearson": 0.169,
+     "spearman": 0.048,
+     "motivo_correlacion": null
+    }
+   }
+  },
+  {
+   "caseron": "PCS_1059",
+   "n_prueba": 105108,
+   "n_etiquetas": 1,
+   "curva": {
+    "forma": "lineal",
+    "coef": [
+     0.198439,
+     48.2299
+    ],
+    "pares": [
+     [
+      332.4,
+      128.1
+     ],
+     [
+      453.3,
+      111.5
+     ],
+     [
+      359.7,
+      180.0
+     ],
+     [
+      299.3,
+      60.0
+     ]
+    ]
+   },
+   "extrapolacion": [],
+   "metricas": {
+    "linea_base": {
+     "n": 105108,
+     "rmse": 60.1,
+     "mae": 60.1,
+     "pearson": null,
+     "spearman": null,
+     "motivo_correlacion": "una sola etiqueta en la prueba"
+    },
+    "relacion": {
+     "n": 105108,
+     "rmse": 57.4,
+     "mae": 57.4,
+     "pearson": null,
+     "spearman": null,
+     "motivo_correlacion": "una sola etiqueta en la prueba"
+    },
+    "banda": {
+     "n": 105108,
+     "rmse": 62.64,
+     "mae": 56.95,
+     "pearson": null,
+     "spearman": null,
+     "motivo_correlacion": "una sola etiqueta en la prueba"
+    },
+    "ml": {
+     "n": 105108,
+     "rmse": 49.96,
+     "mae": 48.19,
+     "pearson": null,
+     "spearman": null,
+     "motivo_correlacion": "una sola etiqueta en la prueba"
+    }
+   }
   }
- ]
+ ],
+ "medias": {
+  "linea_base": {
+   "rmse": 48.9,
+   "mae": 42.233,
+   "pearson": null,
+   "spearman": null
+  },
+  "banda": {
+   "rmse": 96.517,
+   "mae": 82.32,
+   "pearson": 0.11,
+   "spearman": 0.024
+  },
+  "relacion": {
+   "rmse": 79.53,
+   "mae": 70.442,
+   "pearson": 0.14,
+   "spearman": 0.022
+  },
+  "ml": {
+   "rmse": 50.568,
+   "mae": 45.318,
+   "pearson": 0.153,
+   "spearman": 0.111
+  }
+ }
 }

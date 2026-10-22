@@ -274,7 +274,7 @@ if os.path.exists(FL):
         ax.set_ylabel(et); ax.axhline(0, color="#333", lw=0.8)
         if cl != "rmse":
             dfn = [x for x in v if x is not None]
-            ax.set_ylim(min(0, min(dfn) - 0.1), 1)
+            ax.set_ylim(min(dfn) - 0.1 if min(dfn) < 0 else 0, 1)
     axs[0].set_title("Error", fontsize=10.5); axs[1].set_title("Correlación lineal", fontsize=10.5)
     axs[2].set_title("Ordenamiento", fontsize=10.5)
     fig.suptitle("Comparación de métodos de UCS — LOOCV-Caserón (media de los caserones dejados fuera)")

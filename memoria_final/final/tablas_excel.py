@@ -182,6 +182,8 @@ if os.path.exists(FL):
     tabla(ws, ["Método", "RMSE [MPa]", "MAE [MPa]", "r de Pearson", "ρ de Spearman"], filas_m,
           fmt=[None, "0.0", "0.0", "+0.000;-0.000", "+0.000;-0.000"])
     nota(ws, "Celdas vacías: correlación indefinida (PCS_1059 tiene una sola etiqueta; la línea base predice un valor constante).")
+    nota(ws, "Relación directa: da un valor por litología; en un caserón con dos litologías su correlación es ±1 por construcción "
+             "(PCC_0042 +1, PCC_1541 −1): solo dice si ordenó bien las dos, no cuánto acierta.")
     nota(ws, "Banda y relación: curva PEP→UCS ajustada sin el caserón, evaluada en la PEP mediana de cada litología del caserón excluido; "
              "la banda aparta cada registro del centro según su PEP.")
     titulo(ws, "Curva PEP→UCS de cada pliegue")
