@@ -1,97 +1,83 @@
 # Resultados finales para la memoria (2026-10-22)
 
 Todas las cifras salen de una sola corrida (`memoria_final/final/final_calc.py`
-→ `final.json`), con una configuración única. Las figuras están en
-`figuras/finales/` y se regeneran con `final_figs.py`, `rf_figura.py`,
-`rf_esquema.py` y `di_estructura.py`.
+→ `final.json`). Las figuras y tablas, sin pies de figura y en estilo Excel,
+están en `figuras/finales/`. Se regeneran con `final_figs.py`, `rf_figura.py`,
+`rf_esquema.py`, `di_estructura.py` y `barra/fig_periodo.py`.
 
 ## Configuración
 
 | Elemento | Valor |
 |---|---|
-| Emboquillado | primeros 2 m fuera (86.785 registros) |
-| Rango físico de PP | 90–230 bar (12.103 registros más) — **nuevo, ver nota 1** |
-| Percusión de empate | caída ≥ 0,25 respecto de las dos vecinas, vecinas a ≤ 12,5% entre sí (8.911 más) |
-| Continuidad del registro | salto > 2,95 cm dentro de la ventana (5.162 más) |
+| Serie del DI | **depurada**: emboquillado (2 m) y percusión de empate salen de la serie **antes** de la varianza móvil y de la estandarización por pozo; su DI queda vacío (95.761 registros) |
+| Filtros solo del entrenamiento | rango físico de PP 90–230 bar (12.103) · continuidad del registro (5.162) |
+| Percusión de empate | caída ≥ 0,25 respecto de las dos vecinas, vecinas a ≤ 12,5% entre sí (12.786 sobre el total; 8.911 fuera del emboquillado) |
 | Total no entrenable por limpieza | 112.961 (11,5%) |
 | DI | ventana 14 (≈ 28 cm), umbral 1,0, PP · RP · DP · FP (sin avance) |
-| Pesos del DI (calibrados a 5 m) | **PP 0,02 · RP 0,48 · DP 0,04 · FP 0,46** |
+| Pesos del DI (calibrados a 5 m) | **PP 0,01 · RP 0,39 · DP 0,07 · FP 0,54** |
 | Random Forest | 200 árboles · profundidad 8 · min_samples_split 6 · min_samples_leaf 3 · max_features √p · semilla 42 |
 | Agregación | **mediana** de los 200 árboles (predicción y todas las métricas) |
 | Siglas | FP = flujo, AP = avance (Pucobre) · PEP = presión específica de penetración |
+| UCS de laboratorio | «referencial» de cada litología (antes «ancla») |
 
-## Notas que cambian la lectura
+## Cifras
 
-1. **Rango físico de PP (nuevo).** Apareció al revisar el ranking: el criterio
-   de mínima PEP elegía tramos con PP de 2 a 7 bar y ROP de 7 a 10 m/min, es
-   decir, la sarta avanzando sin percutir. Había 13.086 registros entrenables
-   con PP < 90 bar, que explicaban 7.035 de los 7.168 registros con
-   ROP > 3 m/min. El rango 90–230 bar ya estaba declarado en el perfil de
-   faena, pero ningún filtro lo aplicaba. Se aplicó con tu criterio de no
-   entrenar con datos sin sentido físico. Se puede retirar si no lo quieres.
-2. **Los pesos a 5 m cambiaron otra vez.** Con la limpieza final quedan en
-   RP 0,48 y FP 0,46, con el dámper en 0,04. La tesis (6.2) justifica el
-   radio de 5 m porque «le daba mayor peso» al dámper. Con los datos limpios
-   eso ya no ocurre, y la validación dejando un sondaje fuera da
-   ρ = −0,157: **no generaliza**. Sin el filtro de PP los pesos eran
-   PP 0,12 · RP 0,17 · DP 0,27 · FP 0,43. Que cambien tanto con un filtro del
-   1,2% de los datos es la inestabilidad que la tabla 6.2 ya describe.
-3. **El Spearman +0,586 «estimando una litología oculta» no se reproduce.**
-   En LOOCV-Litología el bosque ordena **al revés**: ρ = −0,518 por registro.
-   Predice 125 MPa para Kpcli (ancla 180) y 152 MPa para Kpcls (ancla 60). Lo
-   que sí sale positivo es el ρ por pozo (GroupKFold): **+0,563**, que es
-   probablemente de donde vino el 0,586. La figura `F6_05b` muestra los tres
-   esquemas lado a lado.
-4. **La concordancia del DI con las mallas sigue en el azar.** La precisión es
-   51,0% contra un azar de 53,2%.
+| Dónde | Valor final |
+|---|---|
+| Registros / pozos | 982.420 / 928 |
+| DI ≤ 1 / DI > 1 / sin DI | 735.674 / 150.985 / 95.761 |
+| Conjunto de entrenamiento | **723.601** registros en 902 pozos |
+| Etiquetas | Kpcli 180 (426.935) · Bht 128,1 (226.219) · Kpcls 60 (53.596) · Brecha mixta 111,5 (16.851) |
+| Tabla 6.1 | 0,25 → 12.786 (1,30%); empates esperados por largo de barra (1,756 m): 11.189 |
+| Pearson PP–DP | señales 0,47 · varianza móvil (entrada del DI) 0,53 |
+| Tabla 6.2, radio 5 m | 32 pares, 4 sondajes; ρ ajuste **+0,236**, validación dejando un sondaje fuera **+0,051** |
+| GroupKFold por pozo (k = 5) | **R² +0,290 ± 0,02**, RMSE 30,4 MPa, ρ de Spearman +0,564 |
+| LOOCV-Caserón | **R² −2,766** (PCC_0042 −3,55 · PCC_1541 −4,14 · PCS_1043 −0,61; PCS_1059 tiene una sola etiqueta: indefinido); RMSE medio 50,5 MPa; ρ +0,111 |
+| LOOCV-Litología (RMSE) | línea base 57,1 · Random Forest 61,8 · relación directa PEP–UCS 137,8 · banda por unidad 137,8 (las dos últimas extrapolan en 2 de 4 litologías) |
+| LOOCV-Litología (ρ por registro) | Random Forest −0,519 · relación directa −0,618 (ordena al revés) |
+| Línea base «media global» (153,3 MPa) | RMSE 36,1 MPa |
+| Importancia por permutación | FP 0,223 · RP 0,131 · PEP 0,049 · PP 0,043 · AP 0,041 · ROP 0,016 · DP 0,009 (271 pozos no vistos) |
+| UCS predicha, p50 vs. referencial | Kpcli 167,3 (180) · Bht 137,6 (128,1) · Brecha mixta 154,6 (111,5) · Kpcls 133,0 (60) |
+| Comparación de algoritmos (R² prueba / entrenamiento) | **RF +0,166 / 0,485** · HGB +0,147 / 0,594 · Lineal +0,136 / 0,184 · MLP +0,088 / 0,492 · KNN −0,059 / 0,703 (59.326 registros, 76 pozos) |
+| Concordancia DI ↔ mallas, PCC_1541 | 1.596 picos; en pozos con cruces 1.320; **precisión 58,0%** (azar 52,6%) · **recall 92,8%** (radio 3 m) |
+| Desfase pico–cruce | media −0,08 m · mediana +0,15 m · σ 5,46 m |
+| Modelo de bloques | 14.913 bloques de 2,5 m; 8,5% con DI > 1; UCS mediana 154,4 MPa (p10 130,9 · p90 170,2) |
+| Dominios | 50 grupos (±20 MPa, ±0,5 DI, tramos de 2 m); G2 Kpcli 408.718 · G1 Bht 202.651 · G39 Kpcls 65.848 |
+| Banda P10–P90 media | intacta 32,3 MPa · fracturada 38,3 MPa |
 
-## Cifras de la tesis y su valor final
+## Lo que cambió al depurar la serie del DI
 
-| Dónde | Tesis dice | Valor final |
-|---|---|---|
-| Resumen, 6.1, Concl. | entrenado sobre 845.550 puntos (86,1%) | **776.471** registros (79,0% del total) en 902 pozos |
-| 6.1 | DI ≤ 1: 845.550 · DI > 1: 136.870 | DI ≤ 1: **862.287** (87,8%) · DI > 1: **120.133** (12,2%), sobre los 982.420 |
-| 6.2 | empate 0,25 → 12.786 (1,3%) | 12.786 (1,30%) sobre el total ✓; teórico por largo de barra: 11.189 |
-| 6.2 | r(PP, DP) = 0,55 < 0,6 | señales: 0,555; **perfiles de varianza (entrada del DI): 0,569**; AP–DP 0,604 en señales |
-| Tabla 6.2 | 34 pares a 5 m; pesos DP 0,55 · FP 0,31 | **32 pares, 4 sondajes; PP 0,02 · RP 0,48 · DP 0,04 · FP 0,46; ρ ajuste +0,126, validación −0,157** (tabla completa en `T6_02`) |
-| 6.2 | 11 sondajes | 11 sondajes, **10 con RQD**; 4 alcanzan el MWD a 5 m |
-| 6.3, Fig. 6.4 | RMSE línea base 57,1 / RF 61,5 | LOOCV-Litología: línea base **57,1** · RF **61,6** · relación directa **134,5** · banda **134,5** (relación y banda extrapolan en 2 de 4 pliegues) |
-| 6.3, Fig. 6.5 | Spearman RF +0,586 · banda +0,581 · relación +0,228 | LOOCV-Litología por registro: RF **−0,518** · relación **−0,619**. GroupKFold por pozo: RF **+0,563** (nota 3) |
-| 6.3 | muestras efectivas 5 | **4** etiquetas: Kpcli 180 (448.004) · Bht 128,1 (242.405) · Kpcls 60 (68.666) · Brecha mixta 111,5 (17.396) |
-| 6.3, Fig. 6.8 | 70/15/15; solo RF positivo (+0,008 / +0,075) | GroupKFold, 5 pliegues, 58.785 registros de 71 pozos. R² prueba: **RF +0,161** · HGB +0,126 · Lineal +0,097 · MLP +0,054 · KNN −0,055. RF sigue siendo el mejor, pero **ya no es el único positivo** |
-| Resumen, 6.7 | LOOCV R² −2,5 / −2,492 | **LOOCV-Caserón R² −2,903** (media de 3 pliegues definidos: PCC_0042 −3,74 · PCC_1541 −4,38 · PCS_1043 −0,59; PCS_1059 tiene una sola etiqueta y queda indefinido); RMSE medio 52,0 MPa |
-| — (nuevo) | — | **GroupKFold por pozo: R² +0,297 ± 0,010**, RMSE 31,5 MPa, ρ +0,563 (mediana de árboles) |
-| — | — | Línea base «media global» (151,7 MPa): RMSE 37,6 MPa |
-| Importancia | (no reportada) | FP 0,233 · RP 0,128 · PEP 0,061 · PP 0,038 · AP 0,032 · ROP 0,021 · DP 0,012 (permutación sobre 271 pozos no vistos) |
-| Fig. 6.7 | — | p50 de la UCS predicha: Kpcli 166,4 (ancla 180) · Bht 136,6 (128,1) · Brecha mixta 154,8 (111,5) · **Kpcls 129,5 (ancla 60)** |
-| 6.4, 6.7 | 49,4% de los picos a ≤ 3 m; 1.115 puntos DI ≥ 1 | PCC_1541: **1.616 picos** (fusión 0,5 m), 1.320 en pozos con cruces; precisión **51,0%** · azar 53,2% · recall 86,5% |
-| 6.4 | desfase media −1,68 · mediana −0,71 · σ 7,11 m | media **−1,04** · mediana **−0,44** · σ **6,56 m** |
-| 6.5, Fig. 6.12 | 15.388 bloques; 88,4% competente; 74,8% sano-competente | **14.913 bloques** de 2,5 m; los 14.913 en la banda ISRM R5 (100–250 MPa); DI: 97,0% sana · 2,6% transición · 0,4% fracturada; UCS mediana 153,9 (p10 129,2 · p90 170,3) |
-| Tabla 6.3 | G3 Kpcli 467.615 (48,8%)… | **45 grupos**; G2 Kpcli 409.246 · G1 Bht 205.136 · G34 Kpcls 69.307 (tabla `T6_03`) |
-| Tabla 6.4 | dominio G3 | dominio **G2** (Kpcli, el mayor); ranking completo en `T6_04` |
-| D (salidas) | — | ancho P10–P90 medio: intacta 33,7 MPa · fracturada 40,4 MPa |
+- **La concordancia supera al azar por primera vez:** 58,0% contra 52,6%.
+  Con el DI sobre la serie completa era 51,0% contra 53,2%. Las caídas de
+  empate y el arranque del pozo generaban picos que no eran roca.
+- **La validación de la calibración pasa a positiva** (ρ +0,051, antes
+  −0,157), aunque sigue siendo baja: con 4 sondajes la calibración no se
+  asienta.
+- **Los pesos vuelven a moverse:** FP 0,54 y RP 0,39 dominan; PP y DP quedan
+  casi en cero.
 
 ## Figuras y tablas (`figuras/finales/`)
 
 | Archivo | Uso en la memoria |
 |---|---|
-| `F6_01_correlacion_pearson.png` | Fig. 6.1 (señales y perfiles de varianza) |
+| `F6_01_correlacion_pearson.png` | Fig. 6.1 |
 | `F6_02_percusion_empate.png` | Fig. 6.2 |
+| `F6_02b_periodicidad_empate.png` | periodicidad de la percusión de empate con el largo de barra |
 | `T6_01_sensibilidad_percusion_empate.png/.csv` | Tabla 6.1 |
 | `T6_02_sensibilidad_radio_RQD.png/.csv` | Tabla 6.2 |
-| `F6_03_perfil_DI_calibrado.png` | Fig. 6.3 (DI de P20_H12 + RQD de DDH13-LP-50 y DDH25-ZC-42) |
+| `F6_03_perfil_DI_calibrado.png` | Fig. 6.3 |
 | `F6_04_RMSE_LOOCV_litologia.png` | Fig. 6.4 |
 | `F6_05_spearman_LOOCV_litologia.png` | Fig. 6.5 |
-| `F6_05b_spearman_por_esquema.png` | nueva: ρ del bosque por esquema de validación |
+| `F6_05b_spearman_por_esquema.png` | ρ del bosque por esquema de validación |
 | `F6_06_PEP_vs_UCS.png` | Fig. 6.6 |
 | `F6_07_UCS_lab_vs_ML.png` | Fig. 6.7 |
-| `F6_08_comparacion_algoritmos.png` | Fig. 6.8 (GroupKFold) |
-| `F6_09_desfase_DI_mallas_PCC1541.png` | Fig. 6.9 (+ precisión, recall y azar) |
+| `F6_08_comparacion_algoritmos.png` | Fig. 6.8 |
+| `F6_09_desfase_DI_mallas_PCC1541.png` | Fig. 6.9 |
 | `F6_10_perfil_PCS1043_P07_H4.png` | Fig. 6.10 |
 | `F6_11_seccion_tronadura_PCC0042.png` | Fig. 6.11 |
 | `F6_12_clasificacion_DI_UCS.png` | Fig. 6.12 |
 | `T6_03_dominios.png/.csv` | Tabla 6.3 |
 | `T6_04_ranking_recomendaciones.png/.csv` | Tabla 6.4 |
 | `F6_13_PEP_UCS_ROP_PP.png` | Fig. 6.13 |
-| `F_RF_esquema.png`, `F_RF_detalle.png` | esquema simple y detalle del bosque |
+| `F_RF_esquema.png`, `F_RF_detalle.png` | esquema y detalle del bosque |
 | `F_DI_vs_estructura.png` | DI de P20_H12 contra el modelo geológico |

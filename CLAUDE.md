@@ -33,6 +33,12 @@ mina subterránea de cobre.
   MEDIANA de sus 200 árboles.
 - Limpieza (`aplicar_limpieza_estandar`): emboquillado 2 m, PP fuera de
   90-230 bar, percusión de empate (caída ≥ 0,25), continuidad del registro.
+- El DI se calcula sobre la SERIE DEPURADA (`mascara_serie_di`,
+  `di_profile_serie`): el emboquillado y la percusión de empate salen de la
+  serie antes de la varianza móvil y la estandarización por pozo, y su DI
+  queda en `None`. El rango de PP y la continuidad solo excluyen del
+  entrenamiento del UCS. La calibración contra RQD usa la misma serie
+  (`_z2_por_param`). Decisión del autor, 2026-10-22.
 
 ## Prohibiciones
 

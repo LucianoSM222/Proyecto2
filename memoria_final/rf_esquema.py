@@ -14,7 +14,7 @@ RF = D["config"]["rf"]
 emb = {e["etapa"]: e["quedan"] for e in D["embudo"]}
 gk, lo = D["groupkfold"], D["loocv"]
 
-plt.rcParams.update({"font.family": "Liberation Sans", "font.size": 11})
+plt.rcParams.update({"font.family": "Carlito", "font.size": 12})
 BEIGE, BORDE = "#F0E8D6", "#4A4A4A"
 TEAL, TEAL_OSC = "#5B9EA6", "#3F7C84"
 ROSA, PERI_A, PERI_B, GRIS = "#F0B5E4", "#9A9EE8", "#AECBF0", "#D9D9D9"
@@ -136,7 +136,7 @@ caja(33, 26.6, 34, 4.6, f"Agregación  ·  mediana de los {RF['n_estimators']} �
 banda(1.5, 23.0, "Esquema de validación")
 
 # GroupKFold por pozo
-ax.text(6.0, 19.6, f"Validación cruzada agrupada por pozo\n{gk['n_pliegues']} pliegues  ·  "
+ax.text(6.0, 19.6, f"Validación cruzada agrupada por pozo\nGroupKFold, k = {gk['n_pliegues']}  ·  "
         f"{mil(D['n_pozos_grupo'])} pozos", fontsize=11, va="center", zorder=5)
 nf, x0, w, hgt = gk["n_pliegues"], 6.0, 6.4, 2.1
 for it in range(nf):
@@ -148,9 +148,9 @@ for it in range(nf):
     ax.text(x0 + nf * (w + 0.5) + 0.8, yy + hgt / 2, f"{it + 1}ª iteración",
             fontsize=9.5, va="center", zorder=5)
 ax.add_patch(Rectangle((6.0, 2.4), 3.0, 1.5, facecolor=MORADO, edgecolor="white", zorder=3))
-ax.text(9.6, 3.15, "Pliegue de ajuste", fontsize=9.5, va="center", zorder=5)
+ax.text(9.6, 3.15, "Fold de ajuste", fontsize=9.5, va="center", zorder=5)
 ax.add_patch(Rectangle((24.0, 2.4), 3.0, 1.5, facecolor=CYAN, edgecolor="white", zorder=3))
-ax.text(27.6, 3.15, "Pliegue de prueba", fontsize=9.5, va="center", zorder=5)
+ax.text(27.6, 3.15, "Fold de prueba", fontsize=9.5, va="center", zorder=5)
 
 # LOOCV por caserón
 ax.text(57.0, 19.6, "Validación dejando un caserón fuera (LOOCV-Caserón)\n"
@@ -170,7 +170,6 @@ caja(57.0, 2.2, 38.0, 4.0,
       f"R² = {lo['r2_medio_cross_val_score']:.3f}  ·  RMSE = {lo['rmse_medio']:.1f} MPa   (por caserón, {lo['n_definidos']} definidos)").replace(".", ","),
      "white", fs=10.5)
 
-fig.text(0.5, 0.004, "Elaboración propia.", ha="center", fontsize=9, color="#666666")
 fig.savefig("/home/user/Proyecto2/figuras/F_RF_esquema.png", dpi=300,
             bbox_inches="tight", facecolor="white")
 print("F_RF_esquema.png OK")

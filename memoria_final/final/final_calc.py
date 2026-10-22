@@ -55,6 +55,7 @@ log(f"tabla 6.1 OK: {t61[1]}")
 
 # ── limpieza estándar ───────────────────────────────────────────────────────
 R["limpieza"] = gw.aplicar_limpieza_estandar()
+gw.compute_di()   # serie depurada: emboquillado y percusión de empate fuera del DI
 R["limpieza"]["umbral_empate"] = gw.get_param("pp.percusion_empate_caida_rel")
 log(f"limpieza: {R['limpieza']}")
 guardar()
@@ -68,8 +69,10 @@ for w in gw.wells.values():
     arrs = {k: np.array([getattr(p, k) for p in ps], float) for k in PAR5}
     if not all(np.isfinite(a).all() for a in arrs.values()): continue
     z2 = gw._z2_por_param(ps, 14, PAR5)
+    if z2 is None: continue                      # serie depurada más corta que la ventana
+    m = np.isfinite(z2[PAR5[0]])                 # misma serie que el DI
     for k in PAR5:
-        crudo[k].append(arrs[k]); var[k].append(np.sqrt(z2[k]))
+        crudo[k].append(arrs[k][m]); var[k].append(np.sqrt(z2[k][m]))
 Mc = np.array([np.concatenate(crudo[k]) for k in PAR5]); Mv = np.array([np.concatenate(var[k]) for k in PAR5])
 R["pearson"] = {"variables": [gw.CAL_SIGLAS[k] for k in PAR5], "n": int(Mc.shape[1]),
                 "crudas": np.round(np.corrcoef(Mc), 3).tolist(),
@@ -153,6 +156,7 @@ for iv in gw._intervalos_rqd_sondaje():
     if dd[k] <= 5.0:
         L = np.array(pp20["largo"]); D_ = np.array([np.nan if v is None else v for v in pp20["di"]])
         m = np.abs(L - L[k]) <= max(iv["largo_m"], 0.2) / 2
+        m &= np.isfinite(D_)   # emboquillado y empate no tienen DI
         rq = gw._rqd_deere_np(L[m], D_[m], gw.di_threshold) if m.sum() >= 2 else None
         tramos.append({"sondaje": iv["sondaje"], "desde": iv["desde"], "hasta": iv["hasta"],
                        "rqd": iv["rqd"], "dist_m": round(float(dd[k]), 2),
@@ -202,7 +206,7 @@ guardar()
 gw.predict_all_wells()
 anch = defaultdict(list)
 for p in PTS:
-    if p.ucs_ml_p10 is not None and p.ucs_ml_p90 is not None:
+    if p.ucs_ml_p10 is not None and p.ucs_ml_p90 is not None and p.di is not None:
         anch["fract" if (p.di is not None and p.di > 1.0) else "intacta"].append(p.ucs_ml_p90 - p.ucs_ml_p10)
 R["p10_p90"] = {k: {"n": len(v), "media": round(float(np.mean(v)), 2), "mediana": round(float(np.median(v)), 2)}
                 for k, v in anch.items()}
@@ -261,7 +265,7 @@ rng = np.random.default_rng(42)
 sc = {"intacta": [], "fracturada": []}
 porlito = defaultdict(list)
 for p in PTS:
-    if p.ucs_ml is None or p.se is None or not np.isfinite(p.se) or p.vel is None or p.vel < gw.ROP_MIN_FISICA: continue
+    if p.ucs_ml is None or p.di is None or p.se is None or not np.isfinite(p.se) or p.vel is None or p.vel < gw.ROP_MIN_FISICA: continue
     k = "fracturada" if (p.di is not None and p.di > 1.0) else "intacta"
     sc[k].append((p.se, p.ucs_ml, p.lito))
     if k == "intacta" and p.entrenable: porlito[p.lito].append(p.ucs_ml)

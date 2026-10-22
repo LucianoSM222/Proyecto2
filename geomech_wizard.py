@@ -3779,6 +3779,38 @@ def di_profile(points, window, params=None, weights=None):
         total += norm_w[k] * z**2
     return np.sqrt(total)
 
+def mascara_serie_di(points) -> np.ndarray:
+    """Qué muestras de un pozo ENTRAN a la serie del DI (decisión del autor,
+    2026-10-22). Salen el emboquillado —si el corte se aplicó— y la percusión
+    de empate —si su filtro está vigente—: no son roca, y dentro de la ventana
+    inflaban la varianza de la PP. El rango de PP y la continuidad NO tocan la
+    serie: siguen siendo solo filtros del entrenamiento del modelo de UCS.
+    `points` en el orden del pozo; la máscara viene en ese mismo orden."""
+    n = len(points)
+    ok = np.ones(n, dtype=bool)
+    if inicio_aplicado:
+        ok &= np.array([p.largo >= inicio_cut_m for p in points], dtype=bool)
+    if any(f.get("method") == "percusion_empate" for f in clean_filters):
+        orden = sorted(range(n), key=lambda i: points[i].largo)
+        marcas = detectar_percusion_de_empate([points[i] for i in orden],
+                                              PP_PERCUSION_EMPATE_CAIDA_REL)
+        ok[[orden[i] for i in marcas]] = False
+    return ok
+
+
+def di_profile_serie(points, window, params=None, weights=None):
+    """DI sobre la serie depurada (`mascara_serie_di`), devuelto en el largo
+    del pozo con NaN en las muestras que no entran. None si la serie queda
+    más corta que la ventana."""
+    m = mascara_serie_di(points)
+    if int(m.sum()) < window:
+        return None
+    sub = di_profile([p for p, k in zip(points, m) if k], window, params, weights)
+    if sub is None:
+        return None
+    out = np.full(len(points), np.nan); out[m] = sub
+    return out
+
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║  PASO 1 — VARIANTES DEL DI, SIN TOCAR LA CONVENCIÓN                     ║
 # ║                                                                          ║
@@ -4020,7 +4052,7 @@ def compute_di_variant(nombre: str) -> Dict:
     for wn, well in wells.items():
         if len(well.points) < v["window"]:
             cortos.append(wn); continue
-        perfil = di_profile(well.points, v["window"], v["params"], v["weights"])
+        perfil = di_profile_serie(well.points, v["window"], v["params"], v["weights"])
         if perfil is None:
             cortos.append(wn); continue
         well.di_variantes[nombre] = perfil
@@ -4697,9 +4729,11 @@ def compute_di():
         if n < cfg["window"]:
             log_warn(f'DI "{wn}": {n} pts, mín={cfg["window"]}.'); continue
         try:
-            di = di_profile(pts, cfg["window"], cfg["params"], cfg["weights"])
+            # Serie depurada: emboquillado y percusión de empate fuera (DI = None).
+            di = di_profile_serie(pts, cfg["window"], cfg["params"], cfg["weights"])
             if di is None: continue
-            for i, p in enumerate(pts): p.di = float(di[i])
+            for i, p in enumerate(pts):
+                p.di = float(di[i]) if np.isfinite(di[i]) else None
         except Exception as e:
             log_warn(f'DI "{wn}": {e}')
 
@@ -4736,7 +4770,7 @@ def di_sensitivity_analysis(well, windows=DI_SENSITIVITY_WINDOWS):
     largos = [p.largo for p in pts]
     profiles, rows = {}, []
     for w in windows:
-        di = di_profile(pts, w, di_config["params"], di_config["weights"])
+        di = di_profile_serie(pts, w, di_config["params"], di_config["weights"])
         profiles[w] = di
         if di is None:
             rows.append({"ventana": w, "n_picos": None, "pct_sobre_umbral": None})
@@ -7530,15 +7564,20 @@ def _z2_por_param(points, window: int, params) -> Optional[Dict[str, np.ndarray]
     cada combinación y la calibración deja de ser practicable.
     """
     half = window // 2
-    n = len(points)
-    if n < window:
+    # Misma serie depurada que compute_di (emboquillado y empate fuera), en el
+    # largo del pozo con NaN donde no entra: los índices siguen siendo los de
+    # w.points, que es como la calibración los busca.
+    m = mascara_serie_di(points)
+    if int(m.sum()) < window:
         return None
+    sub = [p for p, k_ in zip(points, m) if k_]
     out = {}
     for k in params:
-        arr = np.array([getattr(p, k) for p in points], dtype=np.float64)
+        arr = np.array([getattr(p, k) for p in sub], dtype=np.float64)
         mv = _moving_variance(arr, half)
         std = mv.std() or 1e-9
-        out[k] = ((mv - mv.mean()) / std) ** 2
+        full = np.full(len(points), np.nan); full[m] = ((mv - mv.mean()) / std) ** 2
+        out[k] = full
     return out
 
 
@@ -7604,7 +7643,7 @@ def _rho_de_pesos(pesos: Dict[str, float], window: int, umbral: float,
         w = wells.get(wn)
         if w is None or len(w.points) < window:
             continue
-        perfil = di_profile(w.points, window, sorted(pesos), pesos)
+        perfil = di_profile_serie(w.points, window, sorted(pesos), pesos)
         if perfil is not None:
             perfiles[wn] = perfil
     if not perfiles:

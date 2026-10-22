@@ -12,7 +12,7 @@ D = json.load(open(f"{S}/rf_figura_datos.json", encoding="utf-8"))
 C, RF = D["config"], D["config"]["rf"]
 
 # Liberation Sans: métricamente compatible con Arial, que no está en el sistema.
-plt.rcParams.update({"font.family": "Liberation Sans", "font.size": 8})
+plt.rcParams.update({"font.family": "Carlito", "font.size": 8.5})
 PAL = {"tren": ("#DCF0E7", "#2F8F6B"), "bosque": ("#D6E2F0", "#1F4E79"),
        "eval": ("#F5DEDB", "#B03A2E"), "salida": ("#EFEFEF", "#555555")}
 
@@ -145,7 +145,7 @@ for j, hn in enumerate([raiz.get("izq"), raiz.get("der")]):
 caja(51.0, 45.4, 46.0, 9.0, f"Agregación de los {RF['n_estimators']} árboles\n"
      f"UCS_ml  =  MEDIANA de las {RF['n_estimators']} respuestas (p50)\n"
      "P10 y P90 entre árboles  =  banda de incertidumbre\n"
-     "la banda se ensancha según la calidad del ancla\ny se acota al rango físico 0-450 MPa",
+     "la banda se ensancha según la calidad del referencial\ny se acota al rango físico 0-450 MPa",
      "bosque", fs=6.9)
 flecha(48.9, 49.0, 50.8, 49.9)
 ax.text(50, 39.9, "El bosque NO ajusta pesos ni coeficientes: elige variables y umbrales de corte.",
@@ -157,7 +157,7 @@ flecha(50, 70.2, 50, 68.0)
 # ═════════ C ═════════
 grupo(2, 14.0, 96, 21.5, "C.  Evaluación", "eval")
 gk, lo = D["groupkfold"], D["loocv"]
-caja(3.3, 25.8, 45.5, 7.0, f"GroupKFold por pozo ({gk['n_pliegues']} pliegues)\n"
+caja(3.3, 25.8, 45.5, 7.0, f"GroupKFold por pozo (k = {gk['n_pliegues']})\n"
      "¿predice un tiro nuevo en un caserón conocido?\n"
      f"R² medio = {dec(gk['r2_medio'],3)}   ·   RMSE medio = {dec(gk['rmse_medio'],1)} MPa\n"
      "el pozo entero cae de un solo lado del corte", "eval", fs=6.9)
@@ -213,8 +213,6 @@ caja(3.3, 2.2, 93.7, 1.6, "Agrupación en dominios (tramos de 2 m)  →  entrada
      "perforación y tronadura", "salida", fs=7.0, bold=False)
 flecha(50, 14.2, 50, 11.6); flecha(50, 8.0, 50, 7.5); flecha(50, 4.3, 50, 3.9)
 
-fig.text(0.5, 0.004, "Elaboración propia.  Tipografía Liberation Sans (compatible con Arial).",
-         ha="center", fontsize=6.6, color="#666666")
 fig.savefig("/home/user/Proyecto2/figuras/F_RF_detalle.png", dpi=300,
             bbox_inches="tight", facecolor="white")
 print("F_RF_detalle.png OK")

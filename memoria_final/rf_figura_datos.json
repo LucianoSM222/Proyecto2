@@ -4,10 +4,10 @@
     "di_window": 14,
     "di_ventana_cm": 28.0,
     "di_weights": {
-      "pp": 0.018671114286595573,
-      "pr": 0.48257765137768355,
-      "pd": 0.04333066680966212,
-      "pf": 0.45542056752605886
+      "pp": 0.007019583507536992,
+      "pr": 0.3881096924259172,
+      "pd": 0.06958365825421613,
+      "pf": 0.5352870658123297
     },
     "di_variante": "calibrada_RQD_5m",
     "ml_features": [
@@ -43,7 +43,7 @@
     "limpieza": {
       "emboquillado_m": 2.0,
       "emboquillado_marcados": 86785,
-      "rango_fisico_pp": 0,
+      "rango_fisico_pp": 12103,
       "percusion_empate": 8911,
       "continuidad": 5162,
       "no_entrenables": 112961,
@@ -102,119 +102,119 @@
     {
       "etapa": "roca_intacta",
       "label": "DI ≤ umbral (1) — roca intacta",
-      "quedan": 776471,
-      "perdidos": 92988
+      "quedan": 723601,
+      "perdidos": 145858
     }
   ],
   "etiquetas": [
     {
       "litologia": "Kpcli",
       "ucs_MPa": 180.0,
-      "n_puntos": 448004,
-      "pct": 57.7
+      "n_puntos": 426935,
+      "pct": 59.0
     },
     {
       "litologia": "Bht",
       "ucs_MPa": 128.1,
-      "n_puntos": 242405,
-      "pct": 31.22
+      "n_puntos": 226219,
+      "pct": 31.26
     },
     {
       "litologia": "Kpcls",
       "ucs_MPa": 60.0,
-      "n_puntos": 68666,
-      "pct": 8.84
+      "n_puntos": 53596,
+      "pct": 7.41
     },
     {
       "litologia": "Brecha_mixta",
       "ucs_MPa": 111.5,
-      "n_puntos": 17396,
-      "pct": 2.24
+      "n_puntos": 16851,
+      "pct": 2.33
     }
   ],
   "por_caseron": [
     {
       "caseron": "PCC_0042",
-      "n_puntos": 384389,
+      "n_puntos": 365414,
       "n_pozos": 418
     },
     {
       "caseron": "PCC_1541",
-      "n_puntos": 156080,
+      "n_puntos": 131053,
       "n_pozos": 235
     },
     {
       "caseron": "PCS_1043",
-      "n_puntos": 126188,
+      "n_puntos": 122026,
       "n_pozos": 124
     },
     {
       "caseron": "PCS_1059",
-      "n_puntos": 109814,
+      "n_puntos": 105108,
       "n_pozos": 125
     }
   ],
   "n_pozos_grupo": 902,
   "importancia": {
-    "ROP": 0.021,
-    "PP": 0.0376,
-    "AP": 0.0315,
-    "DP": 0.012,
-    "RP": 0.1283,
-    "FP": 0.2326,
-    "PEP": 0.0611
+    "ROP": 0.0156,
+    "PP": 0.0427,
+    "AP": 0.0409,
+    "DP": 0.0094,
+    "RP": 0.1306,
+    "FP": 0.2225,
+    "PEP": 0.0494
   },
   "importancia_nota": "Permutación sobre 20.000 puntos de 271 pozos NO vistos en el ajuste. Semilla 42, 10 repeticiones.",
   "arbol_ejemplo": {
     "indice": 0,
     "profundidad_real": 8,
-    "n_nodos": 491,
+    "n_nodos": 483,
     "raiz": {
-      "n_muestras": 490637,
-      "valor_UCS": 151.6,
+      "n_muestras": 457350,
+      "valor_UCS": 153.3,
       "hoja": false,
       "variable": "PEP",
-      "umbral": 301.687,
+      "umbral": 290.858,
       "izq": {
-        "n_muestras": 130711,
-        "valor_UCS": 137.6,
+        "n_muestras": 95166,
+        "valor_UCS": 138.6,
         "hoja": false,
         "variable": "RP",
-        "umbral": 54.623,
+        "umbral": 54.41,
         "izq": {
-          "n_muestras": 117599,
-          "valor_UCS": 134.3,
+          "n_muestras": 86203,
+          "valor_UCS": 135.7,
           "hoja": false,
           "variable": "FP",
-          "umbral": 8.951
+          "umbral": 9.015
         },
         "der": {
-          "n_muestras": 13112,
-          "valor_UCS": 166.7,
+          "n_muestras": 8963,
+          "valor_UCS": 167.3,
           "hoja": false,
           "variable": "FP",
-          "umbral": 6.901
+          "umbral": 6.748
         }
       },
       "der": {
-        "n_muestras": 359926,
-        "valor_UCS": 156.8,
+        "n_muestras": 362184,
+        "valor_UCS": 157.2,
         "hoja": false,
         "variable": "RP",
-        "umbral": 50.451,
+        "umbral": 48.845,
         "izq": {
-          "n_muestras": 222739,
-          "valor_UCS": 152.3,
+          "n_muestras": 202905,
+          "valor_UCS": 152.2,
           "hoja": false,
-          "variable": "FP",
-          "umbral": 9.123
+          "variable": "PP",
+          "umbral": 221.437
         },
         "der": {
-          "n_muestras": 137187,
-          "valor_UCS": 164.0,
+          "n_muestras": 159279,
+          "valor_UCS": 163.6,
           "hoja": false,
-          "variable": "PEP",
-          "umbral": 498.314
+          "variable": "RP",
+          "umbral": 57.833
         }
       }
     }
@@ -225,53 +225,53 @@
     "pliegues": [
       {
         "pliegue": 1,
-        "n_prueba": 155295,
+        "n_prueba": 144720,
         "n_etiquetas_prueba": 4,
-        "r2": 0.284,
-        "rmse": 31.62,
-        "spearman": 0.535,
+        "r2": 0.273,
+        "rmse": 29.06,
+        "spearman": 0.524,
         "motivo": null
       },
       {
         "pliegue": 2,
-        "n_prueba": 155296,
+        "n_prueba": 144720,
         "n_etiquetas_prueba": 4,
-        "r2": 0.309,
-        "rmse": 30.14,
-        "spearman": 0.567,
+        "r2": 0.325,
+        "rmse": 29.87,
+        "spearman": 0.597,
         "motivo": null
       },
       {
         "pliegue": 3,
-        "n_prueba": 155294,
+        "n_prueba": 144721,
         "n_etiquetas_prueba": 4,
-        "r2": 0.29,
-        "rmse": 31.54,
-        "spearman": 0.554,
+        "r2": 0.273,
+        "rmse": 31.9,
+        "spearman": 0.557,
         "motivo": null
       },
       {
         "pliegue": 4,
-        "n_prueba": 155293,
+        "n_prueba": 144721,
         "n_etiquetas_prueba": 4,
-        "r2": 0.291,
-        "rmse": 32.88,
-        "spearman": 0.568,
+        "r2": 0.297,
+        "rmse": 28.93,
+        "spearman": 0.573,
         "motivo": null
       },
       {
         "pliegue": 5,
-        "n_prueba": 155293,
+        "n_prueba": 144719,
         "n_etiquetas_prueba": 4,
-        "r2": 0.309,
-        "rmse": 31.35,
-        "spearman": 0.589,
+        "r2": 0.281,
+        "rmse": 32.01,
+        "spearman": 0.567,
         "motivo": null
       }
     ],
-    "r2_medio": 0.297,
-    "rmse_medio": 31.51,
-    "spearman_medio": 0.563
+    "r2_medio": 0.29,
+    "rmse_medio": 30.35,
+    "spearman_medio": 0.564
   },
   "loocv": {
     "unidad": "caserón",
@@ -279,64 +279,64 @@
     "pliegues": [
       {
         "pliegue": "PCC_0042",
-        "n_prueba": 384389,
+        "n_prueba": 365414,
         "n_etiquetas_prueba": 2,
-        "r2": -3.74,
-        "rmse": 45.78,
-        "spearman": 0.243,
+        "r2": -3.547,
+        "rmse": 44.85,
+        "spearman": 0.237,
         "motivo": null,
-        "r2_reportado": -3.74
+        "r2_reportado": -3.547
       },
       {
         "pliegue": "PCC_1541",
-        "n_prueba": 156080,
+        "n_prueba": 131053,
         "n_etiquetas_prueba": 2,
-        "r2": -4.383,
-        "rmse": 78.43,
-        "spearman": 0.015,
+        "r2": -4.138,
+        "rmse": 75.89,
+        "spearman": 0.049,
         "motivo": null,
-        "r2_reportado": -4.383
+        "r2_reportado": -4.138
       },
       {
         "pliegue": "PCS_1043",
-        "n_prueba": 126188,
+        "n_prueba": 122026,
         "n_etiquetas_prueba": 3,
-        "r2": -0.586,
-        "rmse": 31.34,
-        "spearman": 0.052,
+        "r2": -0.613,
+        "rmse": 31.58,
+        "spearman": 0.048,
         "motivo": null,
-        "r2_reportado": -0.586
+        "r2_reportado": -0.613
       },
       {
         "pliegue": "PCS_1059",
-        "n_prueba": 109814,
+        "n_prueba": 105108,
         "n_etiquetas_prueba": 1,
         "r2": null,
-        "rmse": 52.46,
+        "rmse": 49.81,
         "spearman": null,
         "motivo": "una sola etiqueta en la prueba: R² y Spearman indefinidos",
         "r2_reportado": null
       }
     ],
-    "r2_medio_cross_val_score": -2.903,
+    "r2_medio_cross_val_score": -2.766,
     "n_definidos": 3,
-    "rmse_medio": 52.0
+    "rmse_medio": 50.53
   },
   "linea_base": {
     "media_global": {
-      "prediccion_MPa": 151.7,
-      "rmse": 37.6
+      "prediccion_MPa": 153.3,
+      "rmse": 36.1
     }
   },
-  "spearman_ajuste": 0.563,
+  "spearman_ajuste": 0.564,
   "intervalo_p10_p90": {
     "roca_intacta": {
-      "n": 862287,
-      "ancho_medio_MPa": 33.74
+      "n": 735674,
+      "ancho_medio_MPa": 32.27
     },
     "roca_fracturada": {
-      "n": 120133,
-      "ancho_medio_MPa": 40.38
+      "n": 150985,
+      "ancho_medio_MPa": 38.32
     },
     "nota": "ucs_ml = MEDIANA de los 200 árboles; P10/P90 ensanchados por pi_factor y acotados a 0-450 MPa."
   },

@@ -20,6 +20,7 @@ cc.cargar_caseron("PCC_0042", verbose=False)
 gw.classify_all_wells_cached(); gw.build_domain_index(); gw.compute_di()
 # DI calibrado a 5 m, con los pesos que produjo final_calc.py sobre los 4 caserones
 _FIN = json.load(open(f"{S}/final/final.json", encoding="utf-8"))["di_vigente"]
+gw.aplicar_limpieza_estandar()   # serie depurada: emboquillado y empate fuera del DI
 gw.create_di_variant("calibrada_RQD_5m", _FIN["pesos"], window=_FIN["window"], threshold=_FIN["umbral"])
 gw.activar_di("calibrada_RQD_5m"); gw.compute_di()
 UMBRAL = gw.di_threshold
@@ -120,7 +121,7 @@ print(json.dumps({k: v for k, v in DAT.items() if k not in ("fronteras_estructur
                  ensure_ascii=False, indent=1), flush=True)
 
 # ───────────────────────── figura ─────────────────────────
-plt.rcParams.update({"font.family": "Liberation Sans", "font.size": 9})
+plt.rcParams.update({"font.family": "Carlito", "font.size": 10})
 COL_LITO = {"Bht": "#2C5F8A", "Brecha_mixta": "#C77B2E", "Kpcli": "#2E7D5B", "Kpcls": "#A33B3B"}
 PAL_EST = ["#7B2D8E", "#D4A017", "#1F9E9E", "#B5446E", "#5A6E3C"]
 ests = sorted({c for _, _, c in tr_est})
@@ -220,7 +221,7 @@ if vn:
     axv.set_ylabel("DI del pozo vecino", fontsize=9)
     axv.set_xlabel("Profundidad a lo largo del pozo (m)", fontsize=10)
     axv.grid(alpha=0.25, lw=0.6)
-    axv.text(0.005, 0.95, f"{vn} — a {VEC['distancia_collar_m']:.1f} m de collar del anterior. "
+    axv.text(0.005, 0.95, f"{vn} — a {VEC['distancia_collar_m']:.1f} m".replace(".", ",") + f" de collar del anterior. "
              f"AQUÍ la malla sí dibuja {', '.join(VEC['estructuras'])}.",
              transform=axv.transAxes, va="top", fontsize=8.2, fontweight="bold", color="#444444")
     axes[2].set_xlabel("")
@@ -255,12 +256,7 @@ else:
                  f"({', '.join(vec['estructuras'])})—. " if vec else "— ") +
               f"El contraste es el resultado: el MWD registra {DAT['n_picos']} picos de "
               "discontinuidad donde la malla interpolada no dibuja nada.")
-fig.text(0.5, -0.025,
-         f"Pozo de {DAT['largo_m']:.1f} m, {DAT['n_puntos']} registros, DI máximo {DAT['di_max']:.2f}. "
-         f"{n_sobre} muestras superan el umbral ({DAT['pct_sobre_umbral']:.1f}%), agrupadas en "
-         f"{DAT['n_picos']} picos. " + cuerpo + " Elaboración propia.",
-         ha="center", fontsize=8.2, color="#555555", wrap=True)
-fig.tight_layout(rect=[0, 0.02, 1, 1])
+fig.tight_layout()
 fig.savefig("/home/user/Proyecto2/figuras/F_DI_vs_estructura.png", dpi=300,
             bbox_inches="tight", facecolor="white")
 print("figura OK", flush=True)
