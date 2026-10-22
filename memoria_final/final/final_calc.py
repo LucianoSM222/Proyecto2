@@ -8,9 +8,7 @@ import sys, os, time, json
 from collections import defaultdict, Counter
 sys.path.insert(0, "/home/user/Proyecto2")
 import numpy as np
-from scipy.stats import spearmanr
 from sklearn.model_selection import GroupKFold, LeaveOneGroupOut
-from sklearn.ensemble import RandomForestRegressor
 import geomech_wizard as gw
 import cargar_caserones as cc
 
@@ -211,49 +209,7 @@ for p in PTS:
 R["p10_p90"] = {k: {"n": len(v), "media": round(float(np.mean(v)), 2), "mediana": round(float(np.median(v)), 2)}
                 for k, v in anch.items()}
 
-# ── LOOCV-Litología: vara de la herramienta + versión por punto ─────────────
-R["loocv_litologia"] = {}
-for met in ("linea_base", "relacion", "banda", "ml"):
-    r = gw.leave_one_lithology_out(met)
-    R["loocv_litologia"][met] = {k: r.get(k) for k in ("status", "mae_mpa", "rmse_mpa", "mae_interpolacion",
-                                                       "n_extrapolados", "pliegues", "anclas", "motivo")}
-    log(f"  LOOCV-Litología {met}: rmse={r.get('rmse_mpa')}")
-anclas = gw._anclas_por_litologia()
-usables = {k: v for k, v in anclas.items() if gw._se_representativa(k) is not None}
-pt = {m: {"y": [], "pred": []} for m in ("linea_base", "relacion", "ml")}
-rng = np.random.default_rng(gw.COMPARISON_SEED)
-for fuera in sorted(usables):
-    entrena = {k: v for k, v in usables.items() if k != fuera}
-    ps_f = gw._puntos_de_litologia(fuera)
-    if len(ps_f) > 20000: ps_f = [ps_f[i] for i in rng.choice(len(ps_f), 20000, replace=False)]
-    real = usables[fuera]
-    pt["linea_base"]["y"] += [real] * len(ps_f); pt["linea_base"]["pred"] += [float(np.mean(list(entrena.values())))] * len(ps_f)
-    curva = gw._ajustar_curva_se_ucs([(gw._se_representativa(k), v) for k, v in entrena.items()])
-    if curva:
-        pr = [float(np.clip(gw._aplicar_curva(curva, p.se), 0, 450)) for p in ps_f]
-        pt["relacion"]["y"] += [real] * len(pr); pt["relacion"]["pred"] += pr
-    Xe, ye = [], []
-    for lito, u in entrena.items():
-        for p in gw._puntos_de_litologia(lito):
-            fila = [getattr(p, k) for k in gw.ML_FEATURES_SIN_SE]
-            if all(v is not None and np.isfinite(v) for v in fila): Xe.append(fila); ye.append(u)
-    Xe, ye = np.asarray(Xe), np.asarray(ye)
-    if len(Xe) > gw.COMPARISON_MAX_N:
-        ii = rng.choice(len(Xe), gw.COMPARISON_MAX_N, replace=False); Xe, ye = Xe[ii], ye[ii]
-    Xf = np.asarray([[getattr(p, k) for k in gw.ML_FEATURES_SIN_SE] for p in ps_f], float)
-    ok = np.isfinite(Xf).all(axis=1)
-    m = RandomForestRegressor(**gw.RF_PRODUCCION).fit(Xe, ye)
-    pr = gw.prediccion_mediana(m, Xf[ok])
-    pt["ml"]["y"] += [real] * int(ok.sum()); pt["ml"]["pred"] += pr.tolist()
-R["loocv_litologia_por_punto"] = {}
-for met, d in pt.items():
-    yy, pp_ = np.array(d["y"]), np.array(d["pred"])
-    if not yy.size: continue
-    R["loocv_litologia_por_punto"][met] = {
-        "n": int(yy.size), "rmse": round(float(np.sqrt(np.mean((yy - pp_) ** 2))), 1),
-        "spearman": round(float(spearmanr(yy, pp_).correlation), 3) if np.unique(pp_).size > 1 else None}
-log(f"LOOCV-Litología por punto: {R['loocv_litologia_por_punto']}")
-guardar()
+anclas = gw._anclas_por_litologia()   # UCS referencial de cada litología
 
 # ── comparación de algoritmos (GroupKFold) ──────────────────────────────────
 R["comparacion"] = gw.model_comparison_report(with_se=True)

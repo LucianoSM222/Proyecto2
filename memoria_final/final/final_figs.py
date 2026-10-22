@@ -179,48 +179,19 @@ fig.suptitle("Índice de discontinuidad calibrado y RQD de sondaje — PCC_0042_
 pie(fig, f"Pesos calibrados a 5 m: {pesos_txt()}. {mil(nso)} de {mil(D3.size)} registros ({dec(100*nso/D3.size, 1)}%) sobre el umbral. "
          f"Tramos de RQD cuyo centro está a ≤ 5 m del pozo ({len(P['tramos_rqd'])}); RQD_MWD = regla de Deere (0,10 m) sobre DI ≤ umbral.", y=-0.03); guardar(fig, "F6_03_perfil_DI_calibrado.png")
 
-# ── 6.4 / 6.5 LOOCV-Litología ───────────────────────────────────────────────
-LL = R["loocv_litologia"]; LP = R["loocv_litologia_por_punto"]
-NOM = {"linea_base": "Línea base\n(media de las otras)", "relacion": "Relación directa\nPEP–UCS",
-       "banda": "Banda por unidad", "ml": "Random Forest"}
-mets = [m for m in ("linea_base", "relacion", "banda", "ml") if LL.get(m, {}).get("status") == "ok"]
-fig, ax = plt.subplots(figsize=(8.6, 5))
-v = [LL[m]["rmse_mpa"] for m in mets]
-bb = ax.bar([NOM[m] for m in mets], v, color=[GRIS, NARANJA, MORADO, AZUL][:len(mets)])
-for b_, x in zip(bb, v):
-    ax.annotate(f"{dec(x, 1)} MPa", (b_.get_x() + b_.get_width() / 2, x), xytext=(0, 4), textcoords="offset points", ha="center", fontsize=9.5)
-ax.set_ylabel("RMSE [MPa]"); ax.grid(axis="y", alpha=0.3)
-nx = {m: LL[m].get("n_extrapolados") for m in mets}
-fig.suptitle("Error al estimar una litología oculta (LOOCV-Litología)")
-pie(fig, f"{LL[mets[0]].get('n_litologias', len(LL[mets[0]]['pliegues']))} litologías; en cada pliegue se predice el ancla de la excluida. "
-         + "Pliegues extrapolados: " + ", ".join(f"{NOM[m].split(chr(10))[0]} {nx[m]}" for m in mets if nx[m]) + ".", y=-0.04); guardar(fig, "F6_04_RMSE_LOOCV_litologia.png")
-
-mets_p = [m for m in ("relacion", "ml") if LP.get(m, {}).get("spearman") is not None]
-fig, ax = plt.subplots(figsize=(7.4, 4.8))
-v = [LP[m]["spearman"] for m in mets_p]
-bb = ax.bar([NOM[m] for m in mets_p], v, color=[NARANJA, AZUL][:len(mets_p)], width=0.55)
-for b_, x in zip(bb, v):
-    ax.annotate(("+" if x >= 0 else "") + dec(x, 3), (b_.get_x() + b_.get_width() / 2, x), xytext=(0, 4 if x >= 0 else -14),
-                textcoords="offset points", ha="center", fontsize=10)
-ax.axhline(0, color="#333", lw=0.8); ax.set_ylabel("ρ de Spearman"); ax.set_ylim(min(0, min(v)) - 0.1, 1); ax.grid(axis="y", alpha=0.3)
-fig.suptitle("Ordenamiento de la resistencia en la litología oculta (LOOCV-Litología)")
-pie(fig, "ρ entre la UCS predicha punto a punto y el ancla de laboratorio de la litología excluida, sumando los pliegues. "
-         f"n = {mil(LP[mets_p[-1]]['n'])} registros de roca intacta. La línea base y la banda predicen un valor por litología y no ordenan dentro de ella.", y=-0.05); guardar(fig, "F6_05_spearman_LOOCV_litologia.png")
-
-# ── 6.5b Spearman del bosque según el esquema de validación ───────────────
+# ── 6.5 Spearman del bosque según el esquema de validación ───────────────
 gk = R["groupkfold"]; lc = R["loocv_caseron"]
 vals = [("GroupKFold\npor pozo", gk["spearman_medio"], ""),
-        ("LOOCV-Caserón", float(np.mean([f["spearman"] for f in lc["pliegues"] if f["spearman"] is not None])), ""),
-        ("LOOCV-Litología", LP["ml"]["spearman"], "")]
-fig, ax = plt.subplots(figsize=(8.2, 4.8))
-bb = ax.bar([v[0] for v in vals], [v[1] for v in vals], color=[AZUL, MORADO, NARANJA], width=0.55)
+        ("LOOCV-Caserón", float(np.mean([f["spearman"] for f in lc["pliegues"] if f["spearman"] is not None])), "")]
+fig, ax = plt.subplots(figsize=(7, 4.8))
+bb = ax.bar([v[0] for v in vals], [v[1] for v in vals], color=[AZUL, MORADO], width=0.5)
 for b_, (_, x, nt) in zip(bb, vals):
     ax.annotate(("+" if x >= 0 else "") + dec(x, 3) + (f"\n{nt}" if nt else ""), (b_.get_x() + b_.get_width() / 2, x),
                 xytext=(0, 4 if x >= 0 else -26), textcoords="offset points", ha="center", fontsize=8.5)
-ax.axhline(0, color="#333", lw=0.8); ax.set_ylim(-1, 1); ax.set_ylabel("ρ de Spearman (UCS predicha vs. referencial)"); ax.grid(axis="y", alpha=0.3)
+ax.axhline(0, color="#333", lw=0.8); ax.set_ylim(0, 1); ax.set_ylabel("ρ de Spearman (UCS predicha vs. referencial)"); ax.grid(axis="y", alpha=0.3)
 fig.suptitle("Ordenamiento de la resistencia según qué se deja fuera del entrenamiento")
 pie(fig, "Random Forest con la mediana de sus árboles. Pozo nuevo en caserón conocido · caserón nunca visto · litología nunca vista. "
-         "En LOOCV-Caserón, PCS_1059 tiene una sola etiqueta y su ρ no está definido.", y=-0.04); guardar(fig, "F6_05b_spearman_por_esquema.png")
+         "En LOOCV-Caserón, PCS_1059 tiene una sola etiqueta y su ρ no está definido.", y=-0.04); guardar(fig, "F6_05_spearman_por_esquema.png")
 
 # ── 6.6 PEP vs UCS predicha ─────────────────────────────────────────────────
 S6 = R["pep_vs_ucs"]

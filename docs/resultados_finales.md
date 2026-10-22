@@ -33,8 +33,6 @@ están en `figuras/finales/`. Se regeneran con `final_figs.py`, `rf_figura.py`,
 | Tabla 6.2, radio 5 m | 32 pares, 4 sondajes; ρ ajuste **+0,236**, validación dejando un sondaje fuera **+0,051** |
 | GroupKFold por pozo (k = 5) | **R² +0,290 ± 0,02**, RMSE 30,4 MPa, ρ de Spearman +0,564 |
 | LOOCV-Caserón | **R² −2,766** (PCC_0042 −3,55 · PCC_1541 −4,14 · PCS_1043 −0,61; PCS_1059 tiene una sola etiqueta: indefinido); RMSE medio 50,5 MPa; ρ +0,111 |
-| LOOCV-Litología (RMSE) | línea base 57,1 · Random Forest 61,8 · relación directa PEP–UCS 137,8 · banda por unidad 137,8 (las dos últimas extrapolan en 2 de 4 litologías) |
-| LOOCV-Litología (ρ por registro) | Random Forest −0,519 · relación directa −0,618 (ordena al revés) |
 | Línea base «media global» (153,3 MPa) | RMSE 36,1 MPa |
 | Importancia por permutación | FP 0,223 · RP 0,131 · PEP 0,049 · PP 0,043 · AP 0,041 · ROP 0,016 · DP 0,009 (271 pozos no vistos) |
 | UCS predicha, p50 vs. referencial | Kpcli 167,3 (180) · Bht 137,6 (128,1) · Brecha mixta 154,6 (111,5) · Kpcls 133,0 (60) |
@@ -44,6 +42,11 @@ están en `figuras/finales/`. Se regeneran con `final_figs.py`, `rf_figura.py`,
 | Modelo de bloques | 14.913 bloques de 2,5 m; 8,5% con DI > 1; UCS mediana 154,4 MPa (p10 130,9 · p90 170,2) |
 | Dominios | 50 grupos (±20 MPa, ±0,5 DI, tramos de 2 m); G2 Kpcli 408.718 · G1 Bht 202.651 · G39 Kpcls 65.848 |
 | Banda P10–P90 media | intacta 32,3 MPa · fracturada 38,3 MPa |
+
+> **LOOCV-Litología retirada del proyecto** (decisión del autor, 2026-10-22,
+> por complejidad). La memoria valida el modelo con GroupKFold por pozo y
+> LOOCV-Caserón; las antiguas Fig. 6.4 y 6.5 (RMSE y ρ dejando una litología
+> fuera) ya no forman parte de los entregables.
 
 ## Lo que cambió al depurar la serie del DI
 
@@ -66,9 +69,7 @@ están en `figuras/finales/`. Se regeneran con `final_figs.py`, `rf_figura.py`,
 | `T6_01_sensibilidad_percusion_empate.png/.csv` | Tabla 6.1 |
 | `T6_02_sensibilidad_radio_RQD.png/.csv` | Tabla 6.2 |
 | `F6_03_perfil_DI_calibrado.png` | Fig. 6.3 |
-| `F6_04_RMSE_LOOCV_litologia.png` | Fig. 6.4 |
-| `F6_05_spearman_LOOCV_litologia.png` | Fig. 6.5 |
-| `F6_05b_spearman_por_esquema.png` | ρ del bosque por esquema de validación |
+| `F6_05_spearman_por_esquema.png` | ρ del bosque por pozo (GroupKFold) y por caserón (LOOCV-Caserón) |
 | `F6_06_PEP_vs_UCS.png` | Fig. 6.6 |
 | `F6_07_UCS_lab_vs_ML.png` | Fig. 6.7 |
 | `F6_08_comparacion_algoritmos.png` | Fig. 6.8 |

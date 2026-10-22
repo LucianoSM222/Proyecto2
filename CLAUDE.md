@@ -28,9 +28,11 @@ mina subterránea de cobre.
   comentario.
 - UCS: límites físicos 0 a 450 MPa. Sin truncamiento silencioso jamás.
 - PP: 90 a 230 bar. Es la ÚNICA variable manipulada por el operador.
-- Validación: GroupKFold por pozo; LOOCV-Caserón (un caserón fuera) y
-  LOOCV-Litología (una litología fuera). El bosque se evalúa y predice con la
-  MEDIANA de sus 200 árboles.
+- Validación: GroupKFold por pozo y LOOCV-Caserón (un caserón fuera). El
+  bosque se evalúa y predice con la MEDIANA de sus 200 árboles. La
+  LOOCV-Litología se retiró de la memoria (decisión del autor, 2026-10-22);
+  `leave_one_lithology_out` sigue en la herramienta como vara de la relación
+  directa del Paso 4.
 - Limpieza (`aplicar_limpieza_estandar`): emboquillado 2 m, PP fuera de
   90-230 bar, percusión de empate (caída ≥ 0,25), continuidad del registro.
 - El DI se calcula sobre la SERIE DEPURADA (`mascara_serie_di`,
