@@ -76,6 +76,7 @@ están en `figuras/finales/`; los valores de todas las tablas, en
 | `F6_04b_LOOCV_caseron_metodos.png` | los cuatro métodos (línea base, banda, relación directa PEP↔UCS, RF) bajo LOOCV-Caserón: RMSE, r de Pearson y ρ de Spearman (`loocv_caseron_metodos.py`) |
 | `F6_05_spearman_por_esquema.png` | ρ del bosque por pozo (GroupKFold) y por caserón (LOOCV-Caserón) |
 | `F6_06_PEP_vs_UCS.png` | Fig. 6.6 |
+| `F6_06b_PEP_vs_UCS_extrapolacion.png` | PEP vs UCS predicha en una vista: roca intacta (dominio de entrenamiento) y fracturada (extrapolación), en la proporción real de las clases |
 | `F6_07_UCS_lab_vs_ML.png` | Fig. 6.7 |
 | `F6_08_comparacion_algoritmos.png` | Fig. 6.8 |
 | `F6_09_desfase_DI_mallas_PCC1541.png` | Fig. 6.9 |

@@ -296,6 +296,31 @@ for hnd in lg.legend_handles: hnd.set_alpha(1)
 fig.suptitle("Presión específica de penetración (PEP) y UCS predicha por el modelo")
 pie(fig, "Muestra aleatoria de 25.000 registros por panel (semilla 42), ROP ≥ 0,2 m/min. " + PIE_CFG, y=-0.03); guardar(fig, "F6_06_PEP_vs_UCS.png")
 
+# ── 6.6b PEP vs UCS predicha: dominio de entrenamiento y extrapolación ─────
+# Una sola vista: el bosque se entrena SOLO con DI ≤ umbral, así que lo que
+# predice sobre roca fracturada es extrapolación.
+fig, ax = plt.subplots(figsize=(10, 6.2))
+# Las dos muestras son de 25.000; la fracturada se submuestrea a la proporción
+# real de las clases para que la nube no exagere su peso.
+_prop = S6["fracturada"]["n"] / S6["intacta"]["n"]
+for k, mk, c, et in (("intacta", "o", AZUL, f"DI ≤ {dec(UMB, 0)}, roca intacta — dominio de entrenamiento"),
+                     ("fracturada", "x", ROJO, f"DI > {dec(UMB, 0)}, fracturada — EXTRAPOLACIÓN")):
+    d = S6[k]; pep = np.array(d["pep"]); u = np.array(d["ucs_ml"])
+    m = pep <= 1000
+    if k == "fracturada":
+        keep = np.zeros(pep.size, bool)
+        keep[np.random.default_rng(42).choice(pep.size, int(round(pep.size * _prop)), replace=False)] = True
+        m &= keep
+    ax.scatter(pep[m], u[m], s=5 if mk == "o" else 8, marker=mk, alpha=0.3 if mk == "o" else 0.5,
+               lw=0 if mk == "o" else 0.6, color=c, rasterized=True, label=f"{et} (n = {mil(d['n'])})")
+ax.set_xlim(-40, 1040)
+ax.set_xlabel("PEP = (PP + RP + AP) / ROP [bar·min/m]  (PEP ≤ 1.000)"); ax.set_ylabel("UCS predicha por ML [MPa]")
+ax.grid(True, axis="both")
+h, l = ax.get_legend_handles_labels()
+lg = ax.legend(h[::-1], l[::-1], loc="upper right", fontsize=9, markerscale=2.5, frameon=True, framealpha=0.9)
+for hnd in lg.legend_handles: hnd.set_alpha(1)
+guardar(fig, "F6_06b_PEP_vs_UCS_extrapolacion.png")
+
 # ── 6.7 UCS lab vs ML por litología ─────────────────────────────────────────
 U7 = R["ucs_por_litologia"]
 orden = sorted(U7, key=lambda k: U7[k]["ancla"] or 0)
