@@ -164,16 +164,15 @@ def el_resumen_declara_las_cinco_presiones():
 
 
 def el_barrido_ya_no_lleva_la_sigla_del_avance():
-    section("FLP — `pf` es FLP (barrido), no FP (avance)")
+    section("FP — `pf` es FP (flujo, nomenclatura Pucobre) y `pa` es AP (avance)")
     reset()
     s = gw.di_config_summary()
-    check("FLP=0,2" in s or "FLP=0.2" in s,
-          "el peso 0,20 de `pf` sale rotulado FLP", s)
-    check(",FP=" not in s,
-          "y ya no existe un «FP=» suelto: en IREDES esa sigla es el avance, "
-          "que ahora se declara como FP/AP", s)
-    check(gw.CAL_ETIQUETAS["pf"] == "Barrido (FLP)"
-          and gw.CAL_ETIQUETAS["pa"] == "Avance (FP/AP)",
+    check("FP=0,2" in s or "FP=0.2" in s,
+          "el peso 0,20 de `pf` sale rotulado FP", s)
+    check("FLP" not in s,
+          "la sigla IREDES del XML (FLP) no se muestra: la faena usa FP", s)
+    check(gw.CAL_ETIQUETAS["pf"] == "Flujo (FP)"
+          and gw.CAL_ETIQUETAS["pa"] == "Avance (AP)",
           "y las etiquetas de pantalla salen de la MISMA fuente que el "
           "resumen, para que no se vuelvan a cruzar",
           (gw.CAL_ETIQUETAS["pf"], gw.CAL_ETIQUETAS["pa"]))

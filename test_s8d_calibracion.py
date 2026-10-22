@@ -172,7 +172,7 @@ def encuentra_la_variable_que_manda():
     check(w["pd"] > 0.25,
           "el dámper —única variable con señal en este escenario— sube sobre "
           "su peso de convención (0,25)", w)
-    check(w["pd"] == max(w, key=w.get) or w["pd"] > 0.4,
+    check(max(w, key=w.get) == "pd" or w["pd"] > 0.4,
           "y queda como el peso dominante o cerca", w)
     check(rep["rho_ajuste"] > rep["rho_convencion"],
           "el rho del ajuste supera al de la convención",

@@ -12,7 +12,7 @@ DOS COSAS, y las dos son del autor.
    Es un argumento sobre la fórmula, no una simplificación: SE = (PP+RP+AP)/ROP
    lleva ROP en el denominador, así que subir PP solo mueve la SE en la medida
    en que NO consigue más avance — que es exactamente la resistencia del
-   macizo. El camino estratificado queda disponible en «se.control_pp» para
+   macizo. El camino estratificado queda disponible en «pep.control_pp» para
    poder contrastar los dos en la memoria.
 
    LO QUE NO CAMBIA: el diagnóstico de coherencia SE↔UCS sigue reportando por
@@ -107,8 +107,8 @@ def _escenario(seed=0, n_pozos=9, n_pts=200, sesgo_pp=False):
 def por_defecto_no_estratifica():
     section("SE — por defecto se resume directo, sin estratificar por PP")
     _escenario()
-    check(gw.get_param("se.control_pp") == "directo",
-          "el modo por defecto es directo", gw.get_param("se.control_pp"))
+    check(gw.get_param("pep.control_pp") == "directo",
+          "el modo por defecto es directo", gw.get_param("pep.control_pp"))
     se = gw._se_representativa("Bht")
     check(se is not None, "y produce una SE representativa", se)
     # Directo tiene que ser EXACTAMENTE la mediana de los puntos utilizables:
@@ -124,9 +124,9 @@ def el_camino_estratificado_sigue_disponible():
     section("SE — el otro camino queda, para poder contrastar los dos")
     _escenario(sesgo_pp=True)
     directo = gw._se_representativa("Kpcli")
-    gw.set_param("se.control_pp", "por_estrato")
+    gw.set_param("pep.control_pp", "por_estrato")
     estratificado = gw._se_representativa("Kpcli")
-    gw.reset_param("se.control_pp")
+    gw.reset_param("pep.control_pp")
     check(directo is not None and estratificado is not None,
           "los dos modos dan número", (directo, estratificado))
     check(gw._se_representativa("Kpcli") == directo,
@@ -163,9 +163,9 @@ def el_resultado_declara_como_se_resumio():
     check("DIRECTO" in nota, "en directo lo declara", nota[:70])
     check("ROP" in nota,
           "y con la razón: la SE ya lleva ROP en el denominador", nota[:120])
-    gw.set_param("se.control_pp", "por_estrato")
+    gw.set_param("pep.control_pp", "por_estrato")
     nota2 = gw._nota_control_pp()
-    gw.reset_param("se.control_pp")
+    gw.reset_param("pep.control_pp")
     check("ESTRATO" in nota2, "y en el otro modo dice el otro", nota2[:70])
     check(nota != nota2,
           "los dos modos NO pueden declarar lo mismo: sería un dato sin "
@@ -196,7 +196,7 @@ def la_coherencia_sigue_reportando_por_estrato():
           "del operador, no el método de estimación", sorted(rep)[:6])
     check(rep.get("advertencia_pp"),
           "con su advertencia sobre PP intacta")
-    check(gw.get_param("se.control_pp") == "directo",
+    check(gw.get_param("pep.control_pp") == "directo",
           "todo esto con el modo directo vigente: son dos cosas separadas")
 
 
@@ -274,7 +274,7 @@ def el_veredicto_dice_si_el_orden_esta_decidido():
               "y el veredicto se sigue de los números, no de una impresión",
               (disp, d, rep["orden_decidido"]))
     check(rep.get("que_no_mide"),
-          "y declara qué NO mide: no es LOOCV, y una dispersión chica con "
+          "y declara qué NO mide: no es LOOCV-Caserón, y una dispersión chica con "
           "anclas equivocadas es un resultado estable y falso",
           (rep.get("que_no_mide") or "")[:80])
 

@@ -127,17 +127,15 @@ def estan_las_cinco_presiones_con_su_nombre():
     check(set(gw.CAL_ETIQUETAS) == set(gw.CAL_PARAMS),
           "y todas tienen etiqueta", sorted(gw.CAL_ETIQUETAS))
     txt = " ".join(_textos(gw._di_calibracion_card())).lower()
-    for palabra in ("percusión", "dámper", "rotación", "barrido", "avance"):
+    for palabra in ("percusión", "dámper", "rotación", "flujo", "avance"):
         check(palabra in txt, f"la pantalla ofrece «{palabra}»")
 
     # El punto 2 del pedido: la sigla no puede estar sobre la variable de al lado.
-    check("flp" in gw.CAL_ETIQUETAS["pf"].lower(),
-          "el BARRIDO se rotula FLP, que es su sigla en IREDES",
+    check(gw.CAL_ETIQUETAS["pf"] == "Flujo (FP)",
+          "el FLUJO de barrido se rotula FP, nomenclatura de Pucobre",
           gw.CAL_ETIQUETAS["pf"])
-    check("barrido" in gw.CAL_ETIQUETAS["pf"].lower(),
-          "y se nombra barrido, no «FP»", gw.CAL_ETIQUETAS["pf"])
-    check("avance" in gw.CAL_ETIQUETAS["pa"].lower(),
-          "el AVANCE es el que lleva FP/AP", gw.CAL_ETIQUETAS["pa"])
+    check(gw.CAL_ETIQUETAS["pa"] == "Avance (AP)",
+          "y el AVANCE lleva AP", gw.CAL_ETIQUETAS["pa"])
     # Contra el orden inmutable de Val, que es la fuente de verdad.
     check(gw.MWD_VAL_ORDER == ("LT", "ROP", "PP", "FP", "DP", "RP", "FLP"),
           "el orden de Val sigue siendo el de la convención", gw.MWD_VAL_ORDER)
@@ -147,8 +145,8 @@ def el_panel_del_di_ya_no_llama_FP_al_barrido():
     section("Calibración — el panel del DI deja de cruzar las siglas")
     reset()
     txt = " ".join(_textos(gw._step3()))
-    check("Barrido (FLP)" in txt,
-          "la entrada que escribe `pf` se rotula Barrido (FLP)", txt[:200])
+    check("Flujo (FP)" in txt,
+          "la entrada que escribe `pf` se rotula Flujo (FP)", txt[:200])
     check("Percusión (PP)" in txt and "Dámper (DP)" in txt
           and "Rotación (RP)" in txt,
           "y las otras tres también se nombran completas")

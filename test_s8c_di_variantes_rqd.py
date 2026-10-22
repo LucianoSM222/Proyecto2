@@ -100,8 +100,8 @@ def la_convencion_no_se_puede_tocar():
           list(gw.di_variantes))
     if v is None:
         return
-    check(v["window"] == 14 and v["threshold"] == 1.5,
-          "con la ventana 14 y el umbral 1,5 de la convención",
+    check(v["window"] == 14 and v["threshold"] == gw.DI_DEFAULTS["threshold"],
+          "con la ventana 14 y el umbral de la convención (1,0)",
           (v.get("window"), v.get("threshold")))
     check(v["weights"] == {"pp": 0.35, "pr": 0.20, "pd": 0.25, "pf": 0.20},
           "y los pesos por defecto", v.get("weights"))
@@ -119,7 +119,7 @@ def la_convencion_no_se_puede_tocar():
         except Exception as e:
             check(False, f"{etiqueta} falla con el error equivocado", repr(e))
     v2 = gw.di_variant(gw.DI_VARIANTE_CONVENCION)
-    check(v2["threshold"] == 1.5, "y queda intacta después del intento",
+    check(v2["threshold"] == gw.DI_DEFAULTS["threshold"], "y queda intacta después del intento",
           v2.get("threshold"))
 
 

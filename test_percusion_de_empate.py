@@ -190,8 +190,8 @@ def el_parametro_del_perfil_cambia_la_sensibilidad():
           "con el umbral más sensible del perfil, ahora sí se marca la caída "
           "del 20%", filt)
     gw.reset_param("pp.percusion_empate_caida_rel")
-    check(abs(gw.PP_PERCUSION_EMPATE_CAIDA_REL - 0.30) < 1e-9,
-          "reset_param vuelve al 30% de convención", gw.PP_PERCUSION_EMPATE_CAIDA_REL)
+    check(abs(gw.PP_PERCUSION_EMPATE_CAIDA_REL - 0.25) < 1e-9,
+          "reset_param vuelve al 25% fijado por el autor", gw.PP_PERCUSION_EMPATE_CAIDA_REL)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

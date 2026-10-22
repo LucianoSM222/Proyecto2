@@ -46,14 +46,17 @@ NS_DR = "http://www.iredes.org/xml/DrillRig"
 IR, DR = f"{{{NS_IR}}}", f"{{{NS_DR}}}"
 
 ML_FEATURES = ["vel","pp","pa","pd","pr","pf","se"]
-# Siglas IREDES, en el MISMO orden posicional que ML_FEATURES. `pf` rotulaba
-# "FP" —que en IREDES es el AVANCE— cuando `pf` guarda el BARRIDO: es FLP. Y
+# Siglas de PUCOBRE, en el MISMO orden posicional que ML_FEATURES: FP es el
+# FLUJO de barrido (`pf`) y AP el AVANCE (`pa`). Ojo: en el XML IREDES el campo
+# del avance se llama «FP» (Feed Pressure) y el del barrido «FLP»; eso solo
+# importa al PARSEAR (MWD_VAL_ORDER) y no se muestra. La memoria y la faena
+# usan la nomenclatura de Pucobre, decisión del autor del 2026-10-22. Y
 # `se` es PEP, PRESIÓN ESPECÍFICA DE PENETRACIÓN: (PP+RP+AP)/ROP sobre presiones
 # de REACCIÓN hidráulica, no la energía específica de Teale 1965, que usa
 # empuje y torque IMPUESTOS. El identificador interno sigue siendo `se` —
 # cambiarlo rompería los .gwz y los perfiles ya exportados—; lo que cambia es
 # la sigla visible. La sigla canónica de cada presión vive en CAL_SIGLAS.
-ML_LABELS   = ["ROP","PP","AP","DP","RP","FLP","PEP"]
+ML_LABELS   = ["ROP","PP","AP","DP","RP","FP","PEP"]
 # (B4.2) CONFIGURACIÓN ÚNICA DEL BOSQUE. Había cuatro RandomForestRegressor
 # con hiperparámetros distintos —comparador del Paso 4, holdout interno,
 # ablación de cota y mediana del diagnóstico SE↔UCS—, de modo que las cifras
@@ -284,15 +287,12 @@ HIGH_CV_PI_FACTOR = 1.30
 # cae y se recupera en la siguiente. No es un corte por percentil —prohibido
 # por convención—, es un patrón LOCAL y trazable: una muestra hundida entre
 # dos vecinas parecidas entre sí.
-# (B2.2) VALOR FIJADO POR EL AUTOR: 0,20, criterio CONSERVADOR. No es el que
-# minimiza la desviación contra el teórico de uniones de barra —ese es 0,30,
-# con −4,9% frente al +26,2% de 0,20— y marca 14.738 muestras en vez de 11.100,
-# o sea 3.638 más. La razón de preferirlo: el costo de los dos errores no es
-# simétrico. Dejar pasar una medición sin sentido físico mete al modelo a
-# buscarle relación a un artefacto del varillaje; sacar de más solo cuesta
-# datos, y de esos hay 982.420. Se entrena con menos roca antes que con roca
-# falsa.
-PP_PERCUSION_EMPATE_CAIDA_REL = 0.20
+# VALOR FIJADO POR EL AUTOR: 0,25 (decisión del 2026-10-22, la que reporta la
+# memoria en 6.2). Marca 12.786 muestras (1,30% de 982.420) frente a las
+# 11.189 que predice el largo de barra; 0,20 marcaba 14.738 y 0,30 marca
+# 11.100. Las ~1.600 de exceso sobre el teórico se aceptan como resguardo ante
+# empates de caída menos marcada.
+PP_PERCUSION_EMPATE_CAIDA_REL = 0.25
 # Largo de barra del Simba E70S: referencia geométrica para contrastar las
 # marcas contra los empates físicos del varillaje.
 LARGO_BARRA_M = 1.756
@@ -1722,7 +1722,7 @@ class Well:
     # nunca se confunda con una exacta.
     asignacion_err_pct: Optional[float] = None
     # Caserón al que pertenece el pozo. Es la agrupación correcta para
-    # LOOCV: una litología cruza varios caserones, un pozo no. Si queda
+    # LOOCV-Caserón: una litología cruza varios caserones, un pozo no. Si queda
     # None, caseron_de_pozo() lo deriva del prefijo del plan_id.
     caseron: Optional[str] = None
 
@@ -1738,6 +1738,11 @@ clean_filters: List[Dict] = []
 # hardcodeado de 2.0 m, aunque el usuario hubiera fijado otro valor. Ahora se
 # recuerda aquí, y recompute_filters() lo reaplica en vez de un literal.
 inicio_cut_m: float = 2.0
+# Si el corte de emboquillado CORRIÓ sobre los puntos cargados. Antes el embudo
+# rotulaba «emboquillado <2 m» aunque nadie lo hubiera aplicado: las corridas
+# por script de la ronda 2026-10 entrenaron con 86.785 puntos de los primeros
+# 2 m creyendo que estaban fuera. El rótulo ahora dice lo que pasó.
+inicio_aplicado: bool = False
 # Bandas geomecánicas de laboratorio (T2): registros por caserón×litología.
 #   by_pair    : {(caseron_norm, lito_norm): band}
 #   by_lito    : {lito_norm: [band, ...]}          (misma litología, varios caserones)
@@ -1763,7 +1768,7 @@ prelim_model = None
 #     abiertas que provoquen pérdida de presión, y descarta el AVANCE por el
 #     efecto del cilindro de dos pasos que controla el nivel para evitar
 #     desviaciones del tiro.
-#   · ESTE TRABAJO usa cuatro presiones: PP, RP, DP y FLP. Incluye el flujo de
+#   · ESTE TRABAJO usa cuatro presiones: PP, RP, DP y FP (flujo). Incluye el flujo de
 #     barrido —en MPC sí hay fracturas abiertas que lo hacen caer— y excluye el
 #     avance, coincidiendo con la fuente en ese punto por la misma razón del
 #     cilindro de dos pasos. Los pesos de abajo son una ADAPTACIÓN, no una cita.
@@ -1778,12 +1783,13 @@ DI_DEFAULTS = {"window": 14, "threshold": 1.0,
 # pasos es exactamente 2,0 cm y el 93,3% cae en 2,0-2,1 cm.
 MWD_PASO_NOMINAL_M = 0.02
 DI_VENTANA_CM = round(DI_DEFAULTS["window"] * MWD_PASO_NOMINAL_M * 100.0, 2)  # 28 cm
-# Sigla IREDES de cada presión, y el ORDEN en que se muestran. Vive acá arriba
-# —y no junto a CAL_ETIQUETAS, que se arma desde ella— porque la sigla se
-# escribía en dos lugares y volvieron a cruzarse: di_config_summary() rotulaba
-# `pf` como «FP», que en IREDES es el AVANCE. FLP es el BARRIDO, que es lo que
-# `pf` guarda. Una sola fuente para la sigla evita repetir ese cruce.
-CAL_SIGLAS = {"pp": "PP", "pd": "DP", "pf": "FLP", "pr": "RP", "pa": "AP"}
+# Sigla de cada presión según la nomenclatura de PUCOBRE (FP = flujo de
+# barrido, AP = avance), y el ORDEN en que se muestran. Vive acá arriba —y no
+# junto a CAL_ETIQUETAS, que se arma desde ella— porque la sigla se escribía en
+# dos lugares y llegaron a cruzarse: di_config_summary() omitía el avance. Una
+# sola fuente para la sigla evita repetir ese cruce. La sigla IREDES del XML
+# (donde «FP» es el avance) vive solo en MWD_VAL_ORDER, para parsear.
+CAL_SIGLAS = {"pp": "PP", "pd": "DP", "pf": "FP", "pr": "RP", "pa": "AP"}
 # Nombre de la variante de convención. Vive acá arriba, junto a DI_DEFAULTS,
 # porque `di_variante_activa` lo necesita antes de que se declare el registro
 # de variantes; el registro mismo se siembra más abajo (seed_di_variants).
@@ -2589,7 +2595,7 @@ def run_ml_task(ucs_min, ucs_max, modelo: str = "banda"):
                 task_log(f"⚠ «{lito}»: ancho de banda DERIVADO, no medido.")
             vara = rep.get("vara") or {}
             if vara.get("mae_mpa") is not None:
-                task_log(f"Error dejando-una-litología-fuera: {vara['mae_mpa']:g} MPa"
+                task_log(f"Error LOOCV-Litología (dejando una litología fuera): {vara['mae_mpa']:g} MPa"
                          + (f" (interpolación {vara['mae_interpolacion']:g} MPa, "
                             f"{vara['n_extrapolados']} pliegue(s) extrapolan)"
                             if vara.get("n_extrapolados") else ""))
@@ -3563,8 +3569,9 @@ def build_domain_index():
 def apply_inicio_filter(cut_m):
     """(P3-3.8) Recuerda el corte vigente en `inicio_cut_m`, para que
     recompute_filters() pueda reaplicarlo sin caer a un default hardcodeado."""
-    global inicio_cut_m
+    global inicio_cut_m, inicio_aplicado
     inicio_cut_m = float(cut_m)
+    inicio_aplicado = True
     for well in wells.values():
         for p in well.points:
             if p.largo < cut_m: p.entrenable = False
@@ -4426,7 +4433,7 @@ def seed_param_registry(force: bool = False):
         # vecinas parecidas entre sí), disponible como filtro en el Paso 2.
         _param("pp.percusion_empate_caida_rel", "Percusión (PP)",
                "Caída mínima para marcar percusión de empate",
-               0.20, "float", "fracción",
+               0.25, "float", "fracción",
                "Fracción de caída de PP respecto del promedio de sus dos "
                "vecinos inmediatos para marcar la muestra central como "
                "percusión de empate (excluida del entrenamiento, no borrada). "
@@ -5098,7 +5105,9 @@ def _training_funnel(ucs_min, ucs_max, solo_conteos: bool = False):
     n_total = sum(len(w.points) for w in wells.values())
     labels = {
         "total": "Total de puntos MWD",
-        "entrenable": f"Entrenable (emboquillado <{inicio_cut_m:g} m + filtros de limpieza)",
+        "entrenable": (f"Entrenable (emboquillado <{inicio_cut_m:g} m + filtros de limpieza)"
+                       if inicio_aplicado else
+                       "Entrenable (filtros de limpieza; corte de emboquillado SIN aplicar)"),
         "caseron_entrena": ("En un caserón que ENTRENA ("
                             + (", ".join(sorted(training_caserones)) if training_caserones
                                else "todos los cargados") + ")"),
@@ -5183,6 +5192,46 @@ def _get_train_data(ucs_min, ucs_max):
     return X, y, groups, n_excl
 
 
+def prediccion_mediana(rf, X) -> np.ndarray:
+    """Predicción del bosque como MEDIANA de sus árboles, que es como la
+    herramienta predice (predict_all_wells). `rf.predict()` de scikit-learn
+    PROMEDIA: medir la validación con él era medir otro modelo. Decisión del
+    autor (2026-10-22): toda métrica reportada usa la mediana."""
+    return np.median(np.stack([e.predict(X) for e in rf.estimators_]), axis=0)
+
+
+def _r2_mediana(estimator, X, y) -> float:
+    """Scorer de scikit-learn: R² de la predicción por mediana de árboles."""
+    pred = prediccion_mediana(estimator, X)
+    ss = float(np.sum((y - np.mean(y)) ** 2))
+    return float(1.0 - np.sum((y - pred) ** 2) / ss) if ss > 0 else float("nan")
+
+
+def validacion_por_pliegue(splitter, grupos, X, y, etiqueta=None) -> List[Dict]:
+    """R², RMSE y Spearman por pliegue, con RF_PRODUCCION y predicción por
+    mediana. Sirve a las dos validaciones de la memoria: GroupKFold por pozo y
+    LOOCV-Caserón. Un pliegue cuya prueba tiene UNA sola etiqueta deja el R²
+    indefinido (varianza cero en el denominador) y se declara así, en vez de
+    reportar un número del orden de -10^8 que no mide nada."""
+    from scipy.stats import spearmanr
+    out = []
+    for k, (itr, ite) in enumerate(splitter.split(X, y, grupos)):
+        m = RandomForestRegressor(**RF_PRODUCCION).fit(X[itr], y[itr])
+        pred, yt = prediccion_mediana(m, X[ite]), y[ite]
+        n_etq = int(np.unique(yt).size)
+        ss = float(np.sum((yt - yt.mean()) ** 2))
+        r2 = (float(1 - np.sum((yt - pred) ** 2) / ss) if n_etq > 1 and ss > 0 else None)
+        rho = float(spearmanr(yt, pred).correlation) if n_etq > 1 else None
+        out.append({"pliegue": (sorted(set(grupos[ite].tolist()))[0] if etiqueta else k + 1),
+                    "n_prueba": int(ite.size), "n_etiquetas_prueba": n_etq,
+                    "r2": None if r2 is None else round(r2, 3),
+                    "rmse": round(float(np.sqrt(np.mean((yt - pred) ** 2))), 2),
+                    "spearman": None if rho is None else round(rho, 3),
+                    "motivo": (None if n_etq > 1 else
+                               "una sola etiqueta en la prueba: R² y Spearman indefinidos")})
+    return out
+
+
 def training_composition_report(ucs_min=None, ucs_max=None):
     """
     (P3-3.2) De dónde salen los datos de entrenamiento: total disponible,
@@ -5244,7 +5293,7 @@ def train_rf(ucs_min=None, ucs_max=None):
     model = RandomForestRegressor(**RF_PRODUCCION)
     model.fit(X, y)
     rf_model = model
-    y_pred = model.predict(X)
+    y_pred = prediccion_mediana(model, X)
     rmse_tr = float(np.sqrt(np.mean((y-y_pred)**2)))
     ss_tot = np.sum((y-y.mean())**2) or 1
     r2_tr = float(1 - np.sum((y-y_pred)**2)/ss_tot)
@@ -5263,7 +5312,9 @@ def train_rf(ucs_min=None, ucs_max=None):
         k = min(5, n_grupos)
         try:
             gkf = GroupKFold(n_splits=k)
-            cv_scores = cross_val_score(model, X, y, cv=gkf, groups=groups, scoring="r2")
+            # Mediana de los árboles, igual que la predicción de producción.
+            cv_scores = cross_val_score(RandomForestRegressor(**RF_PRODUCCION), X, y,
+                                        cv=gkf, groups=groups, scoring=_r2_mediana)
         except Exception as e:
             cv_warning = f"CV agrupada falló: {e}"
     else:
@@ -5275,7 +5326,7 @@ def train_rf(ucs_min=None, ucs_max=None):
     # entrenaba con otra configuración (100 árboles, min_samples_* y
     # max_features por defecto), de modo que ni siquiera evaluaba el modelo de
     # producción. Los esquemas defendibles son los dos que quedan: GroupKFold
-    # por pozo (arriba) y LOOCV por caserón (ablacion_cota / LOOCV). Las
+    # por pozo (arriba) y LOOCV-Caserón por caserón (ablacion_cota / LOOCV-Caserón). Las
     # claves "rmse_test" y "overfit" desaparecen de rf_stats a propósito: nadie
     # las leía, y publicarlas invitaba a citarlas.
     feat_imp = {}
@@ -5845,7 +5896,7 @@ def concordance_full_report(fuente: str = "sondajes", capas=None) -> Dict:
 # ║                                                                          ║
 # ║  Separa dos preguntas que el R² del modelo confunde:                    ║
 # ║    · ¿el MWD tiene señal física?           -> este reporte              ║
-# ║    · ¿las etiquetas alcanzan para entrenar? -> el R² y el LOOCV       ║
+# ║    · ¿las etiquetas alcanzan para entrenar? -> el R² y el LOOCV-Caserón       ║
 # ║                                                                          ║
 # ║  EL CONFUNDIMIENTO A SORTEAR: PEP = (PP+RP+AP)/ROP, y PP        ║
 # ║  es la ÚNICA variable que el operador manipula — y la sube en roca      ║
@@ -8513,7 +8564,7 @@ def export_concordance_csv(full: Optional[Dict] = None) -> str:
 # ║                                                                          ║
 # ║  Cada función calcula sobre los datos vigentes y devuelve un resultado  ║
 # ║  REAL en cuanto hay datos suficientes. Donde no los hay (p.ej. un solo  ║
-# ║  caserón etiquetado para LOOCV), lo declara explícitamente — nunca    ║
+# ║  caserón etiquetado para LOOCV-Caserón), lo declara explícitamente — nunca    ║
 # ║  inventa un número. Es el mismo principio que el resto del proyecto:    ║
 # ║  nunca un default silencioso.                                          ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
@@ -8640,12 +8691,21 @@ def model_comparison_report(with_se=True, ucs_min=None, ucs_max=None):
     for name in COMPARISON_MODELS:
         try:
             model = _make_comparison_model(name)
+            # El bosque se puntúa con la MEDIANA de sus árboles, como predice
+            # la herramienta; los demás modelos no tienen árboles que agregar.
+            if isinstance(model, RandomForestRegressor):
+                def _rmse_med(est, Xs, ys):
+                    return -float(np.sqrt(np.mean((ys - prediccion_mediana(est, Xs)) ** 2)))
+                scoring = {"r2": _r2_mediana, "neg_root_mean_squared_error": _rmse_med}
+            else:
+                scoring = ("r2", "neg_root_mean_squared_error")
             cv = cross_validate(model, X, y, cv=gkf, groups=groups,
-                                scoring=("r2", "neg_root_mean_squared_error"),
-                                n_jobs=1)
+                                scoring=scoring, n_jobs=1, return_train_score=True)
             r2 = cv["test_r2"]
             rmse = -cv["test_neg_root_mean_squared_error"]
+            r2_tr = cv["train_r2"]
             rows.append({"modelo": name, "r2_mean": round(float(r2.mean()), 3),
+                        "r2_train_mean": round(float(r2_tr.mean()), 3),
                         "r2_std": round(float(r2.std()), 3),
                         "rmse_mean": round(float(rmse.mean()), 1),
                         "rmse_std": round(float(rmse.std()), 1), "error": None})
@@ -8717,8 +8777,8 @@ def cota_ablation_report(ucs_min=None, ucs_max=None):
     producción (train_rf/ML_FEATURES), prohibido por diseño porque el
     yacimiento es estratiforme y la cota es casi un proxy directo de la
     litología. Compara desempeño DENTRO-DEL-CASERÓN (GroupKFold por pozo,
-    igual que siempre) contra LOOCV (dejando un caserón completo fuera),
-    con y sin cota. Si "con cota" degrada mucho más en LOOCV que "sin
+    igual que siempre) contra LOOCV-Caserón (dejando un caserón completo fuera),
+    con y sin cota. Si "con cota" degrada mucho más en LOOCV-Caserón que "sin
     cota", es evidencia de que el modelo memorizaba la posición en vez de
     leer el MWD — la razón de la prohibición.
 
@@ -8746,7 +8806,7 @@ def cota_ablation_report(ucs_min=None, ucs_max=None):
     caserones = sorted({c for c in caseron_map.values() if c})
     if len(caserones) < 2:
         return {"status": "sin_caserones",
-                "motivo": ("LOOCV (dejando-un-caserón-fuera) requiere ≥2 caserones "
+                "motivo": ("LOOCV-Caserón (dejando-un-caserón-fuera) requiere ≥2 caserones "
                           f"distintos con puntos etiquetados; hay {len(caserones)}"
                           + (f" ({caserones[0]})" if caserones else "") + ". Esta ablación "
                           "queda lista para correr en cuanto haya un segundo caserón con "
@@ -8972,7 +9032,7 @@ def _aplicar_curva(curva: Dict, se: float) -> float:
 def leave_one_lithology_out(metodo: str = "relacion",
                             seed: Optional[int] = None) -> Dict:
     """
-    La vara común: se deja UNA litología fuera, se ajusta con las demás y se
+    LOOCV-Litología («la vara común»): se deja UNA litología fuera, se ajusta con las demás y se
     predice su ancla. El error va EN MPa, que es comparable entre métodos y
     entendible sin explicar qué es un R².
 
@@ -9103,7 +9163,9 @@ def _ml_predice_litologia_fuera(fuera: str, entrena: Dict[str, float],
     # prueba.
     m = RandomForestRegressor(**{**RF_PRODUCCION, "random_state": seed})
     m.fit(X, y)
-    return float(np.median(m.predict(Xf))), nota
+    # Cada punto se predice con la MEDIANA de los árboles (como la herramienta)
+    # y la litología con la mediana de sus puntos.
+    return float(np.median(prediccion_mediana(m, Xf))), nota
 
 
 def _monotonia_se_ucs() -> Dict:
@@ -9326,7 +9388,7 @@ def ml_seed_sensitivity(semillas=None, metodos=("ml",)) -> Dict:
                 "se arma el bosque. Repetir la misma vara cambiando SOLO eso "
                 "separa lo que aporta el método de lo que aporta la suerte."),
             "que_no_mide": (
-                "No mide si el modelo generaliza a otro caserón —eso es LOOCV— "
+                "No mide si el modelo generaliza a otro caserón —eso es LOOCV-Caserón— "
                 "ni si las bandas de UCS asignadas son correctas. Una dispersión "
                 "chica con anclas equivocadas es un resultado estable y falso.")}
 
@@ -9775,6 +9837,25 @@ def recompute_filters(cut_m=None):
                                       for f in clean_filters):
         add_continuidad_filter()
 
+def aplicar_limpieza_estandar() -> Dict:
+    """La limpieza que declara la memoria, en un solo paso y en el orden de la
+    herramienta: corte de emboquillado vigente, percusión de empate con el
+    umbral del perfil y, si está activo, el filtro de continuidad. Es lo que
+    deben llamar los scripts antes de entrenar: armar la limpieza a mano en
+    cada uno fue lo que dejó afuera el emboquillado en la ronda 2026-10."""
+    clean_filters[:] = [f for f in clean_filters
+                        if f.get("method") not in ("percusion_empate", "continuidad")]
+    recompute_filters(inicio_cut_m)
+    pe = add_percusion_empate_filter()
+    co = (next((f for f in clean_filters if f.get("method") == "continuidad"), None)
+          if CONTINUIDAD_ACTIVA else None)
+    pts = list(all_points())
+    return {"emboquillado_m": inicio_cut_m,
+            "emboquillado_marcados": sum(1 for p in pts if p.largo < inicio_cut_m),
+            "percusion_empate": pe.get("removed"),
+            "continuidad": (co or {}).get("removed"),
+            "no_entrenables": sum(1 for p in pts if not p.entrenable)}
+
 def remove_filter(idx):
     """Elimina el filtro en la posición idx y recalcula entrenable desde cero."""
     if 0 <= idx < len(clean_filters):
@@ -9791,7 +9872,16 @@ def _split_dominio(d):
     if lito: lito = lito.split("~")[0]
     return (lito or None), (est or None)
 
-def compute_domain_groups(tol_ucs=20.0, tol_di=0.15, interval_m=2.0):
+# Tolerancias de la agrupación en dominios (decisión del autor, 2026-10-22):
+# ±0,5 de DI es un intervalo de ancho 1 punto de DI, y ±20 MPa uno de 40 MPa de
+# UCS ML, sobre tramos de 2 m. Antes la tolerancia de DI partía en 0,15 y la
+# memoria declaraba 0,5: los dominios de la Tabla 6.3 no se podían reproducir.
+DOMINIO_TOL_UCS = 20.0
+DOMINIO_TOL_DI = 0.5
+DOMINIO_TRAMO_M = 2.0
+
+def compute_domain_groups(tol_ucs=DOMINIO_TOL_UCS, tol_di=DOMINIO_TOL_DI,
+                          interval_m=DOMINIO_TRAMO_M):
     domain_groups.clear()
     intervals = []
     for wn, well in wells.items():
@@ -9836,7 +9926,8 @@ def compute_domain_groups(tol_ucs=20.0, tol_di=0.15, interval_m=2.0):
     wz_state['step5']['grouped'] = True
     return len(domain_groups)
 
-def predict_unclassified(tol_ucs=20.0, tol_di=0.15, interval_m=2.0):
+def predict_unclassified(tol_ucs=DOMINIO_TOL_UCS, tol_di=DOMINIO_TOL_DI,
+                         interval_m=DOMINIO_TRAMO_M):
     if not domain_groups: return {"assigned":0,"total":0,"no_model":0}
     assigned = total = no_model = 0
     for well in wells.values():
@@ -9888,8 +9979,10 @@ def _segments_by_domain(group_id, min_len=5):
 
 def top_drilling(group_id, n=5, method="min_se_cv"):
     """
-    Recomienda los N mejores segmentos de perforación de un dominio, según 3
-    métodos posibles:
+    RANKING DE 5 RECOMENDACIONES HISTÓRICAS (nombre de la memoria): los N
+    mejores segmentos de perforación de un dominio, según 3 métodos posibles.
+    SE es el identificador interno de la PEP (presión específica de
+    penetración):
 
     - "min_se_cv": minimiza la VARIACIÓN INTERNA de SE dentro del segmento
       (coeficiente de variación dato a dato, cm a cm). Prioriza perforación
@@ -10287,7 +10380,7 @@ def save_project(path):
                 "collar": w.collar, "final_pt": w.final_pt, "origin": w.origin,
                 "dq_candidates": w.dq_candidates,
                 # (P9) Faltaban los dos: sin "caseron" un proyecto guardado y
-                # recargado perdía la agrupación de LOOCV declarada en el
+                # recargado perdía la agrupación de LOOCV-Caserón declarada en el
                 # pozo (caseron_de_pozo() cae de vuelta a derivarla del
                 # plan_id, una heurística, no lo que se guardó) y el árbol de
                 # capas/viewport 3D —que lee w.caseron directo, sin ese
@@ -11276,12 +11369,12 @@ def _kit_ablacion_cota() -> str:
             filas.append({"clave": k, "valor": v, "detalle": ""})
     if rep.get("caserones"):
         filas.append({"clave": "caserones", "valor": ", ".join(rep["caserones"]),
-                      "detalle": "grupos de la LOOCV"})
+                      "detalle": "grupos de la LOOCV-Caserón"})
     if not filas:
         raise KitSinDatos("La ablación no produjo métricas.")
     cab = "\n".join("# " + l for l in [
         "Ablación de cota: cuánto cambia el modelo al AGREGAR la cota como "
-        "predictora, dentro de un caserón y entre caserones (LOOCV).",
+        "predictora, dentro de un caserón y entre caserones (LOOCV-Caserón).",
         "No es una configuración admisible: es la medición de por qué la "
         "prohibición existe. Si agregar cota sube el R² dentro del caserón y "
         "lo hunde entre caserones, la cota está memorizando el yacimiento.",
@@ -11860,7 +11953,7 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
     ], id="export-confirm-modal", is_open=False),
     # (P3-3.9) Reporte de justificación de variables: armazón que muestra
     # correlación/multicolinealidad, importancia, comparación de modelos
-    # con/sin SE y ablación de cota (LOOCV), con resultados en cuanto
+    # con/sin SE y ablación de cota (LOOCV-Caserón), con resultados en cuanto
     # existan datos suficientes.
     dbc.Modal([
         dbc.ModalHeader(dbc.ModalTitle("Reporte de justificación de variables")),
@@ -12442,7 +12535,7 @@ REPORTES: Tuple[Dict, ...] = (
             "competente es.", "gen": "tronadura_resumen"},
     {"id": "ucs_metodos", "titulo": "Comparación de modelos de UCS",
      "que": "Línea base, relación directa, banda y bosque aleatorio bajo la "
-            "misma vara: error en MPa dejando una litología fuera.",
+            "misma vara: error en MPa por LOOCV-Litología (dejando una litología fuera).",
      "gen": "compare_ucs_methods"},
     {"id": "semillas", "titulo": "Sensibilidad a la semilla",
      "que": "Cuánto del ganador es el método y cuánto es qué filas tocaron: "
@@ -14618,6 +14711,9 @@ def on_xml(contents_list, filenames, ref):
         parts.append(f"{len(dq_rep['conflictos'])} tiro(s) con coordenadas distintas "
                      f"entre revisiones ⚠")
     if errs: parts.append(f"Err: {'; '.join(errs)}")
+    # El corte de emboquillado es obligatorio (memoria 4.2.2): se reaplica con
+    # los filtros vigentes sobre TODO lo cargado, incluidos los pozos nuevos.
+    recompute_filters()
     return ref+1, " · ".join(parts), True
 
 
@@ -15004,7 +15100,7 @@ def _render_ml_result_no_bosque(result: Dict):
                 "in-sample ni CV agrupada que reportar. El valor de cada "
                 "punto sale de mapear su PEP sobre la banda "
                 "(o la curva) calibrada con las anclas de litología, y su "
-                "vara es el error dejando-una-litología-fuera de arriba.",
+                "vara es el error LOOCV-Litología (dejando una litología fuera) de arriba.",
             ] + ([html.Br(), html.Br(),
                   f"⚠ {', '.join(result['derivadas'])}: ancho de banda derivado, "
                   "no medido."] if result.get("derivadas") else [])
@@ -15293,7 +15389,8 @@ def on_export_confirm(n, pending):
 )
 def do_group(n, tucs, tdi, tint, ref):
     if not n: return no_update, no_update, no_update
-    n_g = compute_domain_groups(float(tucs or 20), float(tdi or 0.15), float(tint or 2))
+    n_g = compute_domain_groups(float(tucs or DOMINIO_TOL_UCS), float(tdi or DOMINIO_TOL_DI),
+                              float(tint or DOMINIO_TRAMO_M))
     return ref+1, f"✅ {n_g} grupos.", True
 
 @app.callback(
@@ -15306,7 +15403,8 @@ def do_group(n, tucs, tdi, tint, ref):
 )
 def do_pred(n, tucs, tdi, tint, ref):
     if not n: return no_update, no_update, no_update
-    res = predict_unclassified(float(tucs or 20), float(tdi or 0.15), float(tint or 2))
+    res = predict_unclassified(float(tucs or DOMINIO_TOL_UCS), float(tdi or DOMINIO_TOL_DI),
+                              float(tint or DOMINIO_TRAMO_M))
     return ref+1, f"✅ {res['assigned']}/{res['total']} pts asignados.", True
 
 @app.callback(
@@ -15668,7 +15766,7 @@ def _step2():
             dbc.Row([
                 dbc.Col(dcc.Dropdown(id="sel-norm-var", value="se", clearable=False,
                     options=[{"label":l,"value":k} for k,l in
-                             {"se":"PEP","vel":"ROP","pp":"PP","pa":"AP","pr":"RP","pd":"DP","pf":"FLP"}.items()],
+                             {"se":"PEP","vel":"ROP","pp":"PP","pa":"AP","pr":"RP","pd":"DP","pf":"FP"}.items()],
                     style={"fontSize":"11px"}), width=4),
                 dbc.Col(dcc.Dropdown(id="sel-norm-method", value="outliers_iqr", clearable=False,
                     options=[{"label":l,"value":v} for l,v in
@@ -15771,12 +15869,12 @@ def _di_sensitivity_card():
 
 
 # Nombres SIN ambigüedad de las cinco presiones candidatas. La sigla sola no
-# alcanza: en IREDES «FP» es Feed Pressure —la de AVANCE, que acá es `pa`— y la
-# de barrido es «FLP» → `pf`. El panel del DI rotulaba `pf` como "FP", que es
-# la sigla de la otra.
+# alcanza: en el XML IREDES «FP» es el AVANCE, mientras que en Pucobre —y en
+# esta herramienta— FP es el FLUJO de barrido y AP el avance. El nombre
+# completo al lado de la sigla deja claro cuál es cuál.
 # El nombre completo se arma desde CAL_SIGLAS: la sigla se escribe UNA vez.
 CAL_ETIQUETAS = {k: f"{nombre} ({CAL_SIGLAS[k]})" for k, nombre in (
-    ("pp", "Percusión"), ("pd", "Dámper"), ("pf", "Barrido"),
+    ("pp", "Percusión"), ("pd", "Dámper"), ("pf", "Flujo"),
     ("pr", "Rotación"), ("pa", "Avance"),
 )}
 
@@ -15943,11 +16041,9 @@ def _step3():
                 dbc.Col([html.Small("Dámper (DP)", style={"color":"#666","display":"block"}),
                           dbc.Input(id="di-w-pd", type="number", value=_di_panel_valor("pd", 0.0),
                                      step=0.01, size="sm", style={"fontSize":"11px"})], width=2),
-                # Rotulado "FP" hasta ahora, que en IREDES es la sigla de la
-                # presión de AVANCE. Esta entrada escribe `pf`, que es FLP, la
-                # de barrido. La sigla estaba puesta sobre la variable de al
-                # lado; el número nunca cambió.
-                dbc.Col([html.Small("Barrido (FLP)", style={"color":"#666","display":"block"}),
+                # Esta entrada escribe `pf`, el FLUJO de barrido: FP en la
+                # nomenclatura de Pucobre (en el XML IREDES se llama FLP).
+                dbc.Col([html.Small(CAL_ETIQUETAS["pf"], style={"color":"#666","display":"block"}),
                           dbc.Input(id="di-w-pf", type="number", value=_di_panel_valor("pf", 0.0),
                                      step=0.01, size="sm", style={"fontSize":"11px"})], width=2),
                 dbc.Col([html.Small("Rotación (RP)", style={"color":"#666","display":"block"}),
@@ -16101,7 +16197,7 @@ def _varjust_panel_body():
         _cmp_table(rep["comparacion_sin_se"]),
     ]))
 
-    # 4) Ablación de cota (LOOCV) ---------------------------------------
+    # 4) Ablación de cota (LOOCV-Caserón) ---------------------------------------
     abl = rep["ablacion_cota"]
     if abl["status"] != "ok":
         body = [_varjust_section_alert(abl)]
@@ -16113,7 +16209,7 @@ def _varjust_panel_body():
             html.Tr([html.Td(html.Small("Dentro del caserón (GroupKFold por pozo)", style={"fontSize":"10px"})),
                     html.Td(html.Small(_fmt(abl["dentro_caseron_sin_cota"]), style={"fontSize":"10px"})),
                     html.Td(html.Small(_fmt(abl["dentro_caseron_con_cota"]), style={"fontSize":"10px"}))]),
-            html.Tr([html.Td(html.Small("LOOCV (deja un caserón fuera)", style={"fontSize":"10px"})),
+            html.Tr([html.Td(html.Small("LOOCV-Caserón (deja un caserón fuera)", style={"fontSize":"10px"})),
                     html.Td(html.Small(_fmt(abl["loco_sin_cota"]), style={"fontSize":"10px"})),
                     html.Td(html.Small(_fmt(abl["loco_con_cota"]), style={"fontSize":"10px"}))]),
         ]
@@ -16127,14 +16223,14 @@ def _varjust_panel_body():
         ]
         if abl["memorizacion_espacial_sospechosa"] is True:
             body.append(dbc.Alert(
-                "La cota mejora mucho más el desempeño dentro-del-caserón que en LOOCV: "
+                "La cota mejora mucho más el desempeño dentro-del-caserón que en LOOCV-Caserón: "
                 "señal de que el modelo memoriza posición en vez de leer el MWD. Confirma "
                 "que ML_FEATURES nunca incluya coordenadas en producción.",
                 color="danger", className="mt-2", style={"fontSize":"11px"}))
         elif abl["memorizacion_espacial_sospechosa"] is False:
             body.append(html.Small("Sin señal de memorización espacial con este umbral.",
                                    style={"color":"#5cb85c","fontSize":"10px","display":"block","marginTop":"6px"}))
-    sections.append(card("4. Ablación de cota — prueba de memorización espacial (LOOCV)", body))
+    sections.append(card("4. Ablación de cota — prueba de memorización espacial (LOOCV-Caserón)", body))
 
     return html.Div(sections)
 
@@ -16332,7 +16428,7 @@ def _step5():
                           dbc.Input(id="tol-ucs", type="number", value=20, min=1, step=1,
                                      size="sm", style={"fontSize":"11px"})], width=3),
                 dbc.Col([html.Small("Tol DI", style={"color":"#aaa","display":"block"}),
-                          dbc.Input(id="tol-di", type="number", value=0.15, min=0.01, step=0.01,
+                          dbc.Input(id="tol-di", type="number", value=DOMINIO_TOL_DI, min=0.01, step=0.01,
                                      size="sm", style={"fontSize":"11px"})], width=3),
                 dbc.Col([html.Small("Tramo (m)", style={"color":"#aaa","display":"block"}),
                           dbc.Input(id="tol-int", type="number", value=group_interval_m,
@@ -16348,7 +16444,7 @@ def _step5():
             dbc.Button("🎯 Ejecutar predicción", id="btn-pred", color="warning",
                        outline=True, size="sm", disabled=not domain_groups),
         ]),
-        card("Recomendación Top-N de parámetros de perforación", [
+        card("Ranking de 5 recomendaciones históricas de perforación", [
             html.Small("Selecciona un dominio y el criterio de selección. Los segmentos "
                        "candidatos siempre pertenecen al mismo dominio predicho por el ML.",
                        style={"color":"#aaa","display":"block","marginBottom":"8px"}),
@@ -16360,11 +16456,11 @@ def _step5():
                     style={"fontSize":"11px"}), width=5),
                 dbc.Col(dcc.Dropdown(id="topn-method", clearable=False,
                     options=[
-                        {"label":"Mínima variación interna de SE (cm a cm)","value":"min_se_cv"},
-                        {"label":"Mínima SE (más eficiente energéticamente)","value":"min_se"},
+                        {"label":"Mínima variación interna de PEP (CV, cm a cm)","value":"min_se_cv"},
+                        {"label":"Mínima PEP (perforación más eficiente)","value":"min_se"},
                         {"label":"Máxima ROP (mayor productividad)","value":"max_rop"},
                     ], value="min_se_cv", style={"fontSize":"11px"}), width=5),
-                dbc.Col(dbc.Button("Top-5", id="btn-topn", color="info", outline=True, size="sm"), width=2),
+                dbc.Col(dbc.Button("Ranking", id="btn-topn", color="info", outline=True, size="sm"), width=2),
             ], className="g-1 mb-2") if domain_groups else
                 html.Small("Agrupa dominios primero.", style={"color":"#555"}),
             html.Div(id="topn-result"),

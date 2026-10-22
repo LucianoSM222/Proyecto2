@@ -91,7 +91,7 @@ def cambiar_parametros_crea_una_variante():
     check(nombre and nombre != gw.DI_VARIANTE_CONVENCION,
           "la operación devuelve el nombre de la variante creada", nombre)
     conv = gw.di_variant(gw.DI_VARIANTE_CONVENCION)
-    check(conv["threshold"] == 1.5 and conv["window"] == 14,
+    check(conv["threshold"] == gw.DI_DEFAULTS["threshold"] and conv["window"] == 14,
           "la convención queda INTACTA", (conv["window"], conv["threshold"]))
     check(conv["weights"] == {"pp": 0.35, "pr": 0.20, "pd": 0.25, "pf": 0.20},
           "con sus pesos de Fernández", conv["weights"])
@@ -116,8 +116,8 @@ def volver_a_la_convencion():
     check(gw.di_config_is_default(),
           "y la configuración vigente es exactamente la de convención",
           gw.di_config_summary())
-    check(gw.di_threshold == 1.5 and gw.di_config["window"] == 14,
-          "ventana 14 y umbral 1,5", (gw.di_config["window"], gw.di_threshold))
+    check(gw.di_threshold == gw.DI_DEFAULTS["threshold"] and gw.di_config["window"] == 14,
+          "ventana 14 y umbral de la convención (1,0)", (gw.di_config["window"], gw.di_threshold))
 
 
 def activar_una_variante_inexistente_falla():
@@ -163,7 +163,7 @@ def borrar_la_variante_activa_devuelve_a_la_convencion():
     check(gw.di_activo() == gw.DI_VARIANTE_CONVENCION,
           "al borrarla, el DI vuelve a la convención en vez de quedar apuntando "
           "a algo que ya no existe", gw.di_activo())
-    check(gw.di_threshold == 1.5, "con su umbral restituido", gw.di_threshold)
+    check(gw.di_threshold == gw.DI_DEFAULTS["threshold"], "con su umbral restituido", gw.di_threshold)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

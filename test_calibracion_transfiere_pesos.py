@@ -152,7 +152,7 @@ def calibrar_escribe_las_casillas_no_solo_la_tabla():
     salida, refresco, dwin, dthr, dpp, dpd, dpf, dpr, dpa = out
     check(salida is not None, "la tabla se sigue mostrando")
     for nombre, v in (("ventana", dwin), ("umbral", dthr), ("PP", dpp),
-                      ("DP", dpd), ("FLP", dpf), ("RP", dpr), ("avance", dpa)):
+                      ("DP", dpd), ("FP", dpf), ("RP", dpr), ("avance", dpa)):
         check(v is not gw.no_update and v is not None,
               f"la casilla de {nombre} recibe un valor de verdad, no queda "
               f"en no_update: eso es lo que antes hacía que 'la tabla se "
@@ -181,7 +181,9 @@ def lo_transferido_se_aplica_con_calcular_di():
           "y activa la variante calibrada de verdad", msg)
     check(gw.di_activo() != gw.DI_VARIANTE_CONVENCION,
           "la variante activa ya no es la convención", gw.di_activo())
-    check(abs(gw.di_config["weights"]["pd"] - dpd) < 1e-9,
+    # La casilla muestra el peso con 4 decimales; la variante corre con el
+    # valor sin redondear. Coinciden hasta la mitad del último decimal.
+    check(abs(gw.di_config["weights"]["pd"] - dpd) <= 5e-5 + 1e-12,
           "y el peso del dámper que corre es EXACTAMENTE el que calibró la "
           "búsqueda, no uno reescrito a mano por el camino",
           (gw.di_config["weights"]["pd"], dpd))

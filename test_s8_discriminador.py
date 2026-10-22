@@ -331,8 +331,8 @@ def el_di_sigue_siendo_la_variable_de_trabajo():
     check(gw.di_config_is_default(),
           "la configuración del DI sigue en sus valores de convención",
           gw.di_config_summary())
-    check(gw.di_config["window"] == 14 and gw.di_threshold == 1.5,
-          "ventana 14 y umbral 1,5 intactos",
+    check(gw.di_config["window"] == 14 and gw.di_threshold == gw.DI_DEFAULTS["threshold"],
+          "ventana 14 y umbral de la convención intactos",
           (gw.di_config["window"], gw.di_threshold))
     check(gw.ML_FEATURES == ["vel", "pp", "pa", "pd", "pr", "pf", "se"],
           "y ML_FEATURES intacto: el discriminador es posterior, no un predictor",

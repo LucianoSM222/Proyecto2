@@ -60,7 +60,7 @@
     "pp.estratos": "90-130,130-170,170-230",
     "ucs.min_fisico": 0.0,
     "ucs.max_fisico": 450.0,
-    "pp.percusion_empate_caida_rel": 0.2,
+    "pp.percusion_empate_caida_rel": 0.25,
     "pep.control_pp": "directo"
   },
   "procedencias": {
@@ -120,7 +120,7 @@
     "pp.estratos": "Tramos de PP dentro de los que se compara SE contra UCS: sin estratificar, la variable que el operador manipula se confunde con la roca. Formato «a-b,c-d», en bar.",
     "ucs.min_fisico": "Límite físico silencioso jamás.",
     "ucs.max_fisico": "Límite físico ",
-    "pp.percusion_empate_caida_rel": "Fracción de caída de PP respecto del promedio de sus dos vecinos inmediatos para marcar la muestra central como percusión de empate (excluida del entrenamiento, no borrada). Solo se aplica a una muestra AISLADA cuyos dos vecinos son parecidos entre sí —la firma de una recuperación—, nunca a una caída sostenida de varias muestras, que es información real de la roca. 0,20 por decisión del autor (2026-09-29): criterio conservador, se prefiere perder datos antes que entrenar sobre artefactos del varillaje.",
+    "pp.percusion_empate_caida_rel": "Fracción de caída de PP respecto del promedio de sus dos vecinos inmediatos para marcar la muestra central como percusión de empate (excluida del entrenamiento, no borrada). Solo se aplica a una muestra AISLADA cuyos dos vecinos son parecidos entre sí —la firma de una recuperación—, nunca a una caída sostenida de varias muestras, que es información real de la roca. 0,25 por decisión del autor (2026-10-22): marca 12.786 muestras frente a las 11.189 que predice el largo de barra de 1,756 m.",
     "pep.control_pp": "Decisión del autor, y su razón: PEP = (PP + RP + AP) / ROP ya lleva ROP en el denominador, así que la percusión entra CONTRASTADA contra la velocidad. Si subir PP consigue subir ROP, la PEP se normaliza y sigue hablando de la roca; si la PEP no se mueve pese a más PP, es porque la roca resiste esa percusión, que también es hablar de la roca. En los dos casos el número describe el macizo, no la decisión del operador, y estratificar sobra. «por_estrato» conserva el camino anterior —mediana dentro de cada tramo de PP y después mediana de las medianas— para poder contrastar los dos en la memoria. El diagnóstico de coherencia PEP↔UCS sigue reportando por estrato pase lo que pase: ahí estratificar es la prueba, no el método."
   }
 }
