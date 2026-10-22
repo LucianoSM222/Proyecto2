@@ -8,6 +8,15 @@ reportes anteriores.
 
 Se responde por número: «1: convención», «2: aplicar», etc.
 
+> **Decisiones del autor (2026-10-22):** A1 DI calibrado a 5 m, con la tabla
+> rehecha · A2 emboquillado aplicado · A4 umbral de empate 0,25 · A6 mediana ·
+> A7 «LOOCV-Litología» y «LOOCV-Caserón» · A8 GroupKFold · A10 se corrige solo
+> el texto de la tesis, el vocabulario queda igual · A11 ±0,5 (intervalo de
+> 1 punto) · B3 FP = flujo y AP = avance (nomenclatura de Pucobre) ·
+> B9 la fuente de Kpcli, Kpcls y Bht_feldk es Pucobre · Top-5 pasa a llamarse
+> «Ranking de 5 recomendaciones históricas». Las cifras resultantes están en
+> `docs/resultados_finales.md`.
+
 ---
 
 ## A. Decisiones que cambian las cifras de las figuras

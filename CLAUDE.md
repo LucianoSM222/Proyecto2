@@ -8,21 +8,31 @@ mina subterránea de cobre.
 
 ## Convenciones inmutables — NO modificar
 
-- Orden de campos `Val`: `LT | ROP | PP | FP | DP | RP | FLP`. Exactamente 7.
-  Todo campo excedente se descarta del uso pero se REPORTA UNA VEZ en la carga.
+- Orden de campos `Val` (siglas IREDES del XML): `LT | ROP | PP | FP | DP | RP | FLP`.
+  Exactamente 7. Todo campo excedente se descarta del uso pero se REPORTA UNA
+  VEZ en la carga. OJO: en el XML `FP` es el AVANCE y `FLP` el barrido; en
+  pantalla, figuras y memoria rige la nomenclatura de PUCOBRE: **FP = flujo de
+  barrido (`pf`), AP = avance (`pa`)** (decisión del autor, 2026-10-22).
 - TMatrix del DQ: fila0 -> Norte, fila1 -> Este, fila2 -> Cota.
 - Ejes DXF: X = Este, Y = Norte, Z = Cota.
 - Ray casting VERTICAL (0,0,1). El grid XY de aceleración solo vale con rayo
   vertical. Cambiarlo sin rehacer el grid llevó la exactitud de 82,4% a 7,1%.
-- DI: ventana 14 (~26 cm), pesos PP=0,35 DP=0,25 FP=0,20 RP=0,20, umbral 1,5.
-  Fernández et al. 2023, doi:10.1016/j.ijmst.2023.02.004. El autor es el
-  profesor guía.
-- SE_reacción = (PP + RP + AP) / ROP. Distinto de Teale 1965: son presiones de
+- DI: ventana 14 (≈28 cm), umbral 1,0, cuatro presiones (PP, RP, DP, FP; el
+  avance queda fuera). Convención de partida PP=0,35 DP=0,25 FP=0,20 RP=0,20;
+  la memoria usa la variante CALIBRADA contra RQD a 5 m (ver
+  `docs/resultados_finales.md`). Fernández et al. 2023,
+  doi:10.1016/j.ijmst.2023.02.004. El autor es el profesor guía.
+- PEP (presión específica de penetración; id interno `se`) = (PP + RP + AP) / ROP,
+  en bar·min/m. Distinto de Teale 1965: son presiones de
   reacción hidráulica, no valores impuestos. La distinción se preserva en todo
   comentario.
 - UCS: límites físicos 0 a 450 MPa. Sin truncamiento silencioso jamás.
 - PP: 90 a 230 bar. Es la ÚNICA variable manipulada por el operador.
-- Validación: GroupKFold por pozo. Con varios caserones, LOCO-CV.
+- Validación: GroupKFold por pozo; LOOCV-Caserón (un caserón fuera) y
+  LOOCV-Litología (una litología fuera). El bosque se evalúa y predice con la
+  MEDIANA de sus 200 árboles.
+- Limpieza (`aplicar_limpieza_estandar`): emboquillado 2 m, PP fuera de
+  90-230 bar, percusión de empate (caída ≥ 0,25), continuidad del registro.
 
 ## Prohibiciones
 
@@ -141,7 +151,7 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | 2 | P2 Sondajes | `docs/P2_sondajes.md` | ✅ `5307a61` |
 | 3 | P3 Correcciones de uso | `docs/P3_correcciones.md` | ✅ `19cee91` |
 | 4 | E Escala | `docs/E_escala.md` | ✅ |
-| 5 | Entrenamiento y LOCO-CV | (prompt en la hoja de ruta) | 🟡 entrenado sobre 3 caserones; LOCO-CV R²<0 → no generaliza entre caserones |
+| 5 | Entrenamiento y LOOCV-Caserón | (prompt en la hoja de ruta) | 🟡 entrenado sobre 3 caserones; LOOCV-Caserón R²<0 → no generaliza entre caserones |
 | 6 | C Concordancia | `docs/C_concordancia.md` | ✅ `b835888` |
 | 6b | Coherencia SE↔UCS (alcance redefinido) | — | ✅ `0c8a7b1` |
 | 7 | Curvas PP y prescripción | (prompt en la hoja de ruta) | ✅ `b6753c2` |
@@ -194,9 +204,7 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 
 Hallazgos que condicionan la interpretación, no defectos pendientes:
 
-- LOCO-CV R² < 0: el modelo no transfiere entre caserones. La ablación de
-  cota lo confirma (dentro +0,177 sin cota / +0,413 con cota; LOCO −2,117 /
-  −4,108): agregar cota duplica el R² dentro y duplica la caída fuera.
+- LOOCV-Caserón R² < 0: el modelo no transfiere entre caserones.
 - SE↔UCS: ρ(UCS, ROP) = +1,00 dentro de cada estrato de PP. El MWD tiene
   señal física consistente; lo que no calza son las bandas de UCS asignadas.
   Bht y Kpcli son indistinguibles en MWD pese a 62 MPa nominales de

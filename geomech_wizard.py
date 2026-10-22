@@ -3686,6 +3686,27 @@ def add_continuidad_filter(salto_max_m: Optional[float] = None) -> Dict:
     return filt
 
 
+def add_rango_fisico_pp_filter():
+    """Excluye del entrenamiento los registros con PP fuera del rango
+    operacional del perfil (`pp.min_bar`–`pp.max_bar`, 90–230 bar en MPC).
+    Es un LÍMITE FÍSICO declarado, no un percentil. Sin él entraban ~13.000
+    registros con PP de 0 a 10 bar y ROP de 3 a 10 m/min: la sarta avanzando
+    sin percutir (maniobra, no perforación). Explicaban 7.035 de los 7.168
+    registros con ROP > 3 m/min y encabezaban el ranking por mínima PEP."""
+    lo, hi = float(get_param("pp.min_bar")), float(get_param("pp.max_bar"))
+    all_pts = list(all_points())
+    before = sum(1 for p in all_pts if p.entrenable)
+    for p in all_pts:
+        if p.pp is None or not np.isfinite(p.pp) or p.pp < lo or p.pp > hi:
+            p.entrenable = False; p.norm_excluded = True
+    after = sum(1 for p in all_pts if p.entrenable)
+    filt = {"varName": "pp", "method": "rango_fisico",
+            "label": f"Rango físico de PP {lo:g}-{hi:g} bar",
+            "lo": lo, "hi": hi, "removed": before - after, "after": after,
+            "total": len(all_pts)}
+    clean_filters.append(filt)
+    return filt
+
 def add_norm_filter(var_name, method):
     # Alias hacia atrás: los proyectos guardados antes del renombre traen
     # "golpe_barra" como método. Se acepta y se resuelve al nombre nuevo.
@@ -3693,6 +3714,8 @@ def add_norm_filter(var_name, method):
         return add_percusion_empate_filter()
     if method == "continuidad":
         return add_continuidad_filter()
+    if method == "rango_fisico" and var_name == "pp":
+        return add_rango_fisico_pp_filter()
     all_pts = list(all_points())
     vals = np.array([getattr(p, var_name) for p in all_pts
                      if getattr(p, var_name, None) is not None and
@@ -9836,22 +9859,31 @@ def recompute_filters(cut_m=None):
     if CONTINUIDAD_ACTIVA and not any(f.get("method") == "continuidad"
                                       for f in clean_filters):
         add_continuidad_filter()
+    # El rango físico de PP tampoco es un corte que se elija: es la definición
+    # de que el equipo estaba percutiendo. Se reaplica siempre.
+    if not any(f.get("method") == "rango_fisico" for f in clean_filters):
+        add_rango_fisico_pp_filter()
 
 def aplicar_limpieza_estandar() -> Dict:
     """La limpieza que declara la memoria, en un solo paso y en el orden de la
-    herramienta: corte de emboquillado vigente, percusión de empate con el
-    umbral del perfil y, si está activo, el filtro de continuidad. Es lo que
+    herramienta: corte de emboquillado vigente, rango físico de PP, percusión
+    de empate con el umbral del perfil y, si está activo, el filtro de continuidad. Es lo que
     deben llamar los scripts antes de entrenar: armar la limpieza a mano en
     cada uno fue lo que dejó afuera el emboquillado en la ronda 2026-10."""
     clean_filters[:] = [f for f in clean_filters
-                        if f.get("method") not in ("percusion_empate", "continuidad")]
+                        if f.get("method") not in ("percusion_empate", "continuidad",
+                                                   "rango_fisico")]
+    # recompute_filters ya reaplica el rango físico de PP (y la continuidad, si
+    # está activa): se lee su conteo en vez de volver a pasarlo, que daría 0.
     recompute_filters(inicio_cut_m)
+    rf_pp = next(f for f in clean_filters if f.get("method") == "rango_fisico")
     pe = add_percusion_empate_filter()
     co = (next((f for f in clean_filters if f.get("method") == "continuidad"), None)
           if CONTINUIDAD_ACTIVA else None)
     pts = list(all_points())
     return {"emboquillado_m": inicio_cut_m,
             "emboquillado_marcados": sum(1 for p in pts if p.largo < inicio_cut_m),
+            "rango_fisico_pp": rf_pp.get("removed"),
             "percusion_empate": pe.get("removed"),
             "continuidad": (co or {}).get("removed"),
             "no_entrenables": sum(1 for p in pts if not p.entrenable)}
@@ -10412,7 +10444,11 @@ def save_project(path):
         "attribute_meters": attribute_meters,
         "overlap_stats": {k: v for k, v in overlap_stats.items()},
         "domains": domains,
-        "domain_groups": domain_groups,
+        # `pts` son los MWDPoint del grupo: no se serializan (JSON los rechaza
+        # y guardar reventaba tras agrupar dominios). La pertenencia viaja en
+        # `p.grupo` de cada punto; el grupo guarda solo su resumen.
+        "domain_groups": [{k: v for k, v in g.items() if k != "pts"}
+                          for g in domain_groups],
         "clean_filters": clean_filters,
         "inicio_cut_m": inicio_cut_m,
         "di_config": di_config,

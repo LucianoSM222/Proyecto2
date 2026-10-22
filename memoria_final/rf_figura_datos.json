@@ -1,0 +1,344 @@
+{
+  "config": {
+    "di_threshold": 1.0,
+    "di_window": 14,
+    "di_ventana_cm": 28.0,
+    "di_weights": {
+      "pp": 0.018671114286595573,
+      "pr": 0.48257765137768355,
+      "pd": 0.04333066680966212,
+      "pf": 0.45542056752605886
+    },
+    "di_variante": "calibrada_RQD_5m",
+    "ml_features": [
+      "vel",
+      "pp",
+      "pa",
+      "pd",
+      "pr",
+      "pf",
+      "se"
+    ],
+    "ml_labels": [
+      "ROP",
+      "PP",
+      "AP",
+      "DP",
+      "RP",
+      "FP",
+      "PEP"
+    ],
+    "rf": {
+      "n_estimators": "200",
+      "max_depth": "8",
+      "min_samples_split": "6",
+      "min_samples_leaf": "3",
+      "max_features": "sqrt",
+      "n_jobs": "-1",
+      "random_state": "42"
+    },
+    "modo_ucs": "auto",
+    "perm_semilla": 42,
+    "perm_n": 20000,
+    "limpieza": {
+      "emboquillado_m": 2.0,
+      "emboquillado_marcados": 86785,
+      "rango_fisico_pp": 0,
+      "percusion_empate": 8911,
+      "continuidad": 5162,
+      "no_entrenables": 112961,
+      "umbral_empate": 0.25
+    }
+  },
+  "embudo": [
+    {
+      "etapa": "total",
+      "label": "Total de puntos MWD",
+      "quedan": 982420,
+      "perdidos": 0
+    },
+    {
+      "etapa": "entrenable",
+      "label": "Entrenable (emboquillado <2 m + filtros de limpieza)",
+      "quedan": 869459,
+      "perdidos": 112961
+    },
+    {
+      "etapa": "caseron_entrena",
+      "label": "En un caserón que ENTRENA (todos los cargados)",
+      "quedan": 869459,
+      "perdidos": 0
+    },
+    {
+      "etapa": "con_dominio",
+      "label": "Con dominio asignado (dentro de alguna malla)",
+      "quedan": 869459,
+      "perdidos": 0
+    },
+    {
+      "etapa": "sin_ambiguedad",
+      "label": "Sin ambigüedad de traslape (A.5)",
+      "quedan": 869459,
+      "perdidos": 0
+    },
+    {
+      "etapa": "banda_ucs",
+      "label": "Dominio con banda de UCS asignada",
+      "quedan": 869459,
+      "perdidos": 0
+    },
+    {
+      "etapa": "no_excluido",
+      "label": "Atributo no excluido explícitamente (T1.5)",
+      "quedan": 869459,
+      "perdidos": 0
+    },
+    {
+      "etapa": "rango_ucs",
+      "label": "Etiqueta de UCS dentro de [0, 450] MPa",
+      "quedan": 869459,
+      "perdidos": 0
+    },
+    {
+      "etapa": "roca_intacta",
+      "label": "DI ≤ umbral (1) — roca intacta",
+      "quedan": 776471,
+      "perdidos": 92988
+    }
+  ],
+  "etiquetas": [
+    {
+      "litologia": "Kpcli",
+      "ucs_MPa": 180.0,
+      "n_puntos": 448004,
+      "pct": 57.7
+    },
+    {
+      "litologia": "Bht",
+      "ucs_MPa": 128.1,
+      "n_puntos": 242405,
+      "pct": 31.22
+    },
+    {
+      "litologia": "Kpcls",
+      "ucs_MPa": 60.0,
+      "n_puntos": 68666,
+      "pct": 8.84
+    },
+    {
+      "litologia": "Brecha_mixta",
+      "ucs_MPa": 111.5,
+      "n_puntos": 17396,
+      "pct": 2.24
+    }
+  ],
+  "por_caseron": [
+    {
+      "caseron": "PCC_0042",
+      "n_puntos": 384389,
+      "n_pozos": 418
+    },
+    {
+      "caseron": "PCC_1541",
+      "n_puntos": 156080,
+      "n_pozos": 235
+    },
+    {
+      "caseron": "PCS_1043",
+      "n_puntos": 126188,
+      "n_pozos": 124
+    },
+    {
+      "caseron": "PCS_1059",
+      "n_puntos": 109814,
+      "n_pozos": 125
+    }
+  ],
+  "n_pozos_grupo": 902,
+  "importancia": {
+    "ROP": 0.021,
+    "PP": 0.0376,
+    "AP": 0.0315,
+    "DP": 0.012,
+    "RP": 0.1283,
+    "FP": 0.2326,
+    "PEP": 0.0611
+  },
+  "importancia_nota": "Permutación sobre 20.000 puntos de 271 pozos NO vistos en el ajuste. Semilla 42, 10 repeticiones.",
+  "arbol_ejemplo": {
+    "indice": 0,
+    "profundidad_real": 8,
+    "n_nodos": 491,
+    "raiz": {
+      "n_muestras": 490637,
+      "valor_UCS": 151.6,
+      "hoja": false,
+      "variable": "PEP",
+      "umbral": 301.687,
+      "izq": {
+        "n_muestras": 130711,
+        "valor_UCS": 137.6,
+        "hoja": false,
+        "variable": "RP",
+        "umbral": 54.623,
+        "izq": {
+          "n_muestras": 117599,
+          "valor_UCS": 134.3,
+          "hoja": false,
+          "variable": "FP",
+          "umbral": 8.951
+        },
+        "der": {
+          "n_muestras": 13112,
+          "valor_UCS": 166.7,
+          "hoja": false,
+          "variable": "FP",
+          "umbral": 6.901
+        }
+      },
+      "der": {
+        "n_muestras": 359926,
+        "valor_UCS": 156.8,
+        "hoja": false,
+        "variable": "RP",
+        "umbral": 50.451,
+        "izq": {
+          "n_muestras": 222739,
+          "valor_UCS": 152.3,
+          "hoja": false,
+          "variable": "FP",
+          "umbral": 9.123
+        },
+        "der": {
+          "n_muestras": 137187,
+          "valor_UCS": 164.0,
+          "hoja": false,
+          "variable": "PEP",
+          "umbral": 498.314
+        }
+      }
+    }
+  },
+  "groupkfold": {
+    "n_pliegues": 5,
+    "unidad": "pozo",
+    "pliegues": [
+      {
+        "pliegue": 1,
+        "n_prueba": 155295,
+        "n_etiquetas_prueba": 4,
+        "r2": 0.284,
+        "rmse": 31.62,
+        "spearman": 0.535,
+        "motivo": null
+      },
+      {
+        "pliegue": 2,
+        "n_prueba": 155296,
+        "n_etiquetas_prueba": 4,
+        "r2": 0.309,
+        "rmse": 30.14,
+        "spearman": 0.567,
+        "motivo": null
+      },
+      {
+        "pliegue": 3,
+        "n_prueba": 155294,
+        "n_etiquetas_prueba": 4,
+        "r2": 0.29,
+        "rmse": 31.54,
+        "spearman": 0.554,
+        "motivo": null
+      },
+      {
+        "pliegue": 4,
+        "n_prueba": 155293,
+        "n_etiquetas_prueba": 4,
+        "r2": 0.291,
+        "rmse": 32.88,
+        "spearman": 0.568,
+        "motivo": null
+      },
+      {
+        "pliegue": 5,
+        "n_prueba": 155293,
+        "n_etiquetas_prueba": 4,
+        "r2": 0.309,
+        "rmse": 31.35,
+        "spearman": 0.589,
+        "motivo": null
+      }
+    ],
+    "r2_medio": 0.297,
+    "rmse_medio": 31.51,
+    "spearman_medio": 0.563
+  },
+  "loocv": {
+    "unidad": "caserón",
+    "nombre": "LOOCV-Caserón",
+    "pliegues": [
+      {
+        "pliegue": "PCC_0042",
+        "n_prueba": 384389,
+        "n_etiquetas_prueba": 2,
+        "r2": -3.74,
+        "rmse": 45.78,
+        "spearman": 0.243,
+        "motivo": null,
+        "r2_reportado": -3.74
+      },
+      {
+        "pliegue": "PCC_1541",
+        "n_prueba": 156080,
+        "n_etiquetas_prueba": 2,
+        "r2": -4.383,
+        "rmse": 78.43,
+        "spearman": 0.015,
+        "motivo": null,
+        "r2_reportado": -4.383
+      },
+      {
+        "pliegue": "PCS_1043",
+        "n_prueba": 126188,
+        "n_etiquetas_prueba": 3,
+        "r2": -0.586,
+        "rmse": 31.34,
+        "spearman": 0.052,
+        "motivo": null,
+        "r2_reportado": -0.586
+      },
+      {
+        "pliegue": "PCS_1059",
+        "n_prueba": 109814,
+        "n_etiquetas_prueba": 1,
+        "r2": null,
+        "rmse": 52.46,
+        "spearman": null,
+        "motivo": "una sola etiqueta en la prueba: R² y Spearman indefinidos",
+        "r2_reportado": null
+      }
+    ],
+    "r2_medio_cross_val_score": -2.903,
+    "n_definidos": 3,
+    "rmse_medio": 52.0
+  },
+  "linea_base": {
+    "media_global": {
+      "prediccion_MPa": 151.7,
+      "rmse": 37.6
+    }
+  },
+  "spearman_ajuste": 0.563,
+  "intervalo_p10_p90": {
+    "roca_intacta": {
+      "n": 862287,
+      "ancho_medio_MPa": 33.74
+    },
+    "roca_fracturada": {
+      "n": 120133,
+      "ancho_medio_MPa": 40.38
+    },
+    "nota": "ucs_ml = MEDIANA de los 200 árboles; P10/P90 ensanchados por pi_factor y acotados a 0-450 MPa."
+  },
+  "banda_check": {}
+}
