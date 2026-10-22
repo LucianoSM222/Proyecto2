@@ -2,7 +2,8 @@
 
 Todas las cifras salen de una sola corrida (`memoria_final/final/final_calc.py`
 → `final.json`). Las figuras y tablas, sin pies de figura y en estilo Excel,
-están en `figuras/finales/`. Se regeneran con `final_figs.py`, `rf_figura.py`,
+están en `figuras/finales/`; los valores de todas las tablas, en
+`figuras/finales/tablas_capitulo6.xlsx` (`tablas_excel.py`). Se regeneran con `final_figs.py`, `pep_muestra.py`, `rf_figura.py`,
 `rf_esquema.py`, `di_estructura.py` y `barra/fig_periodo.py`.
 
 ## Configuración
@@ -66,9 +67,11 @@ están en `figuras/finales/`. Se regeneran con `final_figs.py`, `rf_figura.py`,
 | `F6_01_correlacion_pearson.png` | Fig. 6.1 |
 | `F6_02_percusion_empate.png` | Fig. 6.2 |
 | `F6_02b_periodicidad_empate.png` | periodicidad de la percusión de empate con el largo de barra |
+| `F6_02c_localizacion_registros_filtrados.png` | antes/después en P20_H12 con la posición de cada registro excluido (emboquillado, empate, rango de PP, continuidad) |
 | `T6_01_sensibilidad_percusion_empate.png/.csv` | Tabla 6.1 |
 | `T6_02_sensibilidad_radio_RQD.png/.csv` | Tabla 6.2 |
 | `F6_03_perfil_DI_calibrado.png` | Fig. 6.3 |
+| `F6_04_LOOCV_caseron.png` | ρ de Spearman y R² por caserón dejado fuera |
 | `F6_05_spearman_por_esquema.png` | ρ del bosque por pozo (GroupKFold) y por caserón (LOOCV-Caserón) |
 | `F6_06_PEP_vs_UCS.png` | Fig. 6.6 |
 | `F6_07_UCS_lab_vs_ML.png` | Fig. 6.7 |
@@ -80,5 +83,7 @@ están en `figuras/finales/`. Se regeneran con `final_figs.py`, `rf_figura.py`,
 | `T6_03_dominios.png/.csv` | Tabla 6.3 |
 | `T6_04_ranking_recomendaciones.png/.csv` | Tabla 6.4 |
 | `F6_13_PEP_UCS_ROP_PP.png` | Fig. 6.13 |
+| `F6_13b_PEP_UCS_ROP_PP_registros.png` | PEP por registro contra UCS referencial, ROP y PP (color = PP) |
+| `tablas_capitulo6.xlsx` | valores de todas las tablas y figuras, una hoja por tema |
 | `F_RF_esquema.png`, `F_RF_detalle.png` | esquema y detalle del bosque |
 | `F_DI_vs_estructura.png` | DI de P20_H12 contra el modelo geológico |

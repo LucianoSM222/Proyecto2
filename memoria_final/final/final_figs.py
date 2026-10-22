@@ -135,6 +135,38 @@ a2.set_title("Después del filtro", loc="left", fontsize=10)
 fig.suptitle(f"Filtro de percusión de empate — PCC_0042_PR01_TH_P20_H12 (umbral de caída {dec(R['limpieza']['umbral_empate'], 2)})")
 pie(fig, f"Largo {dec(L[-1], 1)} m · {mil(L.size)} registros. Una muestra se marca si cae ≥ 25% bajo el promedio de sus dos vecinas y estas difieren entre sí menos de 12,5%.", y=-0.01); guardar(fig, "F6_02_percusion_empate.png")
 
+# ── localización de los registros filtrados, P20_H12 ───────────────────────
+# Cada registro excluido se asigna a UN motivo, en el orden en que se aplican
+# los filtros: emboquillado, percusión de empate, rango de PP, continuidad.
+EMB = R["limpieza"]["emboquillado_m"]; ENT = np.array(P["entrenable"], bool)
+motivo = np.full(L.size, "", dtype=object)
+motivo[L < EMB] = "emb"
+emp = np.zeros(L.size, bool); emp[ix] = True
+motivo[(motivo == "") & emp] = "emp"
+motivo[(motivo == "") & ~ENT & ((PP < 90) | (PP > 230))] = "rango"
+motivo[(motivo == "") & ~ENT] = "cont"
+MOT = [("emb", f"Emboquillado (< {dec(EMB, 0)} m)", GRIS), ("emp", "Percusión de empate", ROJO),
+       ("rango", "PP fuera de 90–230 bar", NARANJA), ("cont", "Continuidad del registro", MORADO)]
+fig, (a1, a2) = plt.subplots(2, 1, figsize=(14, 6.8), sharex=True)
+a1.plot(L, PP, "-", color=AZUL, lw=0.8)
+for k, et, c in MOT:
+    m = motivo == k
+    if m.any():
+        a1.plot(L[m], PP[m], "o", color=c, ms=4.5, mec="white", mew=0.5, zorder=5, label=f"{et} ({int(m.sum())})")
+a1.set_ylabel("PP [bar]"); a1.legend(loc="lower right", fontsize=9, ncol=2)
+a1.set_title("Antes del filtro", loc="left", fontsize=10)
+queda = motivo == ""
+a2.plot(L[queda], PP[queda], "-", color=VERDE, lw=0.8, label=f"Registros que quedan ({int(queda.sum())})")
+a2.axvspan(0, EMB, color=GRIS, alpha=0.25, lw=0, zorder=0, label=f"Emboquillado (< {dec(EMB, 0)} m)")
+for k, et, c in MOT[1:]:
+    for x_ in L[motivo == k]:
+        a2.axvline(x_, color=c, ls=":", lw=0.8, alpha=0.6, zorder=0)
+a2.set_ylabel("PP [bar]"); a2.set_xlabel("Profundidad a lo largo del pozo [m]")
+a2.set_title("Después del filtro (líneas punteadas: posición de cada registro excluido)", loc="left", fontsize=10)
+a2.legend(loc="lower right", fontsize=9, ncol=2)
+fig.suptitle(f"Localización de los registros filtrados — PCC_0042_PR01_TH_P20_H12 ({int((~queda).sum())} de {mil(L.size)} registros)")
+guardar(fig, "F6_02c_localizacion_registros_filtrados.png")
+
 # ── Tabla 6.2 ───────────────────────────────────────────────────────────────
 filas = []
 for f in R["tabla_6_2"]["filas"]:
@@ -192,6 +224,32 @@ ax.axhline(0, color="#333", lw=0.8); ax.set_ylim(0, 1); ax.set_ylabel("ρ de Spe
 fig.suptitle("Ordenamiento de la resistencia según qué se deja fuera del entrenamiento")
 pie(fig, "Random Forest con la mediana de sus árboles. Pozo nuevo en caserón conocido · caserón nunca visto · litología nunca vista. "
          "En LOOCV-Caserón, PCS_1059 tiene una sola etiqueta y su ρ no está definido.", y=-0.04); guardar(fig, "F6_05_spearman_por_esquema.png")
+
+# ── 6.4 LOOCV-Caserón: ρ de Spearman y R² por caserón dejado fuera ────────
+PL = lc["pliegues"]; nom = [f["pliegue"] for f in PL]; xx = np.arange(len(PL))
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 5))
+for ax, clave, et, col, lim in ((a1, "spearman", "ρ de Spearman (UCS predicha vs. referencial)", MORADO, (0, 1)),
+                                (a2, "r2", "R²", AZUL, None)):
+    v = [f[clave] for f in PL]
+    bb = ax.bar(xx, [0 if x is None else x for x in v], color=col, width=0.55)
+    for b_, x, f in zip(bb, v, PL):
+        cx = b_.get_x() + b_.get_width() / 2
+        if x is None:
+            ax.annotate("indefinido\n(una sola etiqueta)", (cx, 0), xytext=(0, 4 if lim else -6), textcoords="offset points",
+                        ha="center", va="bottom" if lim else "top", fontsize=8.5, color="#595959")
+        else:
+            ax.annotate(("+" if x >= 0 else "") + dec(x, 3), (cx, x), xytext=(0, 4 if x >= 0 else -13),
+                        textcoords="offset points", ha="center", fontsize=9)
+    dfn = [x for x in v if x is not None]; mu = float(np.mean(dfn))
+    ax.axhline(mu, color="#333", ls="--", lw=1, label=f"Media de los definidos: {('+' if mu >= 0 else '') + dec(mu, 3)}")
+    ax.axhline(0, color="#333", lw=0.8)
+    ax.set_xticks(xx); ax.set_xticklabels([f"{n}\n({mil(f['n_prueba'])} reg.)" for n, f in zip(nom, PL)])
+    ax.set_ylabel(et); ax.set_xlabel("Caserón dejado fuera del entrenamiento")
+    ax.legend(fontsize=9, loc="upper right" if lim else "lower right")
+    ax.set_ylim(*(lim or (min(dfn) - 0.5, 0.25)))
+a1.set_title("Ordenamiento de la resistencia", fontsize=10.5); a2.set_title("Varianza explicada", fontsize=10.5)
+fig.suptitle("Validación LOOCV-Caserón del Random Forest")
+guardar(fig, "F6_04_LOOCV_caseron.png")
 
 # ── 6.6 PEP vs UCS predicha ─────────────────────────────────────────────────
 S6 = R["pep_vs_ucs"]
@@ -384,6 +442,32 @@ a1.set_xlabel("PP [bar] (estratos de 10 bar)"); a1.set_ylabel("PEP mediana [bar�
 a2.set_xlabel("PP [bar] (estratos de 10 bar)"); a2.set_ylabel("ROP mediana [m/min]"); a2.grid(alpha=0.3)
 fig.suptitle("PEP y ROP según la UCS de laboratorio y la presión de percusión")
 pie(fig, "Registros entrenables de roca intacta, ROP ≥ 0,2 m/min; estratos con ≥ 20 registros. " + PIE_CFG, y=-0.04); guardar(fig, "F6_13_PEP_UCS_ROP_PP.png")
+
+# ── 6.13b PEP por registro: UCS referencial, ROP y PP (pep_muestra.py) ─────
+FM = os.path.join(os.path.dirname(SRC), "pep_muestra.json")
+if os.path.exists(FM):
+    S = json.load(open(FM, encoding="utf-8")); rho = S["spearman_pep"]
+    pep = np.array(S["pep"]); ur = np.array(S["ucs_ref"]); rop = np.array(S["rop"]); ppm = np.array(S["pp"])
+    lit = np.array(S["lito"])
+    fig, axs = plt.subplots(1, 3, figsize=(16, 5.2), sharey=True)
+    jit = np.random.default_rng(42).uniform(-2.5, 2.5, ur.size)
+    for lito in sorted(set(lit), key=lambda l: S["anclas"][l]):
+        m = lit == lito
+        axs[0].scatter(ur[m] + jit[m], pep[m], s=2, alpha=0.2, color=COL_LITO.get(lito, GRIS), rasterized=True,
+                       label=f"{NOM_LITO.get(lito, lito)} — {dec(S['anclas'][lito], 1)} MPa")
+        axs[0].plot(S["anclas"][lito], np.median(pep[m]), "_", color="#1a1a1a", ms=26, mew=2.2, zorder=6)
+    axs[0].set_xlabel("UCS referencial [MPa]"); axs[0].set_ylabel("PEP [bar·min/m]")
+    lg = axs[0].legend(fontsize=7.8, markerscale=5, loc="upper right")
+    for hnd in lg.legend_handles: hnd.set_alpha(1)
+    axs[0].set_title(f"PEP vs. UCS referencial (— mediana) · ρ = {dec(rho['ucs_ref'], 3)}", fontsize=10.5)
+    for ax, x_, et, k in ((axs[1], rop, "ROP [m/min]", "rop"), (axs[2], ppm, "PP [bar]", "pp")):
+        sc_ = ax.scatter(x_, pep, c=ppm, s=2, alpha=0.35, cmap="viridis", vmin=90, vmax=230, rasterized=True)
+        ax.set_xlabel(et); ax.set_title(f"PEP vs. {et.split(' ')[0]} (color = PP) · ρ = {dec(rho[k], 3)}", fontsize=10.5)
+    fig.colorbar(sc_, ax=list(axs[1:]), shrink=0.85, label="PP [bar]")
+    axs[0].set_ylim(0, S["pep_max"])
+    fig.suptitle(f"PEP = (PP + RP + AP) / ROP — {mil(len(pep))} de {mil(S['n'])} registros entrenables de roca intacta "
+                 f"(PEP ≤ {mil(S['pep_max'])})")
+    guardar(fig, "F6_13b_PEP_UCS_ROP_PP_registros.png")
 
 json.dump(hechas, open(f"{OUT}/_hechas.json", "w"))
 print(len(hechas), "archivos")
