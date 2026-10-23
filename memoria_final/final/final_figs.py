@@ -408,7 +408,8 @@ def _ecuacion(nom, c):
 
 di_ = S6["intacta"]; pep_i = np.array(di_["pep"]); u_i = np.array(di_["ucs_ml"]); lit_i = np.array(di_["lito"])
 mi = (pep_i <= 1000) & (pep_i > 0)
-AJ = _ajustes_intacta(pep_i[mi], u_i[mi])
+maj = mi & (pep_i >= 100) & (pep_i <= 500)   # el ajuste solo usa PEP 100–500
+AJ = _ajustes_intacta(pep_i[maj], u_i[maj])
 # Parsimonia: entre las formas a menos de 0,01 de R² del máximo, la de menos
 # coeficientes (el cúbico gana 0,005 al parabólico con un parámetro más).
 _NPAR = {"lineal": 2, "potencial": 2, "logarítmico": 2, "parabólico": 3, "saturación": 3, "cúbico": 4}
@@ -427,9 +428,9 @@ keep[np.random.default_rng(42).choice(pep_f.size, int(round(pep_f.size * df_["n"
 mf = keep & (pep_f <= 1000)
 ax.scatter(pep_f[mf], u_f[mf], s=8, marker="x", lw=0.6, alpha=0.45, color="#7F7F7F", rasterized=True,
            label=f"DI > {dec(UMB, 0)}, fracturada — EXTRAPOLACIÓN, fuera del ajuste (n = {mil(df_['n'])})")
-xx = np.linspace(max(5, pep_i[mi].min()), 1000, 400)
+xx = np.linspace(100, 500, 400)
 ax.plot(xx, AJ[mejor][1](xx), "-", color="#1a1a1a", lw=2,
-        label=f"Ajuste {mejor} (solo intacta): {_ecuacion(mejor, AJ[mejor][2])} · R² = {dec(AJ[mejor][0], 3)}")
+        label=f"Ajuste {mejor} (solo intacta, PEP 100–500): {_ecuacion(mejor, AJ[mejor][2])} · R² = {dec(AJ[mejor][0], 3)}")
 ax.set_xlim(-40, 1040)
 ax.set_xlabel("PEP = (PP + RP + AP) / ROP [bar·min/m]  (PEP ≤ 1.000)"); ax.set_ylabel("UCS predicha por ML [MPa]")
 ax.grid(True, axis="both")
