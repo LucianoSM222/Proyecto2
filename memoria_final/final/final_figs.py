@@ -761,5 +761,36 @@ if os.path.exists(FE):
     fig.suptitle("UCS modelada por el Random Forest según la presión de percusión (punteado: UCS referencial)")
     guardar(fig, "F6_13e_UCS_modelada_vs_PP.png")
 
+# ── ROP frente a las cuatro presiones (rop_presiones.py) ──────────────────
+FRP = os.path.join(os.path.dirname(SRC), "rop_presiones.json")
+if os.path.exists(FRP):
+    RPJ = json.load(open(FRP, encoding="utf-8")); G0 = RPJ["grupos"]["Todas las litologías"]; PS = list(G0["presiones"])
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(15, 5.4), gridspec_kw={"width_ratios": [1.2, 1]})
+    MED = [("rho_simple", "ρ simple", "#9DB6CF"), ("rho_parcial", "ρ parcial (descontando las otras 3)", AZUL),
+           ("rho_intra_pozo", "ρ dentro de cada pozo", "#1F3864")]
+    xx = np.arange(len(PS)); wd = 0.26
+    for k, (cl, et, c) in enumerate(MED):
+        v = [G0["presiones"][p][cl] for p in PS]
+        bb = a1.bar(xx + (k - 1) * wd, v, wd, color=c, label=et)
+        for b_, x in zip(bb, v):
+            a1.annotate(("+" if x >= 0 else "") + dec(x, 2), (b_.get_x() + b_.get_width() / 2, x),
+                        xytext=(0, 3 if x >= 0 else -11), textcoords="offset points", ha="center", fontsize=8)
+    a1.axhline(0, color="#333", lw=0.8); a1.set_xticks(xx); a1.set_xticklabels(PS)
+    a1.set_ylabel("ρ de Spearman con la ROP"); a1.set_ylim(-0.3, 0.45); a1.legend(fontsize=8.5, loc="upper right")
+    a1.set_title(f"Todas las litologías — {mil(G0['n'])} registros, {G0['n_pozos']} pozos · R² (4 presiones) = {dec(G0['r2_rangos_las_4'], 3)}", fontsize=10)
+    LG = [g for g in RPJ["grupos"] if g != "Todas las litologías"]
+    M = np.array([[RPJ["grupos"][g]["presiones"][p]["rho_intra_pozo"] for p in PS] for g in LG])
+    im = a2.imshow(M, cmap="RdBu_r", vmin=-0.4, vmax=0.4, aspect="auto")
+    a2.set_xticks(range(len(PS))); a2.set_xticklabels(PS)
+    a2.set_yticks(range(len(LG))); a2.set_yticklabels([f"{NOM_LITO.get(g, g)}\nR² = {dec(RPJ['grupos'][g]['r2_rangos_las_4'], 3)}" for g in LG], fontsize=9)
+    for i in range(len(LG)):
+        for j in range(len(PS)):
+            a2.text(j, i, ("+" if M[i, j] >= 0 else "") + dec(M[i, j], 2), ha="center", va="center", fontsize=9,
+                    color="white" if abs(M[i, j]) > 0.25 else "#222")
+    fig.colorbar(im, ax=a2, shrink=0.85, label="ρ dentro de cada pozo")
+    a2.set_title("ρ dentro de cada pozo, por litología", fontsize=10)
+    fig.suptitle("Relación de la ROP con las presiones de percusión, avance, rotación y dámper (roca continua)")
+    guardar(fig, "F6_14_ROP_vs_presiones.png")
+
 json.dump(hechas, open(f"{OUT}/_hechas.json", "w"))
 print(len(hechas), "archivos")

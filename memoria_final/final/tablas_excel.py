@@ -305,6 +305,20 @@ if os.path.exists(FA):
           [[p["grupo"], p["pep_mediana"], p["ucs_ref"]] for p in PA["conjuntos"]["todo"]["litologia_caseron"]["puntos"]],
           fmt=[None, "0.0", "0.0"])
 
+# ── ROP frente a las presiones ─────────────────────────────────────────────
+FRP = os.path.join(os.path.dirname(SRC), "rop_presiones.json")
+if os.path.exists(FRP):
+    RPJ = json.load(open(FRP, encoding="utf-8")); ws = hoja("ROP vs presiones")
+    titulo(ws, "Relación de la ROP con PP, AP, RP y DP (roca continua entrenable; FP excluida por criterio físico)")
+    tabla(ws, ["Grupo", "Presión", "Registros", "Pozos", "ρ simple", "ρ parcial", "ρ dentro del pozo", "R² sola (rangos)", "R² las 4 (rangos)", "Mediana [bar]"],
+          [[NOM_LITO.get(g, g), p, d["n"], d["n_pozos"], v["rho_simple"], v["rho_parcial"], v["rho_intra_pozo"], v["r2_sola"], d["r2_rangos_las_4"], v["mediana"]]
+           for g, d in RPJ["grupos"].items() for p, v in d["presiones"].items()],
+          fmt=[None, None, "#,##0", "#,##0", "+0.000;-0.000", "+0.000;-0.000", "+0.000;-0.000", "0.000", "0.000", "0.0"])
+    nota(ws, "ρ parcial: rangos descontando linealmente las otras tres presiones. ρ dentro del pozo: desviaciones respecto de la mediana de cada pozo.")
+    titulo(ws, "Correlación entre presiones (todas las litologías)")
+    tabla(ws, ["Par", "ρ de Spearman"], [[k, v] for k, v in RPJ["grupos"]["Todas las litologías"]["correlacion_entre_presiones"].items()],
+          fmt=[None, "+0.000;-0.000"])
+
 # ── Concordancia ───────────────────────────────────────────────────────────
 CO = R["concordancia_1541"]; ws = hoja("Concordancia 1541")
 titulo(ws, "Picos de DI y cruces de malla en PCC_1541 (radio 3 m)")
