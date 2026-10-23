@@ -652,7 +652,7 @@ for lito in sorted({e["lito"] for e in E}, key=lambda l: next(e["ucs_lab"] for e
 a1.set_xlabel("PP [bar] (estratos de 10 bar)"); a1.set_ylabel("PEP mediana [bar·min/m]"); a1.grid(alpha=0.3); a1.legend(fontsize=8)
 a2.set_xlabel("PP [bar] (estratos de 10 bar)"); a2.set_ylabel("ROP mediana [m/min]"); a2.grid(alpha=0.3)
 fig.suptitle("PEP y ROP según la UCS de laboratorio y la presión de percusión")
-pie(fig, "Registros entrenables de roca intacta, ROP ≥ 0,2 m/min; estratos con ≥ 20 registros. " + PIE_CFG, y=-0.04); guardar(fig, "F6_13_PEP_UCS_ROP_PP.png")
+pie(fig, "Registros entrenables de roca intacta, ROP ≥ 0,2 m/min; estratos con ≥ 20 registros. " + PIE_CFG, y=-0.04); guardar(fig, "F6_13_PEP_UCS_ROP_PP_continua.png") if not os.path.exists(os.path.join(os.path.dirname(SRC), "pep_estratos_clases.json")) else plt.close(fig)
 
 # ── 6.13b PEP por registro: UCS referencial, ROP y PP (pep_muestra.py) ─────
 FM = os.path.join(os.path.dirname(SRC), "pep_muestra.json")
@@ -706,31 +706,48 @@ if os.path.exists(FA):
     fig.suptitle(f"Ajuste parabólico UCS–PEP por litología y caserón (ρ = {('+' if G['spearman'] >= 0 else '') + dec(G['spearman'], 3)}, n = {G['n_puntos']} grupos)")
     guardar(fig, "F6_13c_ajuste_PEP_UCS_litologia_caseron.png")
 
-# ── cadena PP → ROP → PEP por litología (medianas por intervalo de PP) ─────
-from scipy.stats import spearmanr as _sp
-E = R["pep_estratos"]
-LITS = sorted({e["lito"] for e in E}, key=lambda l: next(e["ucs_lab"] for e in E if e["lito"] == l))
-fig, (a1, a2) = plt.subplots(1, 2, figsize=(14, 5.4))
-R["cadena_pp_rop_pep"] = {}
-for lito in LITS:
-    ee = sorted([e for e in E if e["lito"] == lito], key=lambda e: e["pp_bin"]); c = COL_LITO.get(lito, GRIS)
-    pp_ = np.array([e["pp_bin"] + 5 for e in ee]); rop_ = np.array([e["rop_mediana"] for e in ee]); pep_ = np.array([e["pep_mediana"] for e in ee])
-    r1 = float(_sp(pp_, rop_).statistic); r2_ = float(_sp(rop_, pep_).statistic)
-    R["cadena_pp_rop_pep"][lito] = {"rho_pp_rop": round(r1, 3), "rho_rop_pep": round(r2_, 3), "n_intervalos": len(ee)}
-    nm = f"{NOM_LITO.get(lito, lito)} — {dec(ee[0]['ucs_lab'], 1)} MPa"
-    a1.plot(pp_, rop_, "o-", color=c, ms=4, label=f"{nm} (ρ = {('+' if r1 >= 0 else '') + dec(r1, 2)})")
-    a2.plot(rop_, pep_, "-", color=c, lw=1, alpha=0.6)
-    a2.scatter(rop_, pep_, s=14 + (pp_ - 90) * 0.5, color=c, edgecolor="white", lw=0.5, zorder=4,
-               label=f"{nm} (ρ = {('+' if r2_ >= 0 else '') + dec(r2_, 2)})")
-    a2.annotate(f"{int(pp_[0])}", (rop_[0], pep_[0]), xytext=(4, 3), textcoords="offset points", fontsize=7.5, color=c)
-    a2.annotate(f"{int(pp_[-1])}", (rop_[-1], pep_[-1]), xytext=(4, 3), textcoords="offset points", fontsize=7.5, color=c)
-a1.set_xlabel("PP [bar] (intervalos de 10 bar)"); a1.set_ylabel("ROP mediana [m/min]"); a1.legend(fontsize=8)
-a1.set_title("PP → ROP", fontsize=10.5)
-a2.set_xlabel("ROP mediana [m/min]"); a2.set_ylabel("PEP mediana [bar·min/m]"); a2.legend(fontsize=8)
-a2.set_title("ROP → PEP (puntos unidos en orden de PP; tamaño = PP; rótulos = primer y último intervalo)", fontsize=10.5)
-fig.suptitle("Relación ordenada PP → ROP → PEP por litología (roca intacta entrenable)")
-guardar(fig, "F6_13d_cadena_PP_ROP_PEP.png")
-print("cadena:", R["cadena_pp_rop_pep"], flush=True)
+# ── PEP, ROP y UCS modelada por intervalo de PP: continua vs fracturada ─────
+FE = os.path.join(os.path.dirname(SRC), "pep_estratos_clases.json")
+if os.path.exists(FE):
+    EC = json.load(open(FE, encoding="utf-8")); FL_ = EC["filas"]
+    LITS = sorted(EC["anclas"], key=lambda l: EC["anclas"][l])
+    ETC = {"continua": f"Roca continua (DI ≤ {dec(UMB, 0)})", "fracturada": f"Roca fracturada (DI > {dec(UMB, 0)})"}
+
+    def _panel(ax, clase, campo, et):
+        for lito in LITS:
+            ee = sorted([f for f in FL_ if f["clase"] == clase and f["lito"] == lito], key=lambda f: f["pp_bin"])
+            if ee:
+                ax.plot([f["pp_bin"] + 5 for f in ee], [f[campo] for f in ee], "o-", color=COL_LITO.get(lito, GRIS), ms=4,
+                        label=f"{NOM_LITO.get(lito, lito)} — {dec(EC['anclas'][lito], 1)} MPa")
+        ax.set_ylabel(et); ax.set_title(ETC[clase], fontsize=10.5)
+
+    fig, axs = plt.subplots(2, 2, figsize=(13.5, 9.5), sharex=True)
+    for i, clase in enumerate(("continua", "fracturada")):
+        _panel(axs[i][0], clase, "pep_mediana", "PEP mediana [bar·min/m]")
+        _panel(axs[i][1], clase, "rop_mediana", "ROP mediana [m/min]")
+    for k, campo in ((0, "pep_mediana"), (1, "rop_mediana")):
+        v_ = [f[campo] for f in FL_]; pad = 0.05 * (max(v_) - min(v_))
+        for i in (0, 1): axs[i][k].set_ylim(min(v_) - pad, max(v_) + pad)
+        axs[1][k].set_xlabel("PP [bar] (intervalos de 10 bar)")
+    h_, l_ = axs[0][0].get_legend_handles_labels()
+    fig.legend(h_, l_, fontsize=9.5, ncol=4, loc="outside lower center")
+    fig.suptitle("PEP y ROP según la UCS de laboratorio y la presión de percusión")
+    guardar(fig, "F6_13_PEP_UCS_ROP_PP.png")
+
+    fig, axs = plt.subplots(1, 2, figsize=(13.5, 5.4), sharey=True)
+    for ax, clase in zip(axs, ("continua", "fracturada")):
+        for lito in LITS:
+            ee = sorted([f for f in FL_ if f["clase"] == clase and f["lito"] == lito], key=lambda f: f["pp_bin"])
+            if not ee: continue
+            r_ = EC["rho_pp_ucs"].get(clase, {}).get(lito, {}).get("rho")
+            ax.plot([f["pp_bin"] + 5 for f in ee], [f["ucs_ml_mediana"] for f in ee], "o-", color=COL_LITO.get(lito, GRIS), ms=4,
+                    label=f"{NOM_LITO.get(lito, lito)} (ρ = {('+' if r_ >= 0 else '') + dec(r_, 2)})")
+            ax.axhline(EC["anclas"][lito], color=COL_LITO.get(lito, GRIS), ls=":", lw=1)
+        ax.set_title(ETC[clase] + (" — extrapolación" if clase == "fracturada" else ""), fontsize=10.5)
+        ax.set_xlabel("PP [bar] (intervalos de 10 bar)"); ax.legend(fontsize=8.5, loc="lower right")
+    axs[0].set_ylabel("UCS modelada (mediana) [MPa]")
+    fig.suptitle("UCS modelada por el Random Forest según la presión de percusión (punteado: UCS referencial)")
+    guardar(fig, "F6_13e_UCS_modelada_vs_PP.png")
 
 json.dump(hechas, open(f"{OUT}/_hechas.json", "w"))
 print(len(hechas), "archivos")
