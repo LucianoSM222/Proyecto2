@@ -496,6 +496,38 @@ fig.suptitle("Picos de DI y cruces de malla (litología y estructura) — PCC_15
 pie(fig, f"{CO['n_pozos']} pozos con cruces; picos fusionados a < 0,5 m; radio de concordancia {dec(CO['radio_m'], 0)} m. "
          "La malla es una interpolación, no verdad terreno. Azar: mismos picos recolocados al azar en su pozo (30 repeticiones). " + PIE_CFG, y=-0.04); guardar(fig, "F6_09_desfase_DI_mallas_PCC1541.png")
 
+# ── desfase y sensibilidad al umbral: 4 caserones, PCC_0042 y PCC_1541 ─────
+FCC = os.path.join(os.path.dirname(SRC), "concordancia_caserones.json")
+if os.path.exists(FCC):
+    CC = json.load(open(FCC, encoding="utf-8"))
+    ET = {"4 caserones": "Cuatro caserones", "PCC_0042": "PCC_0042 (calibración del DI)", "PCC_1541": "PCC_1541 (prueba)"}
+    fig, axs = plt.subplots(3, 2, figsize=(13.5, 13), gridspec_kw={"width_ratios": [1.1, 1]})
+    for fila, (nom, C) in zip(axs, CC["conjuntos"].items()):
+        a1, a2 = fila; dl = np.array(C["desfases"]); PRr = C["pr"]
+        a1.hist(dl, bins=np.arange(-30, 30.5, 1.0), color=AZUL, alpha=0.85, edgecolor="white", lw=0.3)
+        a1.axvline(0, color="#333", lw=0.9)
+        a1.axvline(dl.mean(), color=ROJO, ls="--", lw=1.4, label=f"Media {dec(dl.mean(), 2)} m")
+        a1.axvline(np.median(dl), color=VERDE, ls="--", lw=1.4, label=f"Mediana {dec(np.median(dl), 2)} m")
+        a1.set_xlim(-25, 25); a1.set_ylabel("N° de picos"); a1.legend(fontsize=8.5, loc="upper right")
+        a1.text(0.02, 0.97, f"σ = {dec(dl.std(), 2)} m\nn = {mil(dl.size)} picos\n{C['n_pozos_con_cruces']} pozos con cruces",
+                transform=a1.transAxes, va="top", fontsize=8.5)
+        a1.set_title(f"{ET[nom]} — desfase pico–cruce", fontsize=10.5)
+        uu = [f["u"] for f in PRr]
+        a2.plot(uu, [100 * f["P"] for f in PRr], "o-", color=AZUL, label="Precisión: picos a ≤ 3 m de un cruce")
+        a2.plot(uu, [100 * f["R"] for f in PRr], "s-", color=ROJO, label="Recall: cruces con un pico a ≤ 3 m")
+        a2.plot(uu, [100 * f["azar"] for f in PRr], ":", color=GRIS, lw=2, label="Precisión esperada al azar")
+        a2.axvline(UMB, color="#333", ls="--", lw=0.9)
+        f1 = next(f for f in PRr if abs(f["u"] - UMB) < 1e-9)
+        a2.annotate(f"umbral {dec(UMB, 1)}: precisión {dec(100 * f1['P'], 1)}% · azar {dec(100 * f1['azar'], 1)}%",
+                    (UMB, 100 * f1["P"]), xytext=(10, 18), textcoords="offset points", fontsize=8.5,
+                    arrowprops=dict(arrowstyle="-", color="#555"))
+        a2.set_ylabel("%"); a2.set_ylim(0, 100); a2.set_title(f"{ET[nom]} — sensibilidad al umbral", fontsize=10.5)
+    axs[-1][0].set_xlabel("Pico de DI − cruce de malla más cercano [m]"); axs[-1][1].set_xlabel("Umbral de DI")
+    h_, l_ = axs[0][1].get_legend_handles_labels()
+    fig.legend(h_, l_, fontsize=9.5, ncol=3, loc="outside lower center")
+    fig.suptitle("Picos de DI y cruces de malla (litología y estructura) por conjunto de caserones")
+    guardar(fig, "F6_09b_desfase_umbral_por_caseron.png")
+
 # ── 6.10 perfil PCS_1043_PR01_TH_P07_H4 ─────────────────────────────────────
 Q = R.get("pozo_P07_H4")
 if Q:

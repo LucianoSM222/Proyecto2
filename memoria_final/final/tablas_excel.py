@@ -319,6 +319,23 @@ titulo(ws, "Desfase pico de DI − cruce de malla más cercano")
 tabla(ws, ["Estadístico", "Valor [m]"], [["Picos", int(dl.size)], ["Media", float(dl.mean())], ["Mediana", float(np.median(dl))],
                                         ["Desv. estándar", float(dl.std())]], fmt=[None, "0.00"])
 
+# ── Concordancia por conjunto de caserones ─────────────────────────────────
+FCC = os.path.join(os.path.dirname(SRC), "concordancia_caserones.json")
+if os.path.exists(FCC):
+    CC = json.load(open(FCC, encoding="utf-8")); ws = hoja("Concordancia caserones")
+    titulo(ws, "Picos de DI y cruces de malla: 4 caserones, PCC_0042 (calibración) y PCC_1541 (prueba)")
+    tabla(ws, ["Conjunto", "Pozos", "Pozos con cruces", "Picos (umbral 1)", "Desfase medio [m]", "Desfase mediano [m]", "σ desfase [m]"],
+          [[k, C["n_pozos"], C["n_pozos_con_cruces"], C["desfase"]["n"], C["desfase"]["media"], C["desfase"]["mediana"], C["desfase"]["sd"]]
+           for k, C in CC["conjuntos"].items()], fmt=[None, "#,##0", "#,##0", "#,##0", "0.00", "0.00", "0.00"])
+    for k, C in CC["conjuntos"].items():
+        titulo(ws, f"Sensibilidad al umbral — {k}")
+        _, a, b = tabla(ws, ["Umbral DI", "Picos", "Cruces", "Precisión", "Recall", "Precisión al azar", "Precisión − azar"],
+                        [[f["u"], f["n_picos"], f["n_cruces"], f["P"], f["R"], f["azar"], None] for f in C["pr"]],
+                        fmt=["0.00", "#,##0", "#,##0", "0.0%", "0.0%", "0.0%", "+0.0%;-0.0%"])
+        for i in range(a, b + 1):
+            ws.cell(i, 7, f"=D{i}-F{i}").number_format = "+0.0%;-0.0%"; ws.cell(i, 7).alignment = Alignment(horizontal="center")
+    nota(ws, f"Radio de concordancia {CC['radio_m']:g} m; picos fusionados a < 0,5 m; azar: mismos picos recolocados al azar en su pozo (30 repeticiones).")
+
 # ── Dominios y ranking ─────────────────────────────────────────────────────
 Dm = R["dominios"]; ws = hoja("T6.3 Dominios")
 titulo(ws, "Tabla 6.3 · Agrupación de dominios geomecánicos")
