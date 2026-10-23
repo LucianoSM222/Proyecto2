@@ -713,26 +713,38 @@ if os.path.exists(FE):
     LITS = sorted(EC["anclas"], key=lambda l: EC["anclas"][l])
     ETC = {"continua": f"Roca continua (DI ≤ {dec(UMB, 0)})", "fracturada": f"Roca fracturada (DI > {dec(UMB, 0)})"}
 
-    def _panel(ax, clase, campo, et):
+    NMAX = max(f["n"] for f in FL_)
+
+    def _panel(ax, clase, campo, et, pp_min, con_n):
         for lito in LITS:
-            ee = sorted([f for f in FL_ if f["clase"] == clase and f["lito"] == lito], key=lambda f: f["pp_bin"])
-            if ee:
-                ax.plot([f["pp_bin"] + 5 for f in ee], [f[campo] for f in ee], "o-", color=COL_LITO.get(lito, GRIS), ms=4,
-                        label=f"{NOM_LITO.get(lito, lito)} — {dec(EC['anclas'][lito], 1)} MPa")
+            ee = sorted([f for f in FL_ if f["clase"] == clase and f["lito"] == lito and f["pp_bin"] >= pp_min],
+                        key=lambda f: f["pp_bin"])
+            if not ee: continue
+            c = COL_LITO.get(lito, GRIS); x_ = [f["pp_bin"] + 5 for f in ee]; y_ = [f[campo] for f in ee]
+            ax.plot(x_, y_, "-", color=c, lw=1.4, label=f"{NOM_LITO.get(lito, lito)} — {dec(EC['anclas'][lito], 1)} MPa")
+            # Representatividad: el área del punto crece con log10 de los registros del intervalo.
+            ax.scatter(x_, y_, s=[(8 * np.log10(f["n"]) ** 2) if con_n else 18 for f in ee], color=c,
+                       edgecolor="white", lw=0.6, alpha=0.9, zorder=4)
         ax.set_ylabel(et); ax.set_title(ETC[clase], fontsize=10.5)
 
-    fig, axs = plt.subplots(2, 2, figsize=(13.5, 9.5), sharex=True)
-    for i, clase in enumerate(("continua", "fracturada")):
-        _panel(axs[i][0], clase, "pep_mediana", "PEP mediana [bar·min/m]")
-        _panel(axs[i][1], clase, "rop_mediana", "ROP mediana [m/min]")
-    for k, campo in ((0, "pep_mediana"), (1, "rop_mediana")):
-        v_ = [f[campo] for f in FL_]; pad = 0.05 * (max(v_) - min(v_))
-        for i in (0, 1): axs[i][k].set_ylim(min(v_) - pad, max(v_) + pad)
-        axs[1][k].set_xlabel("PP [bar] (intervalos de 10 bar)")
-    h_, l_ = axs[0][0].get_legend_handles_labels()
-    fig.legend(h_, l_, fontsize=9.5, ncol=4, loc="outside lower center")
-    fig.suptitle("PEP y ROP según la UCS de laboratorio y la presión de percusión")
-    guardar(fig, "F6_13_PEP_UCS_ROP_PP.png")
+    for nombre, pp_min, con_n, sub in (("F6_13_PEP_UCS_ROP_PP.png", 90, True, "tamaño del punto = registros del intervalo"),
+                                       ("F6_13_PEP_UCS_ROP_PP_desde120.png", 120, False, "intervalos desde 120 bar")):
+        fig, axs = plt.subplots(2, 2, figsize=(13.5, 9.5), sharex=True)
+        for i, clase in enumerate(("continua", "fracturada")):
+            _panel(axs[i][0], clase, "pep_mediana", "PEP mediana [bar·min/m]", pp_min, con_n)
+            _panel(axs[i][1], clase, "rop_mediana", "ROP mediana [m/min]", pp_min, con_n)
+        for k, campo in ((0, "pep_mediana"), (1, "rop_mediana")):
+            v_ = [f[campo] for f in FL_ if f["pp_bin"] >= pp_min]; pad = 0.05 * (max(v_) - min(v_))
+            for i in (0, 1): axs[i][k].set_ylim(min(v_) - pad, max(v_) + pad)
+            axs[1][k].set_xlabel("PP [bar] (intervalos de 10 bar)")
+        h_, l_ = axs[0][0].get_legend_handles_labels()
+        if con_n:
+            for nn in (100, 1000, 10000, 100000):
+                h_.append(plt.scatter([], [], s=8 * np.log10(nn) ** 2, color="#A5A5A5", edgecolor="white"))
+                l_.append(f"{mil(nn)} registros")
+        fig.legend(h_, l_, fontsize=9.5, ncol=4 if not con_n else 4, loc="outside lower center")
+        fig.suptitle(f"PEP y ROP según la UCS de laboratorio y la presión de percusión ({sub})")
+        guardar(fig, nombre)
 
     fig, axs = plt.subplots(1, 2, figsize=(13.5, 5.4), sharey=True)
     for ax, clase in zip(axs, ("continua", "fracturada")):
