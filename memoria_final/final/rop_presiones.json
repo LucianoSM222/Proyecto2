@@ -1,0 +1,334 @@
+{
+ "umbral_di": 1.0,
+ "rop_min": 0.2,
+ "grupos": {
+  "Todas las litologías": {
+   "n": 718032,
+   "n_pozos": 900,
+   "presiones": {
+    "PP": {
+     "rho_simple": 0.235,
+     "rho_parcial": 0.207,
+     "rho_intra_pozo": -0.09,
+     "r2_sola": 0.0553,
+     "mediana": 218.4
+    },
+    "AP": {
+     "rho_simple": 0.106,
+     "rho_parcial": 0.091,
+     "rho_intra_pozo": 0.037,
+     "r2_sola": 0.0112,
+     "mediana": 76.5
+    },
+    "RP": {
+     "rho_simple": -0.181,
+     "rho_parcial": -0.174,
+     "rho_intra_pozo": -0.05,
+     "r2_sola": 0.0327,
+     "mediana": 46.8
+    },
+    "DP": {
+     "rho_simple": -0.044,
+     "rho_parcial": -0.136,
+     "rho_intra_pozo": -0.057,
+     "r2_sola": 0.0019,
+     "mediana": 102.0
+    }
+   },
+   "r2_rangos_las_4": 0.1001,
+   "correlacion_entre_presiones": {
+    "PP-AP": 0.379,
+    "PP-RP": -0.066,
+    "PP-DP": 0.229,
+    "AP-RP": 0.006,
+    "AP-DP": 0.55,
+    "RP-DP": -0.008
+   }
+  },
+  "Kpcls": {
+   "n": 52992,
+   "n_pozos": 188,
+   "presiones": {
+    "PP": {
+     "rho_simple": 0.108,
+     "rho_parcial": 0.056,
+     "rho_intra_pozo": 0.004,
+     "r2_sola": 0.0117,
+     "mediana": 217.6
+    },
+    "AP": {
+     "rho_simple": 0.125,
+     "rho_parcial": 0.152,
+     "rho_intra_pozo": 0.167,
+     "r2_sola": 0.0157,
+     "mediana": 74.0
+    },
+    "RP": {
+     "rho_simple": -0.11,
+     "rho_parcial": -0.123,
+     "rho_intra_pozo": -0.012,
+     "r2_sola": 0.0121,
+     "mediana": 45.4
+    },
+    "DP": {
+     "rho_simple": -0.06,
+     "rho_parcial": -0.119,
+     "rho_intra_pozo": 0.0,
+     "r2_sola": 0.0036,
+     "mediana": 99.9
+    }
+   },
+   "r2_rangos_las_4": 0.0509,
+   "correlacion_entre_presiones": {
+    "PP-AP": 0.414,
+    "PP-RP": -0.076,
+    "PP-DP": 0.292,
+    "AP-RP": 0.224,
+    "AP-DP": 0.39,
+    "RP-DP": 0.143
+   }
+  },
+  "Brecha_mixta": {
+   "n": 16787,
+   "n_pozos": 29,
+   "presiones": {
+    "PP": {
+     "rho_simple": 0.375,
+     "rho_parcial": 0.362,
+     "rho_intra_pozo": 0.317,
+     "r2_sola": 0.1407,
+     "mediana": 179.9
+    },
+    "AP": {
+     "rho_simple": 0.153,
+     "rho_parcial": 0.056,
+     "rho_intra_pozo": 0.053,
+     "r2_sola": 0.0235,
+     "mediana": 76.4
+    },
+    "RP": {
+     "rho_simple": -0.195,
+     "rho_parcial": -0.307,
+     "rho_intra_pozo": -0.11,
+     "r2_sola": 0.038,
+     "mediana": 56.7
+    },
+    "DP": {
+     "rho_simple": 0.137,
+     "rho_parcial": 0.094,
+     "rho_intra_pozo": -0.012,
+     "r2_sola": 0.0189,
+     "mediana": 104.3
+    }
+   },
+   "r2_rangos_las_4": 0.2251,
+   "correlacion_entre_presiones": {
+    "PP-AP": 0.337,
+    "PP-RP": 0.125,
+    "PP-DP": 0.214,
+    "AP-RP": 0.407,
+    "AP-DP": 0.708,
+    "RP-DP": 0.356
+   }
+  },
+  "Bht": {
+   "n": 224091,
+   "n_pozos": 487,
+   "presiones": {
+    "PP": {
+     "rho_simple": 0.246,
+     "rho_parcial": 0.214,
+     "rho_intra_pozo": -0.084,
+     "r2_sola": 0.0605,
+     "mediana": 216.6
+    },
+    "AP": {
+     "rho_simple": 0.158,
+     "rho_parcial": 0.141,
+     "rho_intra_pozo": 0.128,
+     "r2_sola": 0.0251,
+     "mediana": 76.2
+    },
+    "RP": {
+     "rho_simple": -0.068,
+     "rho_parcial": -0.066,
+     "rho_intra_pozo": -0.089,
+     "r2_sola": 0.0046,
+     "mediana": 44.0
+    },
+    "DP": {
+     "rho_simple": -0.047,
+     "rho_parcial": -0.181,
+     "rho_intra_pozo": -0.068,
+     "r2_sola": 0.0022,
+     "mediana": 101.8
+    }
+   },
+   "r2_rangos_las_4": 0.0984,
+   "correlacion_entre_presiones": {
+    "PP-AP": 0.441,
+    "PP-RP": -0.023,
+    "PP-DP": 0.307,
+    "AP-RP": 0.053,
+    "AP-DP": 0.541,
+    "RP-DP": 0.043
+   }
+  },
+  "Kpcli": {
+   "n": 424162,
+   "n_pozos": 571,
+   "presiones": {
+    "PP": {
+     "rho_simple": 0.208,
+     "rho_parcial": 0.174,
+     "rho_intra_pozo": -0.126,
+     "r2_sola": 0.0435,
+     "mediana": 220.0
+    },
+    "AP": {
+     "rho_simple": 0.104,
+     "rho_parcial": 0.084,
+     "rho_intra_pozo": 0.035,
+     "r2_sola": 0.0109,
+     "mediana": 76.9
+    },
+    "RP": {
+     "rho_simple": -0.139,
+     "rho_parcial": -0.117,
+     "rho_intra_pozo": 0.002,
+     "r2_sola": 0.0193,
+     "mediana": 48.6
+    },
+    "DP": {
+     "rho_simple": -0.025,
+     "rho_parcial": -0.11,
+     "rho_intra_pozo": -0.03,
+     "r2_sola": 0.0006,
+     "mediana": 102.5
+    }
+   },
+   "r2_rangos_las_4": 0.0681,
+   "correlacion_entre_presiones": {
+    "PP-AP": 0.342,
+    "PP-RP": -0.138,
+    "PP-DP": 0.197,
+    "AP-RP": -0.103,
+    "AP-DP": 0.56,
+    "RP-DP": -0.091
+   }
+  }
+ },
+ "ranking": {
+  "min_se_cv": [
+   {
+    "vel": 0.7108749999999999,
+    "pp": 224.873875,
+    "pa": 79.514375,
+    "pr": 51.426874999999995,
+    "pd": 110.959
+   },
+   {
+    "vel": 0.9916,
+    "pp": 224.99960000000002,
+    "pa": 85.172,
+    "pr": 59.8344,
+    "pd": 118.3634
+   },
+   {
+    "vel": 0.8728571428571429,
+    "pp": 225.40314285714288,
+    "pa": 74.88471428571428,
+    "pr": 50.717999999999996,
+    "pd": 102.72
+   },
+   {
+    "vel": 0.9376000000000001,
+    "pp": 224.914,
+    "pa": 99.938,
+    "pr": 50.29,
+    "pd": 121.14540000000002
+   },
+   {
+    "vel": 1.052,
+    "pp": 223.30900000000003,
+    "pa": 76.90090000000001,
+    "pr": 42.639500000000005,
+    "pd": 110.745
+   }
+  ],
+  "min_se": [
+   {
+    "vel": 1.7870000000000001,
+    "pp": 149.9926,
+    "pa": 77.66059999999999,
+    "pr": 52.815200000000004,
+    "pd": 75.84160000000001
+   },
+   {
+    "vel": 1.3678333333333335,
+    "pp": 119.57249999999999,
+    "pa": 52.62616666666667,
+    "pr": 43.6025,
+    "pd": 56.389
+   },
+   {
+    "vel": 1.3474,
+    "pp": 125.2542,
+    "pa": 59.4492,
+    "pr": 39.7184,
+    "pd": 73.224
+   },
+   {
+    "vel": 1.5748571428571427,
+    "pp": 151.0687142857143,
+    "pa": 71.81228571428571,
+    "pr": 38.22957142857143,
+    "pd": 69.10285714285713
+   },
+   {
+    "vel": 1.7991666666666666,
+    "pp": 195.13233333333332,
+    "pa": 80.14299999999999,
+    "pr": 39.1085,
+    "pd": 75.3
+   }
+  ],
+  "max_rop": [
+   {
+    "vel": 1.7991666666666666,
+    "pp": 195.13233333333332,
+    "pa": 80.14299999999999,
+    "pr": 39.1085,
+    "pd": 75.3
+   },
+   {
+    "vel": 1.7870000000000001,
+    "pp": 149.9926,
+    "pa": 77.66059999999999,
+    "pr": 52.815200000000004,
+    "pd": 75.84160000000001
+   },
+   {
+    "vel": 1.6841818181818182,
+    "pp": 221.66509090909094,
+    "pa": 100.46327272727272,
+    "pr": 37.26518181818182,
+    "pd": 117.45818181818181
+   },
+   {
+    "vel": 1.6808,
+    "pp": 190.4386,
+    "pa": 72.78139999999999,
+    "pr": 47.0158,
+    "pd": 107.08800000000001
+   },
+   {
+    "vel": 1.6568571428571428,
+    "pp": 176.53471428571427,
+    "pa": 97.19828571428572,
+    "pr": 45.582,
+    "pd": 121.58257142857144
+   }
+  ]
+ }
+}

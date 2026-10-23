@@ -1,0 +1,35 @@
+# MWD GeoMech Wizard — versiones exactas en uso.
+#
+# (B3.3) Congelado el 2026-09-28 sobre el contenedor que produjo los resultados
+# reportados en la memoria. Instalar con:
+#     pip install -r requirements.txt
+#
+# ADVERTENCIA DE REPRODUCIBILIDAD: las cifras publicadas antes del 2026-09-13
+# se calcularon con scikit-learn 1.9.0; este archivo fija 1.9.1, que es lo que
+# quedó instalado al reconstruirse el contenedor. Con random_state fijo un
+# cambio de patch no debería mover un RandomForest, pero la diferencia está
+# declarada porque no se volvió a verificar contra 1.9.0.
+#
+# Determinismo: todas las corridas reportadas fijan semilla —RF_PRODUCCION
+# (random_state=42), búsqueda Dirichlet de pesos (CAL_SEMILLA=42) e importancia
+# por permutación (PERM_IMP_SEMILLA=42)—. numpy y scikit-learn son las dos que
+# realmente pueden mover un número entre versiones.
+
+numpy==2.4.6
+scipy==1.17.1
+scikit-learn==1.9.1
+pandas==3.0.6
+
+plotly==7.1.0
+dash==4.4.1
+dash-bootstrap-components==2.0.4
+kaleido==1.4.0
+
+ezdxf==1.4.4
+openpyxl==3.1.5
+matplotlib==3.11.2
+
+# Solo para la suite de tests (test_nombres_definidos.py la exige; sin ella esa
+# suite se OMITE en vez de pasar).
+pyflakes
+pytest

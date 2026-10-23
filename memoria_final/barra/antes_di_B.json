@@ -1,0 +1,61 @@
+{
+ "escenario": "B",
+ "umbral_empate": 0.25,
+ "L": 1.756,
+ "tol_m": 0.06,
+ "aislamiento_m": 0.5,
+ "k": [
+  1,
+  2,
+  3
+ ],
+ "limpieza": {
+  "marcas_sacadas_de_la_serie": 3432,
+  "registros_originales": 982420,
+  "registros_en_serie": 978988,
+  "no_entrenables_otros_filtros": 103819
+ },
+ "di": {
+  "pesos": {
+   "pp": 0.0187,
+   "pr": 0.4826,
+   "pd": 0.0433,
+   "pf": 0.4554
+  },
+  "rho_ajuste": 0.1279,
+  "rho_validacion": -0.1567,
+  "n_pares": 32,
+  "n_sondajes": 4,
+  "pliegues": [
+   [
+    "DDH13-LP-50",
+    -0.4909090909090909
+   ],
+   [
+    "DDH16-IR-31",
+    null
+   ],
+   [
+    "DDH22-ZC-29",
+    0.6208791208791209
+   ],
+   [
+    "DDH25-ZC-42",
+    -0.6
+   ]
+  ],
+  "n_le_1": 860021,
+  "n_gt_1": 118967
+ },
+ "entrenamiento": 781537,
+ "concordancia_1541": {
+  "picos": 1320,
+  "picos_a_3m": 665,
+  "precision": 0.5037878787878788,
+  "azar": 0.5356313131313131,
+  "cruces": 415,
+  "cruces_con_pico": 358,
+  "recall": 0.8626506024096385,
+  "picos_total_1541": 1619
+ }
+}

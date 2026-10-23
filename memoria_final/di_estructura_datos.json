@@ -1,0 +1,81 @@
+{
+  "pozo": "PCC_0042_PR01_TH_P20_H12",
+  "umbral_DI": 1.0,
+  "min_gap_m": 0.5,
+  "largo_m": 35.93,
+  "n_puntos": 1771,
+  "n_muestras_sobre_umbral": 284,
+  "pct_sobre_umbral": 16.04,
+  "n_picos": 17,
+  "picos_m": [
+    2.51,
+    5.69,
+    7.22,
+    8.98,
+    10.95,
+    12.71,
+    14.26,
+    16.22,
+    17.77,
+    19.52,
+    23.04,
+    24.76,
+    27.48,
+    29.98,
+    31.89,
+    33.62,
+    35.35
+  ],
+  "picos_di": [
+    5.46,
+    3.18,
+    3.88,
+    2.12,
+    1.88,
+    1.4,
+    3.9,
+    1.43,
+    2.72,
+    2.27,
+    1.17,
+    2.1,
+    1.46,
+    1.25,
+    2.14,
+    1.22,
+    2.08
+  ],
+  "tramos_litologia": [
+    [
+      0.02,
+      35.93,
+      "Kpcli"
+    ]
+  ],
+  "tramos_estructura": [],
+  "largo_con_estructura_m": 0,
+  "pct_largo_con_estructura": 0.0,
+  "fronteras_estructurales_m": [],
+  "delta_pico_a_frontera_m": [],
+  "picos_dentro_de_zona_estructural": 0,
+  "di_max": 5.46,
+  "di_mediana": 0.508,
+  "contexto_caseron": {
+    "caseron": "PCC_0042",
+    "n_pozos": 436,
+    "pozos_con_estructura": 106,
+    "pozos_sin_estructura": 330,
+    "pct_con_estructura": 24.3,
+    "estructuras_presentes": {
+      "ZF": 70,
+      "FI": 54
+    },
+    "pozo_con_estructura_mas_cercano": {
+      "pozo": "PCC_0042_PR01_TH_P21_H18",
+      "distancia_collar_m": 0.7,
+      "estructuras": [
+        "ZF"
+      ]
+    }
+  }
+}
