@@ -575,5 +575,31 @@ if os.path.exists(FM):
                  f"(PEP ≤ {mil(S['pep_max'])})")
     guardar(fig, "F6_13b_PEP_UCS_ROP_PP_registros.png")
 
+# ── ajuste UCS referencial ~ PEP agrupado por litología y caserón (pep_ajustes.py)
+FA = os.path.join(os.path.dirname(SRC), "pep_ajustes.json")
+if os.path.exists(FA):
+    PA = json.load(open(FA, encoding="utf-8")); G = PA["conjuntos"]["todo"]["litologia_caseron"]
+    aj = G["ajustes"]["parabolico"]; c2, c1, c0 = aj["coef"]
+    fig, ax = plt.subplots(figsize=(10, 6))
+    M = PA["conjuntos"]["todo"]["muestra"]
+    ax.scatter(M["pep"], M["ucs_ref"] + np.random.default_rng(42).uniform(-2, 2, len(M["pep"])), s=2, color=GRIS,
+               alpha=0.08, rasterized=True, label="Registros (muestra de 30.000)")
+    for j, p in enumerate(sorted(G["puntos"], key=lambda q: (q["ucs_ref"], q["pep_mediana"]))):
+        lito, cas = p["grupo"].split(" · ")
+        ax.plot(p["pep_mediana"], p["ucs_ref"], "o", ms=9, color=COL_LITO.get(lito, GRIS), mec="white", mew=1, zorder=5)
+        ax.annotate(cas, (p["pep_mediana"], p["ucs_ref"]), xytext=(4, 7 if j % 2 == 0 else -15), textcoords="offset points", fontsize=8.5)
+    xx = np.linspace(min(p["pep_mediana"] for p in G["puntos"]) - 20, max(p["pep_mediana"] for p in G["puntos"]) + 20, 200)
+    ax.plot(xx, c2 * xx ** 2 + c1 * xx + c0, "-", color="#1a1a1a", lw=1.8,
+            label=f"UCS = {dec(c2, 5)}·PEP² + {dec(c1, 3)}·PEP {'−' if c0 < 0 else '+'} {dec(abs(c0), 1)}   (R² = {dec(aj['r2'], 3)})")
+    hs, ls_ = ax.get_legend_handles_labels()
+    hs += [plt.Line2D([], [], ls="", marker="o", ms=8, color=COL_LITO[l]) for l in ("Kpcls", "Brecha_mixta", "Bht", "Kpcli")]
+    ls_ += [f"{NOM_LITO[l]} — {dec(PA['anclas'][l], 1)} MPa" for l in ("Kpcls", "Brecha_mixta", "Bht", "Kpcli")]
+    lg = ax.legend(hs, ls_, fontsize=8.5, loc="lower right", frameon=True, framealpha=0.9)
+    for hnd in lg.legend_handles: hnd.set_alpha(1)
+    ax.set_xlim(200, 600); ax.set_ylim(40, 200)
+    ax.set_xlabel("PEP mediana del grupo [bar·min/m]"); ax.set_ylabel("UCS referencial [MPa]"); ax.grid(True, axis="both")
+    fig.suptitle(f"Ajuste parabólico UCS–PEP por litología y caserón (ρ = {('+' if G['spearman'] >= 0 else '') + dec(G['spearman'], 3)}, n = {G['n_puntos']} grupos)")
+    guardar(fig, "F6_13c_ajuste_PEP_UCS_litologia_caseron.png")
+
 json.dump(hechas, open(f"{OUT}/_hechas.json", "w"))
 print(len(hechas), "archivos")

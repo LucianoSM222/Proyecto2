@@ -281,6 +281,30 @@ if S:
     nota(ws, f"{S['n']:,} registros entrenables de roca intacta con PEP ≤ {S['pep_max']:.0f} y ROP ≥ {S['rop_min']} m/min; "
              f"{S['fuera_pep_max']:,} excluidos por PEP > {S['pep_max']:.0f} (ROP ≈ 0).".replace(",", "."))
 
+# ── Ajustes UCS referencial ~ PEP ──────────────────────────────────────────
+FA = os.path.join(os.path.dirname(SRC), "pep_ajustes.json")
+if os.path.exists(FA):
+    PA = json.load(open(FA, encoding="utf-8")); ws = hoja("PEP ajustes")
+    titulo(ws, "Ajustes UCS referencial ~ PEP: conjunto, agregación y forma")
+    NOM_AG = {"registro": "Por registro", "litologia": "Por litología", "litologia_caseron": "Litología × caserón",
+              "litologia_estrato_pp": "Litología × estrato de PP (10 bar)"}
+    FORMAS = ["lineal", "parabolico", "potencial", "exponencial", "logaritmico"]
+    tabla(ws, ["Conjunto", "Agregación", "Puntos", "Registros", "ρ de Spearman", "r de Pearson",
+               "R² lineal", "R² parabólico", "R² potencial", "R² exponencial", "R² logarítmico"],
+          [["Solo roca intacta (DI ≤ 1)" if c == "intacta" else "Todo (intacta + fracturada)", NOM_AG[g], d["n_puntos"], d["n_registros"],
+            d["spearman"], d["pearson"]] + [d["ajustes"].get(f, {}).get("r2") for f in FORMAS]
+           for c in ("intacta", "todo") for g, d in PA["conjuntos"][c].items() if g != "muestra"],
+          fmt=[None, None, "#,##0", "#,##0", "+0.000;-0.000", "+0.000;-0.000"] + ["0.000"] * 5)
+    nota(ws, "R² medido en MPa para todas las formas. Con 4 grupos la parábola tiene un solo grado de libertad: su R² no es comparable con el de 55 o 717.526 puntos.")
+    titulo(ws, "Ecuaciones del ajuste parabólico")
+    tabla(ws, ["Conjunto", "Agregación", "Ecuación", "R²"],
+          [["Solo roca intacta" if c == "intacta" else "Todo", NOM_AG[g], d["ajustes"]["parabolico"]["ecuacion"], d["ajustes"]["parabolico"]["r2"]]
+           for c in ("intacta", "todo") for g, d in PA["conjuntos"][c].items() if g != "muestra"], fmt=[None, None, None, "0.000"])
+    titulo(ws, "Grupos litología × caserón (conjunto todo)")
+    tabla(ws, ["Grupo", "PEP mediana [bar·min/m]", "UCS referencial [MPa]"],
+          [[p["grupo"], p["pep_mediana"], p["ucs_ref"]] for p in PA["conjuntos"]["todo"]["litologia_caseron"]["puntos"]],
+          fmt=[None, "0.0", "0.0"])
+
 # ── Concordancia ───────────────────────────────────────────────────────────
 CO = R["concordancia_1541"]; ws = hoja("Concordancia 1541")
 titulo(ws, "Picos de DI y cruces de malla en PCC_1541 (radio 3 m)")
