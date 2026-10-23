@@ -440,21 +440,30 @@ guardar(fig, "F6_06c_PEP_vs_UCS_ajuste_intacta.png")
 # ── 6.7 UCS lab vs ML por litología ─────────────────────────────────────────
 U7 = R["ucs_por_litologia"]
 orden = sorted(U7, key=lambda k: U7[k]["ancla"] or 0)
-fig, ax = plt.subplots(figsize=(12, 5.4))
-x0 = 0
+# Boxplot desde la curva de cuantiles guardada (400 registros ordenados):
+# caja P25–P75, mediana, bigotes P10–P90 (exactos en final.json). Sin atípicos:
+# con cientos de miles de registros por litología solo ensuciarían la vista.
+fig, ax = plt.subplots(figsize=(10, 5.6))
+stats = []
 for lito in orden:
-    d = U7[lito]; cv_ = np.array(d["curva"]); xs = np.linspace(x0, x0 + 1, cv_.size)
-    c = COL_LITO.get(lito, GRIS)
-    ax.plot(xs, cv_, color=c, lw=1.8)
-    ax.hlines(d["ancla"], x0, x0 + 1, color=c, ls="--", lw=1.4)
-    ax.text(x0 + 0.5, 262, f"{NOM_LITO.get(lito, lito)}\nreferencial {dec(d['ancla'], 1)} · p50 ML {dec(d['p50'], 1)} MPa\nn = {mil(d['n'])}",
-            ha="center", va="top", fontsize=8.3)
-    x0 += 1.15
-ax.set_xticks([]); ax.set_ylim(0, 270); ax.set_ylabel("UCS [MPa]"); ax.grid(axis="y", alpha=0.3)
-ax.legend(handles=[plt.Line2D([], [], color="#333", lw=1.8, label="UCS predicha (registros ordenados)"),
-                   plt.Line2D([], [], color="#333", ls="--", label="UCS de laboratorio (referencial)")], loc="lower right", fontsize=8.5)
+    d = U7[lito]; cv_ = np.array(d["curva"])
+    stats.append({"label": f"{NOM_LITO.get(lito, lito)}\nn = {mil(d['n'])}", "med": d["p50"],
+                  "q1": float(np.percentile(cv_, 25)), "q3": float(np.percentile(cv_, 75)),
+                  "whislo": d["p10"], "whishi": d["p90"], "fliers": []})
+bp = ax.bxp(stats, positions=range(len(orden)), widths=0.5, patch_artist=True, showfliers=False,
+            medianprops=dict(color="#1a1a1a", lw=1.8), whiskerprops=dict(color="#595959"), capprops=dict(color="#595959"))
+for caja, lito in zip(bp["boxes"], orden):
+    caja.set_facecolor(COL_LITO.get(lito, GRIS)); caja.set_alpha(0.75); caja.set_edgecolor("#404040")
+for k, lito in enumerate(orden):
+    d = U7[lito]
+    ax.plot(k, d["ancla"], marker="D", ms=9, color="white", mec="#C00000", mew=2, zorder=6)
+    ax.annotate(f"ref. {dec(d['ancla'], 1)}\np50 {dec(d['p50'], 1)}", (k + 0.28, d["ancla"]), va="center", fontsize=8.5)
+ax.set_ylim(0, 220); ax.set_ylabel("UCS [MPa]"); ax.set_xlim(-0.6, len(orden) - 0.2)
+ax.legend(handles=[Patch(facecolor="#BFBFBF", edgecolor="#404040", label="UCS predicha: caja P25–P75, línea mediana, bigotes P10–P90"),
+                   plt.Line2D([], [], ls="", marker="D", ms=8, color="white", mec="#C00000", mew=2, label="UCS de laboratorio (referencial)")],
+          loc="lower right", fontsize=8.5, frameon=True, framealpha=0.9)
 fig.suptitle("UCS de laboratorio y UCS predicha por litología")
-pie(fig, "Registros entrenables de roca intacta. Predicción = mediana de los 200 árboles. " + PIE_CFG, y=-0.03); guardar(fig, "F6_07_UCS_lab_vs_ML.png")
+guardar(fig, "F6_07_UCS_lab_vs_ML.png")
 
 # ── 6.8 comparación de algoritmos ───────────────────────────────────────────
 C = R["comparacion"]; rows = [r for r in C.get("rows", []) if r.get("r2_mean") is not None]
