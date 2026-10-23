@@ -706,5 +706,31 @@ if os.path.exists(FA):
     fig.suptitle(f"Ajuste parabólico UCS–PEP por litología y caserón (ρ = {('+' if G['spearman'] >= 0 else '') + dec(G['spearman'], 3)}, n = {G['n_puntos']} grupos)")
     guardar(fig, "F6_13c_ajuste_PEP_UCS_litologia_caseron.png")
 
+# ── cadena PP → ROP → PEP por litología (medianas por intervalo de PP) ─────
+from scipy.stats import spearmanr as _sp
+E = R["pep_estratos"]
+LITS = sorted({e["lito"] for e in E}, key=lambda l: next(e["ucs_lab"] for e in E if e["lito"] == l))
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(14, 5.4))
+R["cadena_pp_rop_pep"] = {}
+for lito in LITS:
+    ee = sorted([e for e in E if e["lito"] == lito], key=lambda e: e["pp_bin"]); c = COL_LITO.get(lito, GRIS)
+    pp_ = np.array([e["pp_bin"] + 5 for e in ee]); rop_ = np.array([e["rop_mediana"] for e in ee]); pep_ = np.array([e["pep_mediana"] for e in ee])
+    r1 = float(_sp(pp_, rop_).statistic); r2_ = float(_sp(rop_, pep_).statistic)
+    R["cadena_pp_rop_pep"][lito] = {"rho_pp_rop": round(r1, 3), "rho_rop_pep": round(r2_, 3), "n_intervalos": len(ee)}
+    nm = f"{NOM_LITO.get(lito, lito)} — {dec(ee[0]['ucs_lab'], 1)} MPa"
+    a1.plot(pp_, rop_, "o-", color=c, ms=4, label=f"{nm} (ρ = {('+' if r1 >= 0 else '') + dec(r1, 2)})")
+    a2.plot(rop_, pep_, "-", color=c, lw=1, alpha=0.6)
+    a2.scatter(rop_, pep_, s=14 + (pp_ - 90) * 0.5, color=c, edgecolor="white", lw=0.5, zorder=4,
+               label=f"{nm} (ρ = {('+' if r2_ >= 0 else '') + dec(r2_, 2)})")
+    a2.annotate(f"{int(pp_[0])}", (rop_[0], pep_[0]), xytext=(4, 3), textcoords="offset points", fontsize=7.5, color=c)
+    a2.annotate(f"{int(pp_[-1])}", (rop_[-1], pep_[-1]), xytext=(4, 3), textcoords="offset points", fontsize=7.5, color=c)
+a1.set_xlabel("PP [bar] (intervalos de 10 bar)"); a1.set_ylabel("ROP mediana [m/min]"); a1.legend(fontsize=8)
+a1.set_title("PP → ROP", fontsize=10.5)
+a2.set_xlabel("ROP mediana [m/min]"); a2.set_ylabel("PEP mediana [bar·min/m]"); a2.legend(fontsize=8)
+a2.set_title("ROP → PEP (puntos unidos en orden de PP; tamaño = PP; rótulos = primer y último intervalo)", fontsize=10.5)
+fig.suptitle("Relación ordenada PP → ROP → PEP por litología (roca intacta entrenable)")
+guardar(fig, "F6_13d_cadena_PP_ROP_PEP.png")
+print("cadena:", R["cadena_pp_rop_pep"], flush=True)
+
 json.dump(hechas, open(f"{OUT}/_hechas.json", "w"))
 print(len(hechas), "archivos")
