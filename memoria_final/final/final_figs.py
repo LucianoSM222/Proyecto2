@@ -765,15 +765,21 @@ if os.path.exists(FE):
 FRP = os.path.join(os.path.dirname(SRC), "rop_presiones.json")
 if os.path.exists(FRP):
     RPJ = json.load(open(FRP, encoding="utf-8")); G0 = RPJ["grupos"]["Todas las litologías"]; PS = list(G0["presiones"])
-    fig, a1 = plt.subplots(figsize=(8.5, 5))
-    v = [G0["presiones"][p]["rho_simple"] for p in PS]
-    bb = a1.bar(PS, v, 0.55, color=AZUL)
-    for b_, x in zip(bb, v):
-        a1.annotate(("+" if x >= 0 else "") + dec(x, 3), (b_.get_x() + b_.get_width() / 2, x),
-                    xytext=(0, 4 if x >= 0 else -13), textcoords="offset points", ha="center", fontsize=9.5)
-    a1.axhline(0, color="#333", lw=0.8); a1.set_ylim(-0.3, 0.3)
-    a1.set_ylabel("ρ de Spearman con la ROP")
-    a1.set_title(f"{mil(G0['n'])} registros de roca continua, {G0['n_pozos']} pozos", fontsize=10)
+    FRC = os.path.join(os.path.dirname(SRC), "rop_presiones_clases.json")
+    RC = json.load(open(FRC, encoding="utf-8")) if os.path.exists(FRC) else {"continua": {"n": G0["n"], "n_pozos": G0["n_pozos"],
+         "rho": {p: G0["presiones"][p]["rho_simple"] for p in PS}}}
+    fig, a1 = plt.subplots(figsize=(9.5, 5))
+    xx = np.arange(len(PS)); clases = [k for k in ("continua", "fracturada") if k in RC]; wd = 0.36
+    for k, (cl, col_) in enumerate(zip(clases, (AZUL, "#A5A5A5"))):
+        v = [RC[cl]["rho"][p] for p in PS]
+        et = (f"Roca continua (DI ≤ {dec(UMB, 0)})" if cl == "continua" else f"Roca fracturada (DI > {dec(UMB, 0)})") + \
+             f" — {mil(RC[cl]['n'])} registros"
+        bb = a1.bar(xx + (k - (len(clases) - 1) / 2) * wd, v, wd, color=col_, label=et)
+        for b_, x in zip(bb, v):
+            a1.annotate(("+" if x >= 0 else "") + dec(x, 3), (b_.get_x() + b_.get_width() / 2, x),
+                        xytext=(0, 4 if x >= 0 else -13), textcoords="offset points", ha="center", fontsize=9)
+    a1.axhline(0, color="#333", lw=0.8); a1.set_ylim(-0.3, 0.3); a1.set_xticks(xx); a1.set_xticklabels(PS)
+    a1.set_ylabel("ρ de Spearman con la ROP"); a1.legend(fontsize=9, loc="upper right")
     fig.suptitle("Correlación de la ROP con las presiones de percusión, avance, rotación y dámper")
     guardar(fig, "F6_14_ROP_vs_presiones.png")
 
