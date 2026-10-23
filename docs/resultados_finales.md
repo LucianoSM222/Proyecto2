@@ -43,6 +43,7 @@ están en `figuras/finales/`; los valores de todas las tablas, en
 | Desfase pico–cruce | media −0,08 m · mediana +0,15 m · σ 5,46 m |
 | Modelo de bloques | 14.913 bloques de 2,5 m; 8,5% con DI > 1; UCS mediana 154,4 MPa (p10 130,9 · p90 170,2) |
 | Dominios | 50 grupos (±20 MPa, ±0,5 DI, tramos de 2 m); G2 Kpcli 408.718 · G1 Bht 202.651 · G39 Kpcls 65.848 |
+| Ventana del DI 10 / 14 / 20 (4 caserones) | picos 8.338 / 7.870 / 7.218 · por 100 m 41,2 / 38,9 / 35,6 · % sobre umbral 15,1 / 17,0 / 19,3 |
 | Banda P10–P90 media | intacta 32,3 MPa · fracturada 38,3 MPa |
 
 > **LOOCV-Litología retirada del proyecto** (decisión del autor, 2026-10-22,
@@ -72,6 +73,7 @@ están en `figuras/finales/`; los valores de todas las tablas, en
 | `T6_01_sensibilidad_percusion_empate.png/.csv` | Tabla 6.1 |
 | `T6_02_sensibilidad_radio_RQD.png/.csv` | Tabla 6.2 |
 | `F6_03_perfil_DI_calibrado.png` | Fig. 6.3 |
+| `F6_03b_sensibilidad_ventana_DI.png`, `T6_05_sensibilidad_ventana_DI.png/.csv` | sensibilidad del DI a la ventana 10/14/20 (`di_ventanas.py`): picos agrupados a < 0,5 m y % sobre el umbral, en P20_H12 y en los 4 caserones |
 | `F6_04_LOOCV_caseron.png` | ρ de Spearman y R² por caserón dejado fuera |
 | `F6_04b_LOOCV_caseron_metodos.png` | los cuatro métodos (línea base, banda, relación directa PEP↔UCS, RF) bajo LOOCV-Caserón: RMSE, r de Pearson y ρ de Spearman (`loocv_caseron_metodos.py`) |
 | `F6_05_spearman_por_esquema.png` | ρ del bosque por pozo (GroupKFold) y por caserón (LOOCV-Caserón) |
