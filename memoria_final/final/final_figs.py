@@ -211,6 +211,31 @@ fig.suptitle("Índice de discontinuidad calibrado y RQD de sondaje — PCC_0042_
 pie(fig, f"Pesos calibrados a 5 m: {pesos_txt()}. {mil(nso)} de {mil(D3.size)} registros ({dec(100*nso/D3.size, 1)}%) sobre el umbral. "
          f"Tramos de RQD cuyo centro está a ≤ 5 m del pozo ({len(P['tramos_rqd'])}); RQD_MWD = regla de Deere (0,10 m) sobre DI ≤ umbral.", y=-0.03); guardar(fig, "F6_03_perfil_DI_calibrado.png")
 
+# ── sensibilidad del DI a la ventana: 10, 14 y 20 muestras (di_ventanas.py) ─
+FV = os.path.join(os.path.dirname(SRC), "di_ventanas.json")
+if os.path.exists(FV):
+    DV = json.load(open(FV, encoding="utf-8")); VS = DV["ventanas"]; PZ = DV["pozo"]
+    CV = {10: AZUL, 14: VERDE, 20: NARANJA}
+    Lv = np.array(PZ["largo"])
+    fig, ax = plt.subplots(figsize=(14, 4.8))
+    for v in VS:
+        d = np.array([np.nan if x is None else x for x in PZ[str(v)]["di"]])
+        f = next(r for r in PZ["filas"] if r["ventana"] == v)
+        ax.plot(Lv, d, "-", color=CV.get(v, GRIS), lw=0.9 if v != 14 else 1.2, alpha=0.9,
+                label=f"Ventana {v} ({dec(v * DV['paso_m'] * 100, 0)} cm): {f['picos']} picos · {dec(f['pct_sobre_umbral'], 1)}% sobre el umbral")
+    ax.axhline(DV["umbral"], color=ROJO, ls="--", lw=1.2, label=f"Umbral DI = {dec(DV['umbral'], 1)}")
+    ax.set_xlabel("Profundidad a lo largo del pozo [m]"); ax.set_ylabel("DI"); ax.legend(fontsize=9, loc="upper right")
+    fig.suptitle("Sensibilidad del DI al tamaño de ventana — PCC_0042_PR01_TH_P20_H12")
+    guardar(fig, "F6_03b_sensibilidad_ventana_DI.png")
+    G = DV["global"]
+    tabla_png("T6_05_sensibilidad_ventana_DI", "Sensibilidad del DI al tamaño de ventana",
+              ["Ventana [muestras]", "Ventana [cm]", "Picos P20_H12", "% sobre umbral P20_H12",
+               "Picos 4 caserones", "Picos por 100 m", "% sobre umbral 4 caserones"],
+              [[str(v), dec(G[str(v)]["ventana_cm"], 0), str(next(r["picos"] for r in PZ["filas"] if r["ventana"] == v)),
+                dec(next(r["pct_sobre_umbral"] for r in PZ["filas"] if r["ventana"] == v), 1),
+                mil(G[str(v)]["picos"]), dec(G[str(v)]["picos_por_100m"], 1), dec(G[str(v)]["pct_sobre_umbral"], 1)]
+               for v in VS], ancho_fig=13)
+
 # ── 6.5 Spearman del bosque según el esquema de validación ───────────────
 gk = R["groupkfold"]; lc = R["loocv_caseron"]
 vals = [("GroupKFold\npor pozo", gk["spearman_medio"], ""),

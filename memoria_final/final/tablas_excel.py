@@ -136,6 +136,27 @@ tabla(ws, ["Radio [m]", "Pares", "Sondajes", "Peso PP", "Peso RP", "Peso DP", "P
       filas, fmt=["0.0", "0", "0", "0.00", "0.00", "0.00", "0.00", "+0.000;-0.000", "+0.000;-0.000"])
 nota(ws, f"Umbral {T2['umbral']} · ventana {T2['ventana']} · {T2['n_candidatos']} combinaciones (400 Dirichlet + convención, semilla {T2['semilla']}). Celdas vacías: sin pares suficientes.")
 
+# ── Sensibilidad del DI a la ventana ───────────────────────────────────────
+FV = os.path.join(os.path.dirname(SRC), "di_ventanas.json")
+if os.path.exists(FV):
+    DV = json.load(open(FV, encoding="utf-8")); ws = hoja("DI ventanas")
+    titulo(ws, "Sensibilidad del DI al tamaño de ventana (10, 14 y 20 muestras)")
+    titulo(ws, "Pozo de referencia PCC_0042_PR01_TH_P20_H12")
+    tabla(ws, ["Ventana [muestras]", "Ventana [cm]", "Registros con DI", "Picos", "% sobre umbral"],
+          [[r["ventana"], r["ventana"] * DV["paso_m"] * 100, r["registros_con_di"], r["picos"], r["pct_sobre_umbral"] / 100]
+           for r in DV["pozo"]["filas"]], fmt=["0", "0", "#,##0", "#,##0", "0.0%"])
+    FMT_DV = [None, "0", "#,##0", "#,##0", "#,##0", "#,##0", "0.00", "0.0%"]
+    for et, bloque in [("Cuatro caserones", {"TOTAL": DV["global"]})] + [(f"Caserón {k}", {k: v}) for k, v in sorted(DV["por_caseron"].items())]:
+        titulo(ws, et)
+        (k, d), = bloque.items()
+        tabla(ws, ["Ventana [muestras]", "Ventana [cm]", "Pozos", "Pozos sin DI (cortos)", "Registros con DI", "Picos",
+                   "Picos por 100 m", "% sobre umbral"],
+              [[d[str(v)]["ventana"], d[str(v)]["ventana_cm"], d[str(v)]["pozos"], d[str(v)]["pozos_sin_di"],
+                d[str(v)]["registros_con_di"], d[str(v)]["picos"], d[str(v)]["picos_por_100m"],
+                d[str(v)]["pct_sobre_umbral"] / 100] for v in DV["ventanas"]], fmt=FMT_DV)
+    nota(ws, f"Umbral DI {DV['umbral']}; pesos calibrados a 5 m; serie depurada (emboquillado y percusión de empate fuera). "
+             f"Picos: eventos sobre el umbral agrupados si están a menos de {DV['gap_m']} m.")
+
 # ── GroupKFold y LOOCV-Caserón ─────────────────────────────────────────────
 FMT_V = [None, "#,##0", "0", "+0.000;-0.000", "0.00", "+0.000;-0.000"]
 for nombre, clave, et in (("GroupKFold", "groupkfold", "Fold"), ("LOOCV-Caserón", "loocv_caseron", "Caserón fuera")):
