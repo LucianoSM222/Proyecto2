@@ -536,6 +536,33 @@ if os.path.exists(FCC):
     fig.legend(h_, l_, fontsize=9.5, ncol=3, loc="outside lower center")
     fig.suptitle("Picos de DI y cruces de malla (litología y estructura) por conjunto de caserones")
     guardar(fig, "F6_09b_desfase_umbral_por_caseron.png")
+    SUF = {"4 caserones": "4caserones", "PCC_0042": "PCC0042", "PCC_1541": "PCC1541"}
+    for nom, C in CC["conjuntos"].items():
+        dl = np.array(C["desfases"]); PRr = C["pr"]
+        fig, a1 = plt.subplots(figsize=(8, 4.8))
+        a1.hist(dl, bins=np.arange(-30, 30.5, 1.0), color=AZUL, alpha=0.85, edgecolor="white", lw=0.3)
+        a1.axvline(0, color="#333", lw=0.9)
+        a1.axvline(dl.mean(), color=ROJO, ls="--", lw=1.4, label=f"Media {dec(dl.mean(), 2)} m")
+        a1.axvline(np.median(dl), color=VERDE, ls="--", lw=1.4, label=f"Mediana {dec(np.median(dl), 2)} m")
+        a1.set_xlim(-25, 25); a1.set_ylabel("N° de picos"); a1.set_xlabel("Pico de DI − cruce de malla más cercano [m]")
+        a1.legend(fontsize=9, loc="upper right")
+        a1.text(0.02, 0.97, f"σ = {dec(dl.std(), 2)} m\nn = {mil(dl.size)} picos\n{C['n_pozos_con_cruces']} pozos con cruces",
+                transform=a1.transAxes, va="top", fontsize=9)
+        fig.suptitle(f"Desfase pico de DI – cruce de malla — {ET[nom]}")
+        guardar(fig, f"F6_09b_desfase_{SUF[nom]}.png")
+        fig, a2 = plt.subplots(figsize=(8, 4.8)); uu = [f["u"] for f in PRr]
+        a2.plot(uu, [100 * f["P"] for f in PRr], "o-", color=AZUL, label="Precisión: picos a ≤ 3 m de un cruce")
+        a2.plot(uu, [100 * f["R"] for f in PRr], "s-", color=ROJO, label="Recall: cruces con un pico a ≤ 3 m")
+        a2.plot(uu, [100 * f["azar"] for f in PRr], ":", color=GRIS, lw=2, label="Precisión esperada al azar")
+        a2.axvline(UMB, color="#333", ls="--", lw=0.9)
+        f1 = next(f for f in PRr if abs(f["u"] - UMB) < 1e-9)
+        a2.annotate(f"umbral {dec(UMB, 1)}: precisión {dec(100 * f1['P'], 1)}% · azar {dec(100 * f1['azar'], 1)}%",
+                    (UMB, 100 * f1["P"]), xytext=(10, -28), textcoords="offset points", fontsize=8.5,
+                    arrowprops=dict(arrowstyle="-", color="#555"))
+        a2.set_ylim(0, 100); a2.set_ylabel("%"); a2.set_xlabel("Umbral de DI")
+        fig.legend(*a2.get_legend_handles_labels(), fontsize=8.5, ncol=3, loc="outside lower center")
+        fig.suptitle(f"Sensibilidad al umbral de DI — {ET[nom]}")
+        guardar(fig, f"F6_09b_umbral_{SUF[nom]}.png")
 
 # ── 6.10 perfil PCS_1043_PR01_TH_P07_H4 ─────────────────────────────────────
 Q = R.get("pozo_P07_H4")
