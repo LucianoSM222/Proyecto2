@@ -373,6 +373,70 @@ lg = ax.legend(h[::-1], l[::-1], loc="upper right", fontsize=9, markerscale=2.5,
 for hnd in lg.legend_handles: hnd.set_alpha(1)
 guardar(fig, "F6_06b_PEP_vs_UCS_extrapolacion.png")
 
+# ── 6.6c PEP vs UCS predicha: ajuste SOLO sobre roca intacta ───────────────
+# La fracturada se dibuja en un solo color y no participa de ningún ajuste: el
+# modelo no se entrena con ella y su UCS predicha es extrapolación.
+from scipy.optimize import curve_fit
+
+
+def _ajustes_intacta(x, y):
+    sst = float(np.sum((y - y.mean()) ** 2)); out = {}
+    def r2(p): return 1 - float(np.sum((y - p) ** 2)) / sst
+    for g, nom in ((1, "lineal"), (2, "parabólico"), (3, "cúbico")):
+        c = np.polyfit(x, y, g); out[nom] = (r2(np.polyval(c, x)), lambda t, c=c: np.polyval(c, t), c)
+    k_, n_ = np.polyfit(np.log(x), np.log(y), 1)[::-1]; k_ = np.exp(k_)
+    out["potencial"] = (r2(k_ * x ** n_), lambda t, k=k_, n=n_: k * t ** n, (k_, n_))
+    a_, b_ = np.polyfit(np.log(x), y, 1)
+    out["logarítmico"] = (r2(a_ * np.log(x) + b_), lambda t, a=a_, b=b_: a * np.log(t) + b, (a_, b_))
+    f = lambda t, a, b, c: a - b * np.exp(-t / c)
+    try:
+        p_, _ = curve_fit(f, x, y, p0=(170.0, 80.0, 150.0), maxfev=20000)
+        out["saturación"] = (r2(f(x, *p_)), lambda t, p=p_: f(t, *p), tuple(p_))
+    except RuntimeError:
+        pass
+    return out
+
+
+def _ecuacion(nom, c):
+    if nom == "lineal": return f"UCS = {dec(c[0], 4)}·PEP + {dec(c[1], 1)}"
+    if nom == "parabólico": return f"UCS = {dec(c[0], 6)}·PEP² + {dec(c[1], 4)}·PEP + {dec(c[2], 1)}"
+    if nom == "cúbico": return f"UCS = {dec(c[0], 9)}·PEP³ {dec(c[1], 6)}·PEP² + {dec(c[2], 4)}·PEP + {dec(c[3], 1)}"
+    if nom == "potencial": return f"UCS = {dec(c[0], 3)}·PEP^{dec(c[1], 4)}"
+    if nom == "logarítmico": return f"UCS = {dec(c[0], 3)}·ln(PEP) + {dec(c[1], 1)}"
+    return f"UCS = {dec(c[0], 1)} − {dec(c[1], 1)}·e^(−PEP/{dec(c[2], 1)})"
+
+
+di_ = S6["intacta"]; pep_i = np.array(di_["pep"]); u_i = np.array(di_["ucs_ml"]); lit_i = np.array(di_["lito"])
+mi = (pep_i <= 1000) & (pep_i > 0)
+AJ = _ajustes_intacta(pep_i[mi], u_i[mi])
+# Parsimonia: entre las formas a menos de 0,01 de R² del máximo, la de menos
+# coeficientes (el cúbico gana 0,005 al parabólico con un parámetro más).
+_NPAR = {"lineal": 2, "potencial": 2, "logarítmico": 2, "parabólico": 3, "saturación": 3, "cúbico": 4}
+_r2max = max(v[0] for v in AJ.values())
+mejor = min((k for k in AJ if AJ[k][0] >= _r2max - 0.01), key=lambda k: (_NPAR[k], -AJ[k][0]))
+R["ajuste_pep_ucs_intacta"] = {k: {"r2": round(v[0], 4), "coef": [float(t) for t in v[2]]} for k, v in AJ.items()}
+print("ajustes intacta:", {k: round(v[0], 4) for k, v in AJ.items()}, "→", mejor, flush=True)
+fig, ax = plt.subplots(figsize=(10, 6.2))
+for lito in sorted(set(lit_i[mi]), key=lambda l: {"Kpcls": 0, "Brecha_mixta": 1, "Bht": 2, "Kpcli": 3}.get(l, 9)):
+    m = mi & (lit_i == lito)
+    ax.scatter(pep_i[m], u_i[m], s=5, lw=0, alpha=0.35, color=COL_LITO.get(lito, GRIS), rasterized=True,
+               label=f"DI ≤ {dec(UMB, 0)} · {NOM_LITO.get(lito, lito)}")
+df_ = S6["fracturada"]; pep_f = np.array(df_["pep"]); u_f = np.array(df_["ucs_ml"])
+keep = np.zeros(pep_f.size, bool)
+keep[np.random.default_rng(42).choice(pep_f.size, int(round(pep_f.size * df_["n"] / di_["n"])), replace=False)] = True
+mf = keep & (pep_f <= 1000)
+ax.scatter(pep_f[mf], u_f[mf], s=8, marker="x", lw=0.6, alpha=0.45, color="#7F7F7F", rasterized=True,
+           label=f"DI > {dec(UMB, 0)}, fracturada — EXTRAPOLACIÓN, fuera del ajuste (n = {mil(df_['n'])})")
+xx = np.linspace(max(5, pep_i[mi].min()), 1000, 400)
+ax.plot(xx, AJ[mejor][1](xx), "-", color="#1a1a1a", lw=2,
+        label=f"Ajuste {mejor} (solo intacta): {_ecuacion(mejor, AJ[mejor][2])} · R² = {dec(AJ[mejor][0], 3)}")
+ax.set_xlim(-40, 1040)
+ax.set_xlabel("PEP = (PP + RP + AP) / ROP [bar·min/m]  (PEP ≤ 1.000)"); ax.set_ylabel("UCS predicha por ML [MPa]")
+ax.grid(True, axis="both")
+lg = ax.legend(loc="lower right", fontsize=8.5, markerscale=2.5, frameon=True, framealpha=0.92)
+for hnd in lg.legend_handles: hnd.set_alpha(1)
+guardar(fig, "F6_06c_PEP_vs_UCS_ajuste_intacta.png")
+
 # ── 6.7 UCS lab vs ML por litología ─────────────────────────────────────────
 U7 = R["ucs_por_litologia"]
 orden = sorted(U7, key=lambda k: U7[k]["ancla"] or 0)
