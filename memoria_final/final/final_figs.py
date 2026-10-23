@@ -774,6 +774,21 @@ if os.path.exists(FE):
         fig.suptitle(f"PEP y ROP según la UCS de laboratorio y la presión de percusión ({sub})")
         guardar(fig, nombre)
 
+    # Una figura por clase de roca (versión con representatividad).
+    for clase, suf in (("continua", "intacta"), ("fracturada", "fracturada")):
+        fig, (b1, b2) = plt.subplots(1, 2, figsize=(13.5, 5.2))
+        _panel(b1, clase, "pep_mediana", "PEP mediana [bar·min/m]", 90, True)
+        _panel(b2, clase, "rop_mediana", "ROP mediana [m/min]", 90, True)
+        for ax, campo in ((b1, "pep_mediana"), (b2, "rop_mediana")):
+            v_ = [f[campo] for f in FL_]; pad = 0.05 * (max(v_) - min(v_))
+            ax.set_ylim(min(v_) - pad, max(v_) + pad); ax.set_xlabel("PP [bar] (intervalos de 10 bar)"); ax.set_title("")
+        h_, l_ = b1.get_legend_handles_labels()
+        for nn in (100, 1000, 10000, 100000):
+            h_.append(plt.scatter([], [], s=8 * np.log10(nn) ** 2, color="#A5A5A5", edgecolor="white")); l_.append(f"{mil(nn)} registros")
+        fig.legend(h_, l_, fontsize=9, ncol=4, loc="outside lower center")
+        fig.suptitle(f"PEP y ROP por intervalo de PP — {ETC[clase]} (tamaño del punto = registros del intervalo)")
+        guardar(fig, f"F6_13_PEP_ROP_PP_{suf}.png")
+
     fig, axs = plt.subplots(1, 2, figsize=(13.5, 5.4), sharey=True)
     for ax, clase in zip(axs, ("continua", "fracturada")):
         for lito in LITS:
