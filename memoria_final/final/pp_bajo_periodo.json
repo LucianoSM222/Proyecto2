@@ -1,0 +1,19 @@
+{
+ "largo_barra_m": 1.756,
+ "tol_m": 0.06,
+ "n_rachas": 2867,
+ "n_pozos": 270,
+ "rachas_por_largo": {
+  "1": 2300,
+  "2": 438,
+  "3": 69,
+  "4": 21,
+  "5": 16,
+  "6": 7
+ },
+ "caida_relativa_mediana": 0.197,
+ "pares_1_a_3_barras": 19170,
+ "frac_periodica_obs": 0.118,
+ "frac_periodica_azar": 0.0993,
+ "frac_periodica_azar_sd": 0.0019
+}
