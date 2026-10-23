@@ -366,6 +366,26 @@ _, a, b = tabla(ws, ["Estadístico", "Valor"], [["Volumen [m³]", BR["volumen_m3
                                      ["UCS P10 [MPa]", BR["ucs_p10"]], ["UCS P90 [MPa]", BR["ucs_p90"]]],
       fmt=[None, "#,##0.0"])
 ws.cell(a + 1, 2).number_format = "0.0%"
+BJ = json.load(open(os.path.join(os.path.dirname(SRC), "bloques.json")))
+CORTES = [(0, 125, "< 125 MPa"), (125, 150, "125–150 MPa"), (150, 175, "150–175 MPa"), (175, 451, "≥ 175 MPa")]
+CDI = ["sana (DI ≤ 1)", "transición (1 < DI ≤ 1,5)", "fracturada (DI > 1,5)"]
+MM = [[0] * len(CORTES) for _ in CDI]
+for d_, u_ in zip(BJ["di"], BJ["ucs"]):
+    if d_ is None or u_ is None: continue
+    MM[0 if d_ <= 1.0 else 1 if d_ <= 1.5 else 2][next(k for k, (lo_, hi_, _) in enumerate(CORTES) if lo_ <= u_ < hi_)] += 1
+VOL = B["bloque_m"] ** 3
+for et_, fac, fmt_ in (("bloques", 1, "#,##0"), ("volumen [m³]", VOL, "#,##0")):
+    titulo(ws, f"Clasificación DI × UCS de matriz — {et_}")
+    _, a, b = tabla(ws, ["Clase de DI"] + [c[2] for c in CORTES] + ["Total"],
+                    [[CDI[i]] + [MM[i][j] * fac for j in range(len(CORTES))] + [None] for i in range(len(CDI))],
+                    fmt=[None] + [fmt_] * (len(CORTES) + 1))
+    for i in range(a, b + 1):
+        ws.cell(i, len(CORTES) + 2, f"=SUM(B{i}:{col(len(CORTES) + 1)}{i})").number_format = fmt_
+    ws.cell(b + 1, 1, "Total").font = Font(name=FUENTE, bold=True)
+    for j in range(2, len(CORTES) + 3):
+        ws.cell(b + 1, j, f"=SUM({col(j)}{a}:{col(j)}{b})").number_format = fmt_
+    ws._fila = b + 3
+nota(ws, f"Bloque de {str(B['bloque_m']).replace('.', ',')} m = {VOL:g} m³. Clases de UCS cada 25 MPa: todos los bloques caen en la banda ISRM R5.")
 titulo(ws, "Bloques por clase de DI")
 tabla(ws, ["Clase de DI", "Banda ISRM de UCS", "Bloques"], [[t["di"], t["banda"].replace("_", " "), t["n"]] for t in B["tabla"]],
       fmt=[None, None, "#,##0"])

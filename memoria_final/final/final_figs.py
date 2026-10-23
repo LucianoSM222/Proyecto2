@@ -606,10 +606,10 @@ if B.get("status") == "ok" and B.get("seccion", {}).get("x"):
     ax.set_yticks(range(3)); ax.set_yticklabels(cdi)
     for i in range(3):
         for j in range(len(CORTES)):
-            ax.text(j, i, f"{mil(M[i, j])}\n{dec(100 * M[i, j] / N, 1)}%", ha="center", va="center", fontsize=9,
+            ax.text(j, i, f"{mil(M[i, j])} bloque{'' if M[i, j] == 1 else 's'}\n{mil(round(M[i, j] * B['bloque_m'] ** 3))} m³\n{dec(100 * M[i, j] / N, 1)}%", ha="center", va="center", fontsize=9,
                     color="white" if M[i, j] / N > 0.35 else "#222")
     fig.colorbar(im, ax=ax, shrink=0.85, label="% de los bloques")
-    fig.suptitle(f"Clasificación de {mil(N)} bloques de {dec(B['bloque_m'], 1)} m según DI y UCS")
+    fig.suptitle(f"Clasificación de {mil(N)} bloques de {dec(B['bloque_m'], 1)} m ({mil(round(N * B['bloque_m'] ** 3))} m³) según DI y UCS")
     pie(fig, "Clases de UCS cada 25 MPa (todos los bloques caen en la banda ISRM R5, 100–250 MPa). " + PIE_CFG, y=-0.05); guardar(fig, "F6_12_clasificacion_DI_UCS.png")
 
 # ── Tabla 6.3 dominios y 6.4 ranking ────────────────────────────────────────
