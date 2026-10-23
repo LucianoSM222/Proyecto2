@@ -157,6 +157,27 @@ if os.path.exists(FV):
     nota(ws, f"Umbral DI {DV['umbral']}; pesos calibrados a 5 m; serie depurada (emboquillado y percusión de empate fuera). "
              f"Picos: eventos sobre el umbral agrupados si están a menos de {DV['gap_m']} m.")
 
+# ── DI medio vs RQD de sondaje ─────────────────────────────────────────────
+FR = os.path.join(os.path.dirname(SRC), "di_rqd_caserones.json")
+if os.path.exists(FR):
+    DR = json.load(open(FR, encoding="utf-8")); ws = hoja("DI vs RQD")
+    titulo(ws, "Correlación de rangos de Spearman entre el DI medio y el RQD de sondaje")
+    tabla(ws, ["Radio [m]", "Caserón", "Pares", "Sondajes", "ρ de Spearman", "p"],
+          [[f["radio_m"], f["caseron"], f["n_pares"], f["n_sondajes"], f["rho"], f["p"]] for f in DR["spearman"]],
+          fmt=["0", None, "0", "0", "+0.000;-0.000", "0.000"])
+    nota(ws, "Celdas vacías: el caserón no tiene tramos de RQD dentro del radio. «4 caserones» cuenta cada tramo una sola vez.")
+    titulo(ws, "Cobertura: distancia de los tramos de RQD a cada caserón")
+    tabla(ws, ["Caserón", "Distancia mínima [m]", "Distancia mediana [m]"] + [f"Tramos a ≤ {r:g} m" for r in DR["radios"]],
+          [[c, v["dist_min_m"], v["dist_mediana_m"]] + [v[f"tramos_a_{r:g}m"] for r in DR["radios"]] for c, v in DR["cobertura"].items()],
+          fmt=[None, "#,##0.0", "#,##0.0"] + ["0"] * len(DR["radios"]))
+    nota(ws, f"{DR['n_tramos_rqd']} tramos de RQD en {len(DR['sondajes_rqd'])} sondajes. Apareo uno a uno: registro MWD más cercano al centro "
+             f"del tramo; DI medio sobre el tramo de ese pozo con el largo del intervalo y ≥ {DR['piso']} registros.")
+    titulo(ws, "Pares a ≤ 25 m")
+    tabla(ws, ["Caserón", "Sondaje", "Desde [m]", "Hasta [m]", "RQD [%]", "Distancia [m]", "Pozo MWD", "Registros con DI", "DI medio"],
+          [[p["caseron"], p["sondaje"], p["desde"], p["hasta"], p["rqd"], p["dist_m"], p["pozo"], p["n_di"], p["di_medio"]]
+           for p in sorted(DR["pares"], key=lambda p: p["dist_m"]) if p["dist_m"] <= 25],
+          fmt=[None, None, "0.00", "0.00", "0.0", "0.00", None, "0", "0.000"])
+
 # ── GroupKFold y LOOCV-Caserón ─────────────────────────────────────────────
 FMT_V = [None, "#,##0", "0", "+0.000;-0.000", "0.00", "+0.000;-0.000"]
 for nombre, clave, et in (("GroupKFold", "groupkfold", "Fold"), ("LOOCV-Caserón", "loocv_caseron", "Caserón fuera")):

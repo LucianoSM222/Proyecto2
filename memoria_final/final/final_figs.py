@@ -236,6 +236,33 @@ if os.path.exists(FV):
                 mil(G[str(v)]["picos"]), dec(G[str(v)]["picos_por_100m"], 1), dec(G[str(v)]["pct_sobre_umbral"], 1)]
                for v in VS], ancho_fig=13)
 
+# ── DI medio vs RQD de sondaje (di_rqd_caserones.py) ──────────────────────
+FR = os.path.join(os.path.dirname(SRC), "di_rqd_caserones.json")
+if os.path.exists(FR):
+    DR = json.load(open(FR, encoding="utf-8"))
+    fig, axs = plt.subplots(1, len(DR["radios"]), figsize=(15, 5.2), sharey=True)
+    SDS = sorted({p["sondaje"] for p in DR["pares"] if p["dist_m"] <= max(DR["radios"]) and p["di_medio"] is not None})
+    EST = {sd: (["o", "s", "^", "D", "v"][i % 5], [AZUL, VERDE, NARANJA, MORADO, ROJO][i % 5]) for i, sd in enumerate(SDS)}
+    for ax, r in zip(axs, DR["radios"]):
+        mejor = {}
+        for p in DR["pares"]:
+            if p["dist_m"] <= r and p["di_medio"] is not None:
+                k = (p["sondaje"], p["desde"])
+                if k not in mejor or p["dist_m"] < mejor[k]["dist_m"]: mejor[k] = p
+        sel = list(mejor.values())
+        for sd in SDS:
+            q = [p for p in sel if p["sondaje"] == sd]
+            ax.plot([p["di_medio"] for p in q], [p["rqd"] for p in q], EST[sd][0], color=EST[sd][1], ms=6, alpha=0.8)
+        f = next(x for x in DR["spearman"] if x["radio_m"] == r and x["caseron"] == "4 caserones")
+        ax.set_title(f"Radio {dec(r, 0)} m — n = {f['n_pares']} · ρ = {('+' if f['rho'] >= 0 else '') + dec(f['rho'], 3)} (p = {dec(f['p'], 3)})",
+                     fontsize=10.5)
+        ax.set_xlabel("DI medio del tramo"); ax.grid(True, axis="both")
+    axs[0].set_ylabel("RQD de sondaje [%]"); axs[0].set_ylim(-3, 103)
+    fig.legend(handles=[plt.Line2D([], [], ls="", marker=EST[sd][0], color=EST[sd][1], ms=7, label=sd) for sd in SDS],
+               fontsize=9.5, ncol=len(SDS), loc="outside lower center")
+    fig.suptitle("DI medio y RQD de sondaje — todos los pares caen en PCC_0042")
+    guardar(fig, "F6_03c_DI_medio_vs_RQD.png")
+
 # ── 6.5 Spearman del bosque según el esquema de validación ───────────────
 gk = R["groupkfold"]; lc = R["loocv_caseron"]
 vals = [("GroupKFold\npor pozo", gk["spearman_medio"], ""),
