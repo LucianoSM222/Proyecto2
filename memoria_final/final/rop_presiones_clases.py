@@ -26,11 +26,16 @@ filas = {"continua": [], "fracturada": []}; pozos = {"continua": set(), "fractur
 for wn, w in gw.wells.items():
     for p in w.points:
         if not p.entrenable or p.lito not in anclas or p.di is None: continue
-        if p.vel is None or p.vel < gw.ROP_MIN_FISICA: continue
+        if p.vel is None or not np.isfinite(p.vel): continue   # mismo conjunto que el entrenamiento: sin corte de ROP
         v = [getattr(p, k) for k, _ in PRES]
         if any(x is None or not np.isfinite(x) for x in v): continue
         k = "fracturada" if p.di > FIN["umbral"] else "continua"
         filas[k].append((p.vel, *v)); pozos[k].add(wn)
+# Roca continua: EXACTAMENTE el conjunto de entrenamiento del bosque (embudo).
+X, y, g, _, _ = gw._training_funnel(gw.ucs_range["ucs_min"], gw.ucs_range["ucs_max"])
+ix = {k: gw.ML_FEATURES.index(k) for k in ("vel", "pp", "pa", "pr", "pd")}
+filas["continua"] = [tuple(r) for r in X[:, [ix["vel"], ix["pp"], ix["pa"], ix["pr"], ix["pd"]]]]
+pozos["continua"] = set(g.tolist())
 R = {}
 for k, F in filas.items():
     A = np.array(F, float)
