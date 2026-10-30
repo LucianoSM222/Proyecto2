@@ -812,7 +812,7 @@ if os.path.exists(FRP):
     RC = json.load(open(FRC, encoding="utf-8")) if os.path.exists(FRC) else {"continua": {"n": G0["n"], "n_pozos": G0["n_pozos"],
          "rho": {p: G0["presiones"][p]["rho_simple"] for p in PS}}}
     fig, a1 = plt.subplots(figsize=(9.5, 5))
-    xx = np.arange(len(PS)); clases = [k for k in ("continua", "fracturada") if k in RC]; wd = 0.36
+    xx = np.arange(len(PS)); clases = ["continua"]; wd = 0.55
     for k, (cl, col_) in enumerate(zip(clases, (AZUL, "#A5A5A5"))):
         v = [RC[cl]["rho"][p] for p in PS]
         et = (f"Roca continua (DI ≤ {dec(UMB, 0)})" if cl == "continua" else f"Roca fracturada (DI > {dec(UMB, 0)})") + \
