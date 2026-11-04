@@ -708,6 +708,26 @@ if os.path.exists(FM):
                  f"(PEP ≤ {mil(S['pep_max'])})")
     guardar(fig, "F6_13b_PEP_UCS_ROP_PP_registros.png")
 
+    # Los tres paneles por separado.
+    fig, ax = plt.subplots(figsize=(8, 5.6))
+    for lito in sorted(set(lit), key=lambda l: S["anclas"][l]):
+        m = lit == lito
+        ax.scatter(ur[m] + jit[m], pep[m], s=2, alpha=0.2, color=COL_LITO.get(lito, GRIS), rasterized=True,
+                   label=f"{NOM_LITO.get(lito, lito)} — {dec(S['anclas'][lito], 1)} MPa")
+        ax.plot(S["anclas"][lito], np.median(pep[m]), "_", color="#1a1a1a", ms=26, mew=2.2, zorder=6)
+    ax.set_xlabel("UCS referencial [MPa]"); ax.set_ylabel("PEP [bar·min/m]"); ax.set_ylim(0, S["pep_max"])
+    lg = ax.legend(fontsize=8.5, markerscale=5, loc="upper right")
+    for hnd in lg.legend_handles: hnd.set_alpha(1)
+    fig.suptitle(f"PEP vs. UCS referencial (— mediana) · ρ = {dec(rho['ucs_ref'], 3)}")
+    guardar(fig, "F6_13b1_PEP_vs_UCS_referencial.png")
+    for x_, et, k, nom in ((rop, "ROP [m/min]", "rop", "F6_13b2_PEP_vs_ROP.png"), (ppm, "PP [bar]", "pp", "F6_13b3_PEP_vs_PP.png")):
+        fig, ax = plt.subplots(figsize=(8, 5.6))
+        sc_ = ax.scatter(x_, pep, c=ppm, s=2, alpha=0.35, cmap="viridis", vmin=90, vmax=230, rasterized=True)
+        fig.colorbar(sc_, ax=ax, shrink=0.85, label="PP [bar]")
+        ax.set_xlabel(et); ax.set_ylabel("PEP [bar·min/m]"); ax.set_ylim(0, S["pep_max"])
+        fig.suptitle(f"PEP vs. {et.split(' ')[0]} (color = PP) · ρ = {dec(rho[k], 3)}")
+        guardar(fig, nom)
+
 # ── ajuste UCS referencial ~ PEP agrupado por litología y caserón (pep_ajustes.py)
 FA = os.path.join(os.path.dirname(SRC), "pep_ajustes.json")
 if os.path.exists(FA):
