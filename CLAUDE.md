@@ -221,7 +221,7 @@ Hallazgos que condicionan la interpretación, no defectos pendientes:
   sondaje a 10 m, que es el azar entre dos clases. 57,6% de los picos quedan
   indeterminados, con el motivo declarado uno por uno. Descontando los picos
   que son plano de abanico sube a 50,8%: sigue siendo el azar.
-- UN ABANICO DE TIROS ES UN PLANO. De 33 grupos de picos, 18 se explican por
+- UN ABANICO DE POZOS ES UN PLANO. De 33 grupos de picos, 18 se explican por
   la geometría de perforación (841 picos, 18,3%). Los tres grupos mayores
   —590, 533 y 478 picos— tienen 0,5°, 0,0° y 0,5° entre su normal y la del
   abanico. No hay ninguna estructura discreta identificable hoy.
@@ -230,7 +230,7 @@ Hallazgos que condicionan la interpretación, no defectos pendientes:
   radio. Cualquier calibración es "calibrada en PCC_0042".
 - GEOMETRÍA DE CARGA, dos defectos que invalidaban posiciones: los puntos se
   colocaban por parámetro normalizado y un registro que no llegaba al fondo se
-  ESTIRABA sobre todo el tiro (20 pozos, hasta 1,65 m sobre tiros de 35 m); y
+  ESTIRABA sobre todo el pozo (20 pozos, hasta 1,65 m sobre pozos de 35 m); y
   los pozos sin DQ coherente iban al centro global, dejando 16 apilados sobre
   la misma vertical. Corregidos: cada punto va a su profundidad real y un pozo
   sin posición se descarta declarando el motivo.

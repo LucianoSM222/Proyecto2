@@ -158,7 +158,7 @@ flecha(50, 70.2, 50, 68.0)
 grupo(2, 14.0, 96, 21.5, "C.  Evaluación", "eval")
 gk, lo = D["groupkfold"], D["loocv"]
 caja(3.3, 25.8, 45.5, 7.0, f"GroupKFold por pozo (k = {gk['n_pliegues']})\n"
-     "¿predice un tiro nuevo en un caserón conocido?\n"
+     "¿predice un pozo nuevo en un caserón conocido?\n"
      f"R² medio = {dec(gk['r2_medio'],3)}   ·   RMSE medio = {dec(gk['rmse_medio'],1)} MPa\n"
      "el pozo entero cae de un solo lado del corte", "eval", fs=6.9)
 pl = lo["pliegues"]

@@ -19,7 +19,7 @@ cumplen todas estas condiciones a la vez:
 | PEP válida | finita y < 800 bar·min/m | descarta ROP ≈ 0 (lavado del bit) |
 | ROP válida | finita | — |
 | Largo mínimo del tramo | ≥ 5 registros consecutivos (≈ 10 cm) | fijo en el código (`min_len=5`) |
-| Largo mínimo del pozo | ≥ 20 m (`top.largo_min_pozo_m`) | un tiro corto está dominado por el emboquillado y la maniobra |
+| Largo mínimo del pozo | ≥ 20 m (`top.largo_min_pozo_m`) | un pozo corto está dominado por el emboquillado y la maniobra |
 
 Basta con que **un** registro no cumpla una condición (por ejemplo, un DI > 1
 o una muestra de empate) para que el tramo se corte ahí y empiece uno nuevo.

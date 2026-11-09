@@ -173,7 +173,7 @@ for a, b, e in tr_est:
             bbox=dict(boxstyle="round,pad=0.18", facecolor="white", alpha=0.85, edgecolor="none"))
 if not tr_est:
     ax.text(float(lar[-1]) / 2, 0.30,
-            "El modelo geológico NO asigna ninguna estructura a este tiro",
+            "El modelo geológico NO asigna ninguna estructura a este pozo",
             ha="center", va="center", fontsize=10, fontweight="bold", color=ROJO, zorder=5,
             bbox=dict(boxstyle="round,pad=0.35", facecolor="white", edgecolor=ROJO, lw=1.2))
 ax.set_ylabel("Modelo\ngeológico", fontsize=9)
@@ -244,12 +244,12 @@ axes[0].legend(handles=h, loc="upper left", bbox_to_anchor=(0, -0.08), ncol=4,
 ctx = DAT["contexto_caseron"]
 if tr_est:
     cuerpo = (f"El modelo asigna estructura a {DAT['largo_con_estructura_m']:.1f} m "
-              f"({DAT['pct_largo_con_estructura']:.1f}% del tiro); "
+              f"({DAT['pct_largo_con_estructura']:.1f}% del pozo); "
               f"{DAT['picos_dentro_de_zona_estructural']} de los {DAT['n_picos']} picos caen "
               "dentro de esas zonas. Las franjas rayadas son zonas estructurales de la malla.")
 else:
     vec = ctx["pozo_con_estructura_mas_cercano"]
-    cuerpo = ("El modelo geológico no asigna NINGUNA estructura a este tiro: sus 35,93 m son "
+    cuerpo = ("El modelo geológico no asigna NINGUNA estructura a este pozo: sus 35,93 m son "
               f"Kpcli continuo. En el mismo caserón, {ctx['pozos_con_estructura']} de los "
               f"{ctx['n_pozos']} pozos ({ctx['pct_con_estructura']:.1f}%) sí cruzan estructura "
               + (f"—el más cercano, {vec['pozo']}, a {vec['distancia_collar_m']:.1f} m de collar "

@@ -1,0 +1,27 @@
+{
+ "umbral": 0.25,
+ "largo_barra_m": 1.756,
+ "tol_m": 0.06,
+ "min_uniones": 3,
+ "registros": 982420,
+ "empates_esperados_por_barra": 11034,
+ "PP_vigente": {
+  "marcas": 12786,
+  "pct": 1.301
+ },
+ "R1_ROP": {
+  "marcas": 10493,
+  "pct": 1.068,
+  "coinciden_con_PP": 958,
+  "pct_de_R1_que_tambien_marca_PP": 9.1
+ },
+ "R2_ROP_barra": {
+  "marcas": 2506,
+  "pct": 0.255,
+  "pozos_con_grilla": 396,
+  "coinciden_con_PP": 376,
+  "marcas_azar_sobre_grilla": 1421.9,
+  "marcas_azar_sd": 32.9,
+  "exceso_sobre_azar": 1084.1
+ }
+}
