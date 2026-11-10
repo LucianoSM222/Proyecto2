@@ -13,8 +13,8 @@ def _pozo():
     rng = np.random.default_rng(3)
     pts = []
     for i in range(300):                      # 6 m a 2 cm
-        pp = 180.0 + rng.normal(0, 2)
-        if i in (150, 238):                   # dos empates: cae y se recupera
+        pp = (95.0 if i < 50 else 180.0) + rng.normal(0, 2)   # emboquillado: 1 m a PP baja
+        if i in (150, 238):                   # dos caídas de regulación: cae y se recupera
             pp = 100.0
         pts.append(gw.MWDPoint(largo=i * 0.02, vel=1.0, pp=pp, pa=60.0,
                                pd=100.0 + rng.normal(0, 3), pr=50.0 + rng.normal(0, 1),
@@ -30,11 +30,12 @@ def test_di_sobre_serie_depurada():
         gw.activar_di(gw.DI_VARIANTE_CONVENCION)
         gw.aplicar_limpieza_estandar()
         gw.compute_di()
-        emb = [p for p in w.points if p.largo < gw.inicio_cut_m]
+        emb = [p for p in w.points if p.emboquillado]
+        assert gw.inicio_por_pozo["W"][1] == "meseta", "el emboquillado sale de la meseta de PP"
         assert emb and all(p.di is None for p in emb), "el emboquillado no tiene DI"
         assert w.points[150].di is None and w.points[238].di is None, "el empate no tiene DI"
         serie = [p for i, p in enumerate(w.points)
-                 if p.largo >= gw.inicio_cut_m and i not in (150, 238)]
+                 if not p.emboquillado and i not in (150, 238)]
         esperado = gw.di_profile(serie, gw.di_config["window"], gw.di_config["params"],
                                  gw.di_config["weights"])
         obtenido = np.array([p.di for p in serie])

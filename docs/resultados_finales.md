@@ -1,5 +1,10 @@
 # Resultados finales para la memoria (2026-10-22)
 
+> **Pendiente (2026-11-10):** la limpieza cambió —emboquillado por meseta de PP,
+> filtro de cambio de barra y la caída de PP renombrada «regulación automática
+> de la percusión»—. Las cifras de abajo son de la corrida anterior hasta que
+> se vuelva a correr `final_calc.py` y se regeneren las figuras.
+
 Todas las cifras salen de una sola corrida (`memoria_final/final/final_calc.py`
 → `final.json`). Las figuras y tablas, sin pies de figura y en estilo Excel,
 están en `figuras/finales/`; los valores de todas las tablas, en

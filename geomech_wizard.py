@@ -296,6 +296,25 @@ PP_PERCUSION_EMPATE_CAIDA_REL = 0.25
 # Largo de barra del Simba E70S: referencia geométrica para contrastar las
 # marcas contra los empates físicos del varillaje.
 LARGO_BARRA_M = 1.756
+# CAMBIO DE BARRA (decisión del autor, 2026-11-10): al acoplar una barra el
+# equipo deja de avanzar y la PR marca 0. En cada pozo se busca la grilla
+# φ + k·LARGO_BARRA_M que alinea más detenciones (PR = 0) a ±BARRA_TOL_M, y
+# solo cuenta si se repite en al menos BARRA_UNIONES_MIN uniones. Medido sobre
+# los cuatro caserones: 10.124 de 14.236 rachas de PR = 0 caen sobre la grilla,
+# contra 2.461 ± 35 si estuvieran al azar.
+BARRA_TOL_M = 0.06
+BARRA_UNIONES_MIN = 3
+# EMBOQUILLADO POR MESETA DE PP (decisión del autor, 2026-11-10): sin cambios
+# de barra ni regulación, el emboquillado termina donde la PP se mantiene
+# pareja EMB_TRAMO_ESTABLE_M (EMB_FRACCION_DENTRO de los registros a
+# ±EMB_BANDA_BAR de su mediana) sobre EMB_FRACCION_REGIMEN de la PP más
+# frecuente del pozo (intervalos de EMB_BIN_BAR). Los tres primeros se
+# ajustaron a seis pozos marcados a mano por el autor y viven en el perfil.
+EMB_TRAMO_ESTABLE_M = 0.20
+EMB_BANDA_BAR = 15.0
+EMB_FRACCION_REGIMEN = 0.70
+EMB_FRACCION_DENTRO = 0.90
+EMB_BIN_BAR = 5.0
 # Ids de parámetro que cambiaron de nombre. Un perfil de faena exportado antes
 # del renombre se sigue pudiendo importar: el id viejo se traduce al nuevo.
 PARAM_ALIAS = {"pp.golpe_barra_caida_rel": "pp.percusion_empate_caida_rel",
@@ -1647,6 +1666,8 @@ class MWDPoint:
     raw_vel: float = 0.0; raw_pp: float = 0.0; raw_pa: float = 0.0
     raw_pd: float = 0.0; raw_pr: float = 0.0; raw_pf: float = 0.0
     entrenable: bool = True; norm_excluded: bool = False
+    # Registro de emboquillado (antes de la meseta de PP, o bajo el corte fijo).
+    emboquillado: bool = False
     dominio: Optional[str] = None; lito: Optional[str] = None; estructura: Optional[str] = None
     ucs_ml: Optional[float] = None
     # (P3-3.4) Antes "ucs_confiable": el nombre era engañoso — no mide
@@ -1743,6 +1764,11 @@ inicio_cut_m: float = 2.0
 # por script de la ronda 2026-10 entrenaron con 86.785 puntos de los primeros
 # 2 m creyendo que estaban fuera. El rótulo ahora dice lo que pasó.
 inicio_aplicado: bool = False
+# Cómo se fija el emboquillado: "meseta" (por pozo, desde la PP) o "fijo"
+# (inicio_cut_m en todos). Con "meseta", inicio_por_pozo guarda el corte de
+# cada pozo y si salió de la meseta o del respaldo fijo (pozo sin meseta).
+emboquillado_modo: str = "fijo"
+inicio_por_pozo: Dict[str, Tuple[float, str]] = {}
 # Bandas geomecánicas de laboratorio (T2): registros por caserón×litología.
 #   by_pair    : {(caseron_norm, lito_norm): band}
 #   by_lito    : {lito_norm: [band, ...]}          (misma litología, varios caserones)
@@ -3568,14 +3594,122 @@ def build_domain_index():
 
 def apply_inicio_filter(cut_m):
     """(P3-3.8) Recuerda el corte vigente en `inicio_cut_m`, para que
-    recompute_filters() pueda reaplicarlo sin caer a un default hardcodeado."""
-    global inicio_cut_m, inicio_aplicado
+    recompute_filters() pueda reaplicarlo sin caer a un default hardcodeado.
+    Corte FIJO, igual en todos los pozos (modo "fijo")."""
+    global inicio_cut_m, inicio_aplicado, emboquillado_modo
     inicio_cut_m = float(cut_m)
     inicio_aplicado = True
+    emboquillado_modo = "fijo"
+    inicio_por_pozo.clear()
     for well in wells.values():
         for p in well.points:
-            if p.largo < cut_m: p.entrenable = False
+            p.emboquillado = p.largo < cut_m
+            if p.emboquillado: p.entrenable = False
             elif not p.norm_excluded: p.entrenable = True
+
+
+def detectar_cambio_de_barra(pts_ordenados) -> List[int]:
+    """Índices de `pts_ordenados` (un pozo, YA ordenado por `largo`) que son
+    cambio de barra: registros con PR = 0 en rachas cuyo centro cae a
+    ±BARRA_TOL_M de la grilla φ + k·LARGO_BARRA_M del pozo. La grilla se ajusta
+    con las detenciones a partir de `inicio_cut_m` —en el emboquillado el
+    equipo se detiene por otras razones— y solo vale si se repite en al menos
+    BARRA_UNIONES_MIN uniones; sin grilla, el pozo no tiene cambios de barra
+    identificables y no se marca nada."""
+    L = float(LARGO_BARRA_M)
+    v = np.array([p.vel if p.vel is not None else np.nan for p in pts_ordenados], float)
+    lar = np.array([p.largo for p in pts_ordenados], float)
+    n = len(v); rachas, i = [], 0
+    while i < n:
+        if v[i] != 0: i += 1; continue
+        j = i
+        while j + 1 < n and v[j + 1] == 0: j += 1
+        rachas.append((i, j, (lar[i] + lar[j]) / 2.0)); i = j + 1
+    cand = [r for r in rachas if lar[r[1]] >= inicio_cut_m]
+    if not cand: return []
+    x = np.array([r[2] for r in cand])
+    mejor, fase = 0, None
+    for phi in np.mod(x, L):
+        en = np.abs(((x - phi + L / 2) % L) - L / 2) <= BARRA_TOL_M
+        if en.sum() > mejor and len({int(round((xi - x[en][0]) / L)) for xi in x[en]}) >= BARRA_UNIONES_MIN:
+            mejor, fase = int(en.sum()), phi
+    if fase is None: return []
+    out = []
+    for (i, j, c) in rachas:
+        if abs(((c - fase + L / 2) % L) - L / 2) <= BARRA_TOL_M:
+            out.extend(range(i, j + 1))
+    return out
+
+
+def inicio_meseta_pp(pts_ordenados, excluir=()) -> Optional[float]:
+    """Largo donde empieza la meseta de PP de un pozo (YA ordenado por
+    `largo`), o None si no la alcanza. `excluir` son los índices de cambio de
+    barra y de regulación, que salen antes para no cortar la estabilidad.
+    Meseta: los EMB_TRAMO_ESTABLE_M siguientes tienen EMB_FRACCION_DENTRO de
+    sus registros a ±EMB_BANDA_BAR de su mediana, y esa mediana es al menos
+    EMB_FRACCION_REGIMEN de la PP más frecuente del pozo."""
+    fuera = set(excluir)
+    sel = [k for k, p in enumerate(pts_ordenados)
+           if k not in fuera and p.pp is not None and np.isfinite(p.pp)
+           and p.vel is not None and p.vel > 0]
+    if not sel: return None
+    lar = np.array([pts_ordenados[k].largo for k in sel], float)
+    pp = np.array([pts_ordenados[k].pp for k in sel], float)
+    pmin, pmax = get_param("pp.min_bar"), get_param("pp.max_bar")
+    h, e = np.histogram(pp[(pp >= pmin) & (pp <= pmax)],
+                        bins=np.arange(pmin, pmax + EMB_BIN_BAR, EMB_BIN_BAR))
+    if h.sum() == 0: return None
+    regimen = e[h.argmax()] + EMB_BIN_BAR / 2.0
+    for i in range(lar.size):
+        if lar[i] + EMB_TRAMO_ESTABLE_M > lar[-1]: break
+        m = (lar >= lar[i]) & (lar < lar[i] + EMB_TRAMO_ESTABLE_M)
+        if m.sum() < 5: continue
+        seg = pp[m]; med = float(np.median(seg))
+        if (med >= EMB_FRACCION_REGIMEN * regimen
+                and np.mean(np.abs(seg - med) <= EMB_BANDA_BAR) >= EMB_FRACCION_DENTRO):
+            return float(lar[i])
+    return None
+
+
+def apply_inicio_meseta():
+    """Emboquillado POR POZO desde la meseta de PP (modo "meseta"). Un pozo sin
+    meseta usa el corte fijo `inicio_cut_m` como respaldo y queda declarado
+    en `inicio_por_pozo` con modo "respaldo", nunca en silencio."""
+    global inicio_aplicado, emboquillado_modo
+    inicio_aplicado = True
+    emboquillado_modo = "meseta"
+    inicio_por_pozo.clear()
+    for wn, well in wells.items():
+        pts = sorted(well.points, key=lambda p: p.largo)
+        excl = set(detectar_cambio_de_barra(pts)) | set(
+            detectar_percusion_de_empate(pts, PP_PERCUSION_EMPATE_CAIDA_REL))
+        c = inicio_meseta_pp(pts, excl)
+        inicio_por_pozo[wn] = (c, "meseta") if c is not None else (float(inicio_cut_m), "respaldo")
+        corte = inicio_por_pozo[wn][0]
+        for p in well.points:
+            p.emboquillado = p.largo < corte
+            if p.emboquillado: p.entrenable = False
+            elif not p.norm_excluded: p.entrenable = True
+
+
+def add_cambio_barra_filter():
+    """Filtro de limpieza del cambio de barra: marca no entrenable cada
+    registro con PR = 0 sobre la grilla de barra del pozo
+    (`detectar_cambio_de_barra`). Sale también de la serie del DI."""
+    before = sum(1 for p in all_points() if p.entrenable)
+    total = sum(len(w.points) for w in wells.values())
+    for well in wells.values():
+        pts = sorted(well.points, key=lambda p: p.largo)
+        for i in detectar_cambio_de_barra(pts):
+            if pts[i].entrenable:
+                pts[i].entrenable = False
+                pts[i].norm_excluded = True
+    after = sum(1 for p in all_points() if p.entrenable)
+    filt = {"varName": "vel", "method": "cambio_barra",
+            "label": f"Cambio de barra (PR = 0 cada {LARGO_BARRA_M:g} m)",
+            "lo": None, "hi": None, "removed": before - after, "after": after, "total": total}
+    clean_filters.append(filt)
+    return filt
 
 def detectar_percusion_de_empate(pts_ordenados, caida_rel):
     """Índices de `pts_ordenados` (un pozo, YA ordenado por `largo`) que son
@@ -3618,7 +3752,7 @@ def add_percusion_empate_filter():
                 marcados += 1
     after = sum(1 for p in all_points() if p.entrenable)
     filt = {"varName":"pp","method":"percusion_empate",
-            "label":f"Percusión de empate (caída ≥{caida_rel*100:.0f}% y recuperación)",
+            "label":f"Regulación automática de la percusión (caída ≥{caida_rel*100:.0f}% y recuperación)",
             "lo":None,"hi":None,
             "removed":before-after,"after":after,"total":len(all_pts)}
     clean_filters.append(filt)
@@ -3712,6 +3846,8 @@ def add_norm_filter(var_name, method):
     # "golpe_barra" como método. Se acepta y se resuelve al nombre nuevo.
     if method in ("percusion_empate", "golpe_barra"):
         return add_percusion_empate_filter()
+    if method == "cambio_barra":
+        return add_cambio_barra_filter()
     if method == "continuidad":
         return add_continuidad_filter()
     if method == "rango_fisico" and var_name == "pp":
@@ -3789,11 +3925,16 @@ def mascara_serie_di(points) -> np.ndarray:
     n = len(points)
     ok = np.ones(n, dtype=bool)
     if inicio_aplicado:
-        ok &= np.array([p.largo >= inicio_cut_m for p in points], dtype=bool)
-    if any(f.get("method") == "percusion_empate" for f in clean_filters):
+        ok &= np.array([not p.emboquillado for p in points], dtype=bool)
+    metodos = {f.get("method") for f in clean_filters}
+    if metodos & {"percusion_empate", "cambio_barra"}:
         orden = sorted(range(n), key=lambda i: points[i].largo)
-        marcas = detectar_percusion_de_empate([points[i] for i in orden],
-                                              PP_PERCUSION_EMPATE_CAIDA_REL)
+        ps = [points[i] for i in orden]
+        marcas = []
+        if "percusion_empate" in metodos:
+            marcas += detectar_percusion_de_empate(ps, PP_PERCUSION_EMPATE_CAIDA_REL)
+        if "cambio_barra" in metodos:
+            marcas += detectar_cambio_de_barra(ps)
         ok[[orden[i] for i in marcas]] = False
     return ok
 
@@ -4487,7 +4628,7 @@ def seed_param_registry(force: bool = False):
         # por percentil: es un patrón local (una muestra hundida entre dos
         # vecinas parecidas entre sí), disponible como filtro en el Paso 2.
         _param("pp.percusion_empate_caida_rel", "Percusión (PP)",
-               "Caída mínima para marcar percusión de empate",
+               "Caída mínima para marcar regulación automática de la percusión",
                0.25, "float", "fracción",
                "Fracción de caída de PP respecto del promedio de sus dos "
                "vecinos inmediatos para marcar la muestra central como "
@@ -4497,6 +4638,29 @@ def seed_param_registry(force: bool = False):
                "entre sí —la firma de una recuperación—, nunca a una caída "
                "sostenida de varias muestras, que es información real de la "
                "roca.", 0.05, 0.95, "PP_PERCUSION_EMPATE_CAIDA_REL"),
+        # Cambio de barra y emboquillado por meseta de PP (2026-11-10).
+        _param("barra.largo_m", "Percusión (PP)", "Largo de barra", 1.756, "float", "m",
+               "Largo de la barra del equipo (Simba E70S en MPC). Define la "
+               "grilla sobre la que se buscan las detenciones (PR = 0) del "
+               "cambio de barra en cada pozo.", 0.5, 6.0, "LARGO_BARRA_M"),
+        _param("emboquillado.tramo_estable_m", "Percusión (PP)",
+               "Tramo de estabilidad de la meseta", 0.20, "float", "m",
+               "Largo durante el cual la PP debe mantenerse pareja para "
+               "declarar el fin del emboquillado. Ajustado a seis pozos "
+               "marcados a mano por el autor (2026-11-10).", 0.05, 2.0,
+               "EMB_TRAMO_ESTABLE_M"),
+        _param("emboquillado.banda_bar", "Percusión (PP)",
+               "Banda de estabilidad de la meseta", 15.0, "float", "bar",
+               "Desvío máximo respecto de la mediana del tramo para contar la "
+               "PP como pareja (el 90% de los registros debe quedar dentro). "
+               "Ajustado a seis pozos marcados por el autor.", 1.0, 60.0,
+               "EMB_BANDA_BAR"),
+        _param("emboquillado.fraccion_regimen", "Percusión (PP)",
+               "Nivel mínimo de la meseta", 0.70, "float", "fracción",
+               "Fracción de la PP más frecuente del pozo que debe alcanzar la "
+               "mediana del tramo: deja fuera el nivel bajo del emboquillado. "
+               "Ajustado a seis pozos marcados por el autor.", 0.3, 1.0,
+               "EMB_FRACCION_REGIMEN"),
         # lito.cota_lavas_inferiores / lito.cota_lavas_superiores SALIERON: la
         # regla automática por cota que decidía Kpcli vs Kpcls se reemplazó
         # por asignación manual, por capa, en el vocabulario — es
@@ -5162,7 +5326,9 @@ def _training_funnel(ucs_min, ucs_max, solo_conteos: bool = False):
     n_total = sum(len(w.points) for w in wells.values())
     labels = {
         "total": "Total de puntos MWD",
-        "entrenable": (f"Entrenable (emboquillado <{inicio_cut_m:g} m + filtros de limpieza)"
+        "entrenable": ((f"Entrenable (emboquillado por meseta de PP + filtros de limpieza)"
+                        if emboquillado_modo == "meseta" else
+                        f"Entrenable (emboquillado <{inicio_cut_m:g} m + filtros de limpieza)")
                        if inicio_aplicado else
                        "Entrenable (filtros de limpieza; corte de emboquillado SIN aplicar)"),
         "caseron_entrena": ("En un caserón que ENTRENA ("
@@ -9882,11 +10048,14 @@ def recompute_filters(cut_m=None):
     default hardcodeado: antes, borrar un filtro de limpieza reseteaba en
     silencio el corte de emboquillado del usuario a 2.0 m.
     """
-    cut_m = inicio_cut_m if cut_m is None else cut_m
     for p in all_points():
         p.entrenable = True
         p.norm_excluded = False
-    apply_inicio_filter(cut_m)
+    # Modo meseta: se reaplica por pozo, salvo que se pida un corte explícito.
+    if emboquillado_modo == "meseta" and cut_m is None:
+        apply_inicio_meseta()
+    else:
+        apply_inicio_filter(inicio_cut_m if cut_m is None else cut_m)
     filters_copy = list(clean_filters)
     clean_filters.clear()
     for f in filters_copy:
@@ -9909,20 +10078,29 @@ def aplicar_limpieza_estandar() -> Dict:
     de empate con el umbral del perfil y, si está activo, el filtro de continuidad. Es lo que
     deben llamar los scripts antes de entrenar: armar la limpieza a mano en
     cada uno fue lo que dejó afuera el emboquillado en la ronda 2026-10."""
+    global emboquillado_modo
     clean_filters[:] = [f for f in clean_filters
-                        if f.get("method") not in ("percusion_empate", "continuidad",
-                                                   "rango_fisico")]
+                        if f.get("method") not in ("percusion_empate", "cambio_barra",
+                                                   "continuidad", "rango_fisico")]
+    # Emboquillado por meseta de PP (decisión del autor, 2026-11-10).
     # recompute_filters ya reaplica el rango físico de PP (y la continuidad, si
     # está activa): se lee su conteo en vez de volver a pasarlo, que daría 0.
-    recompute_filters(inicio_cut_m)
+    emboquillado_modo = "meseta"
+    recompute_filters()
     rf_pp = next(f for f in clean_filters if f.get("method") == "rango_fisico")
+    cb = add_cambio_barra_filter()
     pe = add_percusion_empate_filter()
     co = (next((f for f in clean_filters if f.get("method") == "continuidad"), None)
           if CONTINUIDAD_ACTIVA else None)
     pts = list(all_points())
-    return {"emboquillado_m": inicio_cut_m,
-            "emboquillado_marcados": sum(1 for p in pts if p.largo < inicio_cut_m),
+    cortes = [c for c, m in inicio_por_pozo.values() if m == "meseta"]
+    return {"emboquillado_modo": emboquillado_modo,
+            "emboquillado_m": inicio_cut_m,
+            "emboquillado_corte_mediano_m": (round(float(np.median(cortes)), 3) if cortes else None),
+            "pozos_sin_meseta": sorted(w for w, (c, m) in inicio_por_pozo.items() if m == "respaldo"),
+            "emboquillado_marcados": sum(1 for p in pts if p.emboquillado),
             "rango_fisico_pp": rf_pp.get("removed"),
+            "cambio_barra": cb.get("removed"),
             "percusion_empate": pe.get("removed"),
             "continuidad": (co or {}).get("removed"),
             "no_entrenables": sum(1 for p in pts if not p.entrenable)}
@@ -10232,6 +10410,7 @@ def _point_to_dict(p):
         "raw_vel":p.raw_vel,"raw_pp":p.raw_pp,"raw_pa":p.raw_pa,
         "raw_pd":p.raw_pd,"raw_pr":p.raw_pr,"raw_pf":p.raw_pf,
         "entrenable":p.entrenable,"norm_excluded":p.norm_excluded,
+        "emboquillado":p.emboquillado,
         "dominio":p.dominio,"lito":p.lito,"estructura":p.estructura,
         "ucs_ml":p.ucs_ml,"ucs_matriz":p.ucs_matriz,
         "ucs_ml_prelim":p.ucs_ml_prelim,
@@ -10257,7 +10436,7 @@ def _point_from_dict(d):
     for attr in ("dominio","lito","estructura","ucs_ml","ucs_matriz","ucs_ml_prelim",
                  "ucs_ml_p10","ucs_ml_p90","di","grupo","lito_inferida",
                  "estructura_inferida","grupo_confianza","band_check","ucs_modelo","banda_check","seteo_pp","seteo_pa",
-                 "atributos","alteracion","ambiguo","ambiguo_motivo"):
+                 "atributos","alteracion","ambiguo","ambiguo_motivo","emboquillado"):
         if attr in d: setattr(p, attr, d[attr])
     # (P3-3.4) Compatibilidad: un .gwz anterior al renombre trae la clave
     # vieja "ucs_confiable" en vez de "ucs_matriz".
@@ -10490,6 +10669,8 @@ def save_project(path):
                           for g in domain_groups],
         "clean_filters": clean_filters,
         "inicio_cut_m": inicio_cut_m,
+        "emboquillado_modo": emboquillado_modo,
+        "inicio_por_pozo": {k: list(v) for k, v in inicio_por_pozo.items()},
         "di_config": di_config,
         "di_threshold": di_threshold,
         # Las variantes del DI y CUÁL está corriendo: sin esto, un proyecto
@@ -10525,7 +10706,7 @@ def load_project(path):
     """
     # di_threshold ya no se escribe acá: lo fija activar_di(), que es la única
     # puerta por la que se cambia el DI vigente.
-    global group_interval_m, global_center, inicio_cut_m
+    global group_interval_m, global_center, inicio_cut_m, emboquillado_modo
     with _zipfile.ZipFile(path, "r") as zf:
         proj = json.loads(zf.read("project.json"))
         npz_data = np.load(_io.BytesIO(zf.read("triangles.npz")), allow_pickle=False)
@@ -10565,6 +10746,9 @@ def load_project(path):
     domain_groups.extend(proj.get("domain_groups", []))
     clean_filters.extend(proj.get("clean_filters", []))
     inicio_cut_m = proj.get("inicio_cut_m", inicio_cut_m)
+    emboquillado_modo = proj.get("emboquillado_modo", "fijo")
+    inicio_por_pozo.clear()
+    inicio_por_pozo.update({k: tuple(v) for k, v in (proj.get("inicio_por_pozo") or {}).items()})
     # Variantes del DI y cuál corría. Se restauran ANTES de fijar el vigente:
     # activar una variante que todavía no está registrada sería un KeyError.
     seed_di_variants(force=True)
@@ -15800,7 +15984,7 @@ def _step2():
         n_pts += 1
         if p.entrenable:
             active += 1
-        if p.largo < inicio_cut_m:
+        if p.emboquillado:
             n_cut += 1
     # (P3-3.8) El corte de emboquillado se APLICA (apply_inicio_filter) pero
     # antes no figuraba en ninguna lista de filtros. Se antepone como entrada
@@ -15808,7 +15992,11 @@ def _step2():
     # de clean_filters, es el corte base que recompute_filters() siempre
     # reaplica primero.
     filter_items = [dbc.ListGroupItem([
-        html.Small(f"Emboquillado — largo < {inicio_cut_m:g} m",
+        html.Small(("Emboquillado — hasta la meseta de PP de cada pozo"
+                    + (f" ({sum(1 for _, m in inicio_por_pozo.values() if m == 'respaldo')} "
+                       f"pozo(s) sin meseta: corte de {inicio_cut_m:g} m)")
+                    if emboquillado_modo == "meseta" else
+                    f"Emboquillado — largo < {inicio_cut_m:g} m"),
                    style={"fontSize":"11px","marginRight":"6px","flex":1}),
         dbc.Badge(f"-{n_cut} pts", color="danger", className="me-2"),
         html.Small("fijo", style={"color":"#555","fontSize":"9px","padding":"0 7px"}),
@@ -15847,7 +16035,8 @@ def _step2():
                     options=[{"label":l,"value":v} for l,v in
                              [("IQR 1.5×","outliers_iqr"),("Q25-Q75","q25_q75"),
                               ("5%-95%","whisker5"),("Q10-Q90","quantile_reg"),
-                              ("Percusión de empate (1 medición)","percusion_empate"),
+                              ("Regulación automática de la percusión (1 medición)","percusion_empate"),
+                              ("Cambio de barra (PR = 0 cada largo de barra)","cambio_barra"),
                               ("Continuidad del registro (B5.5)","continuidad")]],
                     style={"fontSize":"11px"}), width=5),
                 dbc.Col(dbc.Button("+", id="btn-add-filt", size="sm",

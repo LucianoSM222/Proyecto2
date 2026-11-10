@@ -36,12 +36,27 @@ mina subterránea de cobre.
   LOOCV-Litología se retiró de la memoria (decisión del autor, 2026-10-22);
   `leave_one_lithology_out` sigue en la herramienta como vara de la relación
   directa del Paso 4.
-- Limpieza (`aplicar_limpieza_estandar`): emboquillado 2 m, PP fuera de
-  90-230 bar, percusión de empate (caída ≥ 0,25), continuidad del registro.
+- Limpieza (`aplicar_limpieza_estandar`, decisión del autor 2026-11-10):
+  · **Cambio de barra** (`detectar_cambio_de_barra`): PR = 0 sobre la grilla
+    φ + k·1,756 m del pozo (±6 cm, ≥ 3 uniones). Va PRIMERO.
+  · **Regulación automática de la percusión** (`detectar_percusion_de_empate`,
+    id interno `percusion_empate`): caída de PP ≥ 0,25 que se recupera. Es el
+    equipo ajustando la PP cuando otras presiones salen de rango, no roca.
+  · **Emboquillado por meseta de PP** (`inicio_meseta_pp`, modo "meseta"): sin
+    cambio de barra ni regulación, termina donde la PP se mantiene pareja
+    20 cm (90% a ±15 bar de su mediana) sobre el 70% de la PP más frecuente del
+    pozo. Sin meseta → corte fijo de respaldo (2 m), declarado en
+    `inicio_por_pozo`. Parámetros en el perfil (`barra.largo_m`,
+    `emboquillado.*`), ajustados a seis pozos marcados por el autor. El corte
+    fijo (`apply_inicio_filter`, modo "fijo") sigue disponible en el Paso 2.
+  · PP fuera de 90-230 bar y continuidad del registro: solo entrenamiento.
+  Sobre los cuatro caserones: emboquillado 72.752 registros (corte mediano
+  1,45 m, 9 pozos sin meseta), cambio de barra 10.037, regulación 5.789 (los
+  no excluidos ya por otro filtro), no entrenables 100.884.
 - El DI se calcula sobre la SERIE DEPURADA (`mascara_serie_di`,
-  `di_profile_serie`): el emboquillado y la percusión de empate salen de la
-  serie antes de la varianza móvil y la estandarización por pozo, y su DI
-  queda en `None`. El rango de PP y la continuidad solo excluyen del
+  `di_profile_serie`): el emboquillado, el cambio de barra y la regulación
+  salen de la serie antes de la varianza móvil y la estandarización por pozo,
+  y su DI queda en `None`. El rango de PP y la continuidad solo excluyen del
   entrenamiento del UCS. La calibración contra RQD usa la misma serie
   (`_z2_por_param`). Decisión del autor, 2026-10-22.
 
@@ -212,6 +227,8 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | D7 | Calibración del DI: la propuesta ya no se borra sola al redibujar | — | ✅ |
 | D8 | Siglas cruzadas otra vez: `di_config_summary` decía FP por FLP y omitía el avance | — | ✅ |
 | D9 | Reportes dibujados (no JSON crudo) y descarga en PNG | — | ✅ |
+| E1 | Siglas del XML (PR, FP = avance, FLP = barrido) en todo | — | ✅ |
+| E2 | Emboquillado por meseta de PP · cambio de barra · regulación automática | — | ✅ — falta recorrer `final_calc.py` y regenerar figuras |
 
 Hallazgos que condicionan la interpretación, no defectos pendientes:
 
