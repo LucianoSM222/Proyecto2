@@ -1,10 +1,10 @@
 """¿Dónde y en qué condición aparecen los registros con PP < 120 bar que se
 salen de la tendencia? Se comparan contra la operación normal (PP 140–200 bar)
 en: concentración por pozo y caserón, posición en el pozo, persistencia
-(rachas), demás presiones, ROP/PEP, orientación del tiro y vecindad de
+(rachas), demás presiones, PR/PEP, orientación del tiro y vecindad de
 discontinuidades. Configuración final (limpieza estándar, serie depurada,
 pesos a 5 m). Registros entrenables de roca continua con UCS referencial y
-ROP ≥ mínimo físico, como la figura de PEP/ROP por intervalo de PP.
+PR ≥ mínimo físico, como la figura de PEP/PR por intervalo de PP.
 Uso: python3 pp_bajo_120.py final.json pp_bajo_120.json
 """
 import sys, json, time

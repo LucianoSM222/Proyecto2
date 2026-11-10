@@ -191,14 +191,14 @@ for pl, pv, dd in zip(picos_l, picos_di, dentro_est):
 ax.set_ylabel("DI (índice de discontinuidad)", fontsize=9)
 ax.grid(alpha=0.25, lw=0.6)
 ax.text(0.005, 0.96, (f"DI calibrado a 5 m (PP {gw.di_config['weights']['pp']:.2f} · RP {gw.di_config['weights']['pr']:.2f} · "
-        f"DP {gw.di_config['weights']['pd']:.2f} · FP {gw.di_config['weights']['pf']:.2f})   ·   umbral {UMBRAL:g}   ·   ventana {gw.di_config['window']} muestras "
+        f"DP {gw.di_config['weights']['pd']:.2f} · FLP {gw.di_config['weights']['pf']:.2f})   ·   umbral {UMBRAL:g}   ·   ventana {gw.di_config['window']} muestras "
         f"= {gw.DI_VENTANA_CM:g} cm   ·   picos fusionados a {gw.DI_PICOS_MIN_GAP_M:g} m").replace(".", ","),
         transform=ax.transAxes, va="top", fontsize=8, color="#444444")
 
 # C — las cuatro presiones del DI
 ax = axes[2]; fondo(ax)
 for arr, nom, col in [(pp, "PP", "#2C5F8A"), (pd_, "DP", "#C77B2E"),
-                      (pr, "RP", "#2E7D5B"), (pf, "FP", "#7B2D8E")]:
+                      (pr, "RP", "#2E7D5B"), (pf, "FLP", "#7B2D8E")]:
     ax.plot(lar, arr, "-", lw=0.7, color=col, label=nom, zorder=3)
 ax.set_ylabel("Presiones del DI (bar)", fontsize=9)
 ax.set_xlabel("Profundidad a lo largo del pozo (m)", fontsize=10)

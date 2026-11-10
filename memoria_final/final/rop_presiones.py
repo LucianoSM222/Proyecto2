@@ -1,11 +1,11 @@
-"""¿Qué presión se relaciona directamente con la ROP? PP (percusión), AP
-(avance), RP (rotación) y DP (dámper); FP (flujo de barrido) queda fuera por
+"""¿Qué presión se relaciona directamente con la PR? PP (percusión), FP
+(avance), RP (rotación) y DP (dámper); FLP (flujo de barrido) queda fuera por
 criterio físico: es el aire/agua de barrido, no actúa sobre la roca.
 
 Tres pruebas, de menos a más exigente, en roca continua entrenable (DI ≤ 1,
-limpieza estándar, ROP ≥ mínimo físico, litología con UCS referencial):
-  1. ρ de Spearman simple ROP–presión;
-  2. ρ parcial: rangos de cada presión y de la ROP descontando linealmente las
+limpieza estándar, PR ≥ mínimo físico, litología con UCS referencial):
+  1. ρ de Spearman simple PR–presión;
+  2. ρ parcial: rangos de cada presión y de la PR descontando linealmente las
      otras tres presiones (las presiones están correlacionadas entre sí);
   3. ρ intra-pozo: ρ de Spearman sobre las desviaciones respecto de la mediana
      de cada pozo, que quita la roca y el operador de cada tiro.
@@ -24,7 +24,7 @@ import cargar_caserones as cc
 SRC, OUT = sys.argv[1], sys.argv[2]
 T0 = time.time()
 FIN = json.load(open(SRC, encoding="utf-8"))["di_vigente"]
-PRES = [("pp", "PP"), ("pa", "AP"), ("pr", "RP"), ("pd", "DP")]
+PRES = [("pp", "PP"), ("pa", "FP"), ("pr", "RP"), ("pd", "DP")]
 
 
 def log(m):
@@ -97,7 +97,7 @@ for g, d in R["grupos"].items():
         f"{k}: ρ {v['rho_simple']} / parcial {v['rho_parcial']} / intra {v['rho_intra_pozo']}" for k, v in d["presiones"].items()))
 log(f"entre presiones: {R['grupos']['Todas las litologías']['correlacion_entre_presiones']}")
 
-# ranking de máxima ROP: AP de los 5 mejores segmentos frente al dominio
+# ranking de máxima PR: FP de los 5 mejores segmentos frente al dominio
 RK = json.load(open(SRC, encoding="utf-8"))["ranking"]["criterios"]
 R["ranking"] = {k: [{"vel": c["vel"], "pp": c["pp"], "pa": c["pa"], "pr": c["pr"], "pd": c["pd"]} for c in v[:5]] for k, v in RK.items()}
 json.dump(R, open(OUT, "w"), ensure_ascii=False, indent=1)

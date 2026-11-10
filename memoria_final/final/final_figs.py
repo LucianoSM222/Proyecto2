@@ -1,8 +1,21 @@
 """Figuras y tablas finales del Capítulo 6. Solo DIBUJA: todo número sale de
 final.json (final_calc.py). PNG 300 dpi, español, coma decimal, siglas Pucobre
-(FP = flujo, AP = avance), PEP = presión específica de penetración."""
+(FLP = flujo, FP = avance), PEP = presión específica de penetración."""
 import sys, os, json, csv
 import numpy as np
+
+# Siglas del XML IREDES (decisión del autor, 2026-11-10): PR = velocidad de
+# penetración, FP = avance, FLP = flujo de barrido. Los JSON calculados antes
+# traen las siglas viejas (ROP, AP = avance, FP = barrido); se traducen al
+# dibujar, solo si el conjunto de siglas es el viejo (trae ROP o AP).
+_XML_VIEJA = {"ROP": "PR", "AP": "FP", "FP": "FLP"}
+
+
+def siglas_xml(lista):
+    lista = list(lista); viejo = any(s in ("ROP", "AP") or str(s).startswith(("AP-", "ROP")) or "-AP" in str(s) for s in lista)
+    if not viejo: return lista
+    return ["-".join(_XML_VIEJA.get(t, t) for t in str(s).split("-")) for s in lista]
+
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
@@ -26,7 +39,7 @@ AZUL, ROJO, VERDE, NARANJA, GRIS, MORADO = "#4472C4", "#C00000", "#70AD47", "#ED
 COL_LITO = {"Kpcli": "#70AD47", "Bht": "#4472C4", "Kpcls": "#C00000", "Brecha_mixta": "#ED7D31"}
 NOM_LITO = {"Kpcli": "Lavas inferiores (Kpcli)", "Bht": "Brecha hidrotermal (Bht)",
             "Kpcls": "Lavas superiores (Kpcls)", "Brecha_mixta": "Brecha mixta"}
-SIG = {"pp": "PP", "pr": "RP", "pd": "DP", "pf": "FP", "pa": "AP"}
+SIG = {"pp": "PP", "pr": "RP", "pd": "DP", "pf": "FLP", "pa": "FP"}
 DI = R["di_vigente"]; W = DI["pesos"]; UMB = DI["umbral"]
 hechas = []
 
@@ -98,7 +111,7 @@ tabla_png("T6_01_sensibilidad_percusion_empate", "Sensibilidad del umbral de ca�
                 f"({dec(t['largo_barra_m'], 3)} m, paso 2 cm): {mil(t['teorico_largo_barra'])}. Umbral adoptado: 0,25."))
 
 # ── 6.1 Pearson ─────────────────────────────────────────────────────────────
-pe = R["pearson"]; V = pe["variables"]
+pe = R["pearson"]; V = siglas_xml(pe["variables"])
 
 
 def heat(ax, M, titulo):
@@ -117,7 +130,7 @@ heat(a1, pe["crudas"], "Señales registradas")
 im = heat(a2, pe["perfiles_varianza"], "Varianza móvil estandarizada\n(entrada del DI)")
 fig.colorbar(im, ax=[a1, a2], shrink=0.8, label="r de Pearson")
 fig.suptitle("Correlación de Pearson entre las cinco presiones MWD")
-pie(fig, f"n = {mil(pe['n'])} registros, 4 caserones. PP percusión · RP rotación · DP dámper · FP flujo · AP avance.", y=-0.02)
+pie(fig, f"n = {mil(pe['n'])} registros, 4 caserones. PP percusión · RP rotación · DP dámper · FLP flujo · FP avance.", y=-0.02)
 guardar(fig, "F6_01_correlacion_pearson.png")
 
 # ── 6.2 percusión de empate, P20_H12 ────────────────────────────────────────
@@ -180,7 +193,7 @@ for f in R["tabla_6_2"]["filas"]:
                   "—" if f["rho_validacion"] is None else ("+" if f["rho_validacion"] >= 0 else "") + dec(f["rho_validacion"], 3)])
 T62 = R["tabla_6_2"]
 tabla_png("T6_02_sensibilidad_radio_RQD", "Sensibilidad de la calibración del DI al radio de asignación del RQD",
-          ["Radio [m]", "Pares", "Sondajes", "Peso PP", "Peso RP", "Peso DP", "Peso FP", "ρ ajuste", "ρ validación"],
+          ["Radio [m]", "Pares", "Sondajes", "Peso PP", "Peso RP", "Peso DP", "Peso FLP", "ρ ajuste", "ρ validación"],
           filas,
           nota=(f"Umbral DI {dec(T62['umbral'], 1)} · ventana {T62['ventana']} · {T62['n_candidatos']} combinaciones "
                 f"(400 Dirichlet + convención, semilla {T62['semilla']}) · ≥ {T62['min_puntos_intervalo']} puntos por intervalo. "
@@ -346,7 +359,7 @@ axs[0].set_ylabel("UCS predicha [MPa]")
 lg = axs[0].legend(fontsize=8, markerscale=5, loc="upper left")
 for hnd in lg.legend_handles: hnd.set_alpha(1)
 fig.suptitle("Presión específica de penetración (PEP) y UCS predicha por el modelo")
-pie(fig, "Muestra aleatoria de 25.000 registros por panel (semilla 42), ROP ≥ 0,2 m/min. " + PIE_CFG, y=-0.03); guardar(fig, "F6_06_PEP_vs_UCS.png")
+pie(fig, "Muestra aleatoria de 25.000 registros por panel (semilla 42), PR ≥ 0,2 m/min. " + PIE_CFG, y=-0.03); guardar(fig, "F6_06_PEP_vs_UCS.png")
 
 # ── 6.6b PEP vs UCS predicha: dominio de entrenamiento y extrapolación ─────
 # Una sola vista: el bosque se entrena SOLO con DI ≤ umbral, así que lo que
@@ -366,7 +379,7 @@ for k, mk, c, et in (("intacta", "o", AZUL, f"DI ≤ {dec(UMB, 0)}, roca intacta
     ax.scatter(pep[m], u[m], s=5 if mk == "o" else 8, marker=mk, alpha=0.3 if mk == "o" else 0.5,
                lw=0 if mk == "o" else 0.6, color=c, rasterized=True, label=f"{et} (n = {mil(d['n'])})")
 ax.set_xlim(-40, 1040)
-ax.set_xlabel("PEP = (PP + RP + AP) / ROP [bar·min/m]  (PEP ≤ 1.000)"); ax.set_ylabel("UCS predicha por ML [MPa]")
+ax.set_xlabel("PEP = (PP + RP + FP) / PR [bar·min/m]  (PEP ≤ 1.000)"); ax.set_ylabel("UCS predicha por ML [MPa]")
 ax.grid(True, axis="both")
 h, l = ax.get_legend_handles_labels()
 lg = ax.legend(h[::-1], l[::-1], loc="upper right", fontsize=9, markerscale=2.5, frameon=True, framealpha=0.9)
@@ -432,7 +445,7 @@ xx = np.linspace(100, 600, 400)
 ax.plot(xx, AJ[mejor][1](xx), "-", color="#1a1a1a", lw=2,
         label=f"Ajuste {mejor} (solo intacta, PEP 100–600): {_ecuacion(mejor, AJ[mejor][2])} · R² = {dec(AJ[mejor][0], 3)}")
 ax.set_xlim(-40, 1040)
-ax.set_xlabel("PEP = (PP + RP + AP) / ROP [bar·min/m]  (PEP ≤ 1.000)"); ax.set_ylabel("UCS predicha por ML [MPa]")
+ax.set_xlabel("PEP = (PP + RP + FP) / PR [bar·min/m]  (PEP ≤ 1.000)"); ax.set_ylabel("UCS predicha por ML [MPa]")
 ax.grid(True, axis="both")
 lg = ax.legend(loc="lower right", fontsize=8.5, markerscale=2.5, frameon=True, framealpha=0.92)
 for hnd in lg.legend_handles: hnd.set_alpha(1)
@@ -576,8 +589,8 @@ if Q:
         for i in range(a.size):
             s_ = a[max(0, i - k // 2): i + k // 2 + 1]; out[i] = np.nanmedian(s_) if np.isfinite(s_).any() else np.nan
         return out
-    series = [("ROP [m/min]", med(Q["vel"]), "#333"), ("PP [bar]", med(Q["pp"]), AZUL), ("DP [bar]", med(Q["pd"]), MORADO),
-              ("RP [bar]", med(Q["pr"]), NARANJA), ("FP [bar]", med(Q["pf"]), "#1F9E9E"), ("AP [bar]", med(Q["pa"]), GRIS),
+    series = [("PR [m/min]", med(Q["vel"]), "#333"), ("PP [bar]", med(Q["pp"]), AZUL), ("DP [bar]", med(Q["pd"]), MORADO),
+              ("RP [bar]", med(Q["pr"]), NARANJA), ("FLP [bar]", med(Q["pf"]), "#1F9E9E"), ("FP [bar]", med(Q["pa"]), GRIS),
               ("PEP [bar·min/m]", med([v if (v is not None and v <= 1000) else None for v in Q["se"]]), ROJO)]
     fig, axs = plt.subplots(len(series) + 3, 1, figsize=(13, 15), sharex=True,
                             gridspec_kw={"height_ratios": [1] * len(series) + [1.3, 1.3, 0.45]})
@@ -603,7 +616,7 @@ if Q:
     fig.legend(handles=hs, fontsize=9, ncol=6, loc="outside lower center")
     ax.set_xlabel("Profundidad a lo largo del pozo [m]")
     fig.suptitle("Registros MWD, PEP, UCS predicha y DI — PCS_1043_PR01_TH_P07_H4")
-    pie(fig, "Series suavizadas con mediana móvil de 5 registros (≈ 10 cm). PEP ≤ 1.000 bar·min/m: con ROP ≈ 0 la PEP no tiene sentido físico y se omite. " + PIE_CFG, y=-0.02); guardar(fig, "F6_10_perfil_PCS1043_P07_H4.png")
+    pie(fig, "Series suavizadas con mediana móvil de 5 registros (≈ 10 cm). PEP ≤ 1.000 bar·min/m: con PR ≈ 0 la PEP no tiene sentido físico y se omite. " + PIE_CFG, y=-0.02); guardar(fig, "F6_10_perfil_PCS1043_P07_H4.png")
 
 # ── 6.11 sección de tronadura ───────────────────────────────────────────────
 B = R["bloques"]
@@ -658,18 +671,18 @@ tabla_png("T6_03_dominios", "Agrupación de dominios geomecánicos (los de mayor
            for g in Dm["grupos"][:10]], anchos=[0.1, 0.18, 0.14, 0.22, 0.14, 0.22], ancho_fig=10,
           nota=(f"{Dm['n_grupos']} grupos. Tramos de {dec(Dm['tramo_m'], 0)} m; misma litología y estructura, "
                 f"UCS ML ± {dec(Dm['tol_ucs'], 0)} MPa y DI ± {dec(Dm['tol_di'], 1)}."))
-RK = R["ranking"]; CRIT = {"min_se_cv": "Mín. variación de PEP", "min_se": "Mínima PEP", "max_rop": "Máxima ROP"}
+RK = R["ranking"]; CRIT = {"min_se_cv": "Mín. variación de PEP", "min_se": "Mínima PEP", "max_rop": "Máxima PR"}
 filas = []
 for k, lst in RK["criterios"].items():
     for i, c in enumerate(lst[:5], 1):
         filas.append([CRIT[k], str(i), dec(c["pp"], 0), dec(c["pr"], 0), dec(c["pa"], 0), dec(c["pd"], 0), dec(c["pf"], 0),
                       dec(c["vel"], 2), dec(c["se"], 0), dec(c["se_cv"], 3), c["well"], dec(c["largo"], 1)])
 tabla_png("T6_04_ranking_recomendaciones", f"Ranking de 5 recomendaciones históricas — dominio {RK['grupo']}",
-          ["Criterio", "N°", "PP [bar]", "RP [bar]", "AP [bar]", "DP [bar]", "FP [bar]", "ROP [m/min]", "PEP", "CV PEP", "Pozo", "Prof. [m]"],
+          ["Criterio", "N°", "PP [bar]", "RP [bar]", "FP [bar]", "DP [bar]", "FLP [bar]", "PR [m/min]", "PEP", "CV PEP", "Pozo", "Prof. [m]"],
           filas, nota="Segmentos continuos de ≥ 5 registros entrenables del mismo dominio, DI ≤ 1, en pozos de ≥ 20 m. PEP en bar·min/m.",
           anchos=[0.15, 0.035, 0.06, 0.06, 0.06, 0.06, 0.06, 0.075, 0.055, 0.065, 0.21, 0.07], fs=8, ancho_fig=15)
 
-# ── 6.13 PEP vs UCS lab, ROP y PP ───────────────────────────────────────────
+# ── 6.13 PEP vs UCS lab, PR y PP ───────────────────────────────────────────
 E = R["pep_estratos"]
 fig, (a1, a2) = plt.subplots(1, 2, figsize=(13.5, 5.2))
 for lito in sorted({e["lito"] for e in E}, key=lambda l: next(e["ucs_lab"] for e in E if e["lito"] == l)):
@@ -678,11 +691,11 @@ for lito in sorted({e["lito"] for e in E}, key=lambda l: next(e["ucs_lab"] for e
     a1.plot([e["pp_bin"] + 5 for e in ee], [e["pep_mediana"] for e in ee], "o-", color=c, ms=4, label=nm)
     a2.plot([e["pp_bin"] + 5 for e in ee], [e["rop_mediana"] for e in ee], "o-", color=c, ms=4, label=nm)
 a1.set_xlabel("PP [bar] (estratos de 10 bar)"); a1.set_ylabel("PEP mediana [bar·min/m]"); a1.grid(alpha=0.3); a1.legend(fontsize=8)
-a2.set_xlabel("PP [bar] (estratos de 10 bar)"); a2.set_ylabel("ROP mediana [m/min]"); a2.grid(alpha=0.3)
-fig.suptitle("PEP y ROP según la UCS de laboratorio y la presión de percusión")
-pie(fig, "Registros entrenables de roca intacta, ROP ≥ 0,2 m/min; estratos con ≥ 20 registros. " + PIE_CFG, y=-0.04); guardar(fig, "F6_13_PEP_UCS_ROP_PP_continua.png") if not os.path.exists(os.path.join(os.path.dirname(SRC), "pep_estratos_clases.json")) else plt.close(fig)
+a2.set_xlabel("PP [bar] (estratos de 10 bar)"); a2.set_ylabel("PR mediana [m/min]"); a2.grid(alpha=0.3)
+fig.suptitle("PEP y PR según la UCS de laboratorio y la presión de percusión")
+pie(fig, "Registros entrenables de roca intacta, PR ≥ 0,2 m/min; estratos con ≥ 20 registros. " + PIE_CFG, y=-0.04); guardar(fig, "F6_13_PEP_UCS_ROP_PP_continua.png") if not os.path.exists(os.path.join(os.path.dirname(SRC), "pep_estratos_clases.json")) else plt.close(fig)
 
-# ── 6.13b PEP por registro: UCS referencial, ROP y PP (pep_muestra.py) ─────
+# ── 6.13b PEP por registro: UCS referencial, PR y PP (pep_muestra.py) ─────
 FM = os.path.join(os.path.dirname(SRC), "pep_muestra.json")
 if os.path.exists(FM):
     S = json.load(open(FM, encoding="utf-8")); rho = S["spearman_pep"]
@@ -699,12 +712,12 @@ if os.path.exists(FM):
     lg = axs[0].legend(fontsize=7.8, markerscale=5, loc="upper right")
     for hnd in lg.legend_handles: hnd.set_alpha(1)
     axs[0].set_title(f"PEP vs. UCS referencial (— mediana) · ρ = {dec(rho['ucs_ref'], 3)}", fontsize=10.5)
-    for ax, x_, et, k in ((axs[1], rop, "ROP [m/min]", "rop"), (axs[2], ppm, "PP [bar]", "pp")):
+    for ax, x_, et, k in ((axs[1], rop, "PR [m/min]", "rop"), (axs[2], ppm, "PP [bar]", "pp")):
         sc_ = ax.scatter(x_, pep, c=ppm, s=2, alpha=0.35, cmap="viridis", vmin=90, vmax=230, rasterized=True)
         ax.set_xlabel(et); ax.set_title(f"PEP vs. {et.split(' ')[0]} (color = PP) · ρ = {dec(rho[k], 3)}", fontsize=10.5)
     fig.colorbar(sc_, ax=list(axs[1:]), shrink=0.85, label="PP [bar]")
     axs[0].set_ylim(0, S["pep_max"])
-    fig.suptitle(f"PEP = (PP + RP + AP) / ROP — {mil(len(pep))} de {mil(S['n'])} registros entrenables de roca intacta "
+    fig.suptitle(f"PEP = (PP + RP + FP) / PR — {mil(len(pep))} de {mil(S['n'])} registros entrenables de roca intacta "
                  f"(PEP ≤ {mil(S['pep_max'])})")
     guardar(fig, "F6_13b_PEP_UCS_ROP_PP_registros.png")
 
@@ -720,7 +733,7 @@ if os.path.exists(FM):
     for hnd in lg.legend_handles: hnd.set_alpha(1)
     fig.suptitle(f"PEP vs. UCS referencial (— mediana) · ρ = {dec(rho['ucs_ref'], 3)}")
     guardar(fig, "F6_13b1_PEP_vs_UCS_referencial.png")
-    for x_, et, k, nom in ((rop, "ROP [m/min]", "rop", "F6_13b2_PEP_vs_ROP.png"), (ppm, "PP [bar]", "pp", "F6_13b3_PEP_vs_PP.png")):
+    for x_, et, k, nom in ((rop, "PR [m/min]", "rop", "F6_13b2_PEP_vs_ROP.png"), (ppm, "PP [bar]", "pp", "F6_13b3_PEP_vs_PP.png")):
         fig, ax = plt.subplots(figsize=(8, 5.6))
         sc_ = ax.scatter(x_, pep, c=ppm, s=2, alpha=0.35, cmap="viridis", vmin=90, vmax=230, rasterized=True)
         fig.colorbar(sc_, ax=ax, shrink=0.85, label="PP [bar]")
@@ -754,7 +767,7 @@ if os.path.exists(FA):
     fig.suptitle(f"Ajuste parabólico UCS–PEP por litología y caserón (ρ = {('+' if G['spearman'] >= 0 else '') + dec(G['spearman'], 3)}, n = {G['n_puntos']} grupos)")
     guardar(fig, "F6_13c_ajuste_PEP_UCS_litologia_caseron.png")
 
-# ── PEP, ROP y UCS modelada por intervalo de PP: continua vs fracturada ─────
+# ── PEP, PR y UCS modelada por intervalo de PP: continua vs fracturada ─────
 FE = os.path.join(os.path.dirname(SRC), "pep_estratos_clases.json")
 if os.path.exists(FE):
     EC = json.load(open(FE, encoding="utf-8")); FL_ = EC["filas"]
@@ -780,7 +793,7 @@ if os.path.exists(FE):
         fig, axs = plt.subplots(2, 2, figsize=(13.5, 9.5), sharex=True)
         for i, clase in enumerate(("continua", "fracturada")):
             _panel(axs[i][0], clase, "pep_mediana", "PEP mediana [bar·min/m]", pp_min, con_n)
-            _panel(axs[i][1], clase, "rop_mediana", "ROP mediana [m/min]", pp_min, con_n)
+            _panel(axs[i][1], clase, "rop_mediana", "PR mediana [m/min]", pp_min, con_n)
         for k, campo in ((0, "pep_mediana"), (1, "rop_mediana")):
             v_ = [f[campo] for f in FL_ if f["pp_bin"] >= pp_min]; pad = 0.05 * (max(v_) - min(v_))
             for i in (0, 1): axs[i][k].set_ylim(min(v_) - pad, max(v_) + pad)
@@ -791,14 +804,14 @@ if os.path.exists(FE):
                 h_.append(plt.scatter([], [], s=8 * np.log10(nn) ** 2, color="#A5A5A5", edgecolor="white"))
                 l_.append(f"{mil(nn)} registros")
         fig.legend(h_, l_, fontsize=9.5, ncol=4 if not con_n else 4, loc="outside lower center")
-        fig.suptitle(f"PEP y ROP según la UCS de laboratorio y la presión de percusión ({sub})")
+        fig.suptitle(f"PEP y PR según la UCS de laboratorio y la presión de percusión ({sub})")
         guardar(fig, nombre)
 
     # Una figura por clase de roca (versión con representatividad).
     for clase, suf in (("continua", "intacta"), ("fracturada", "fracturada")):
         fig, (b1, b2) = plt.subplots(1, 2, figsize=(13.5, 5.2))
         _panel(b1, clase, "pep_mediana", "PEP mediana [bar·min/m]", 90, True)
-        _panel(b2, clase, "rop_mediana", "ROP mediana [m/min]", 90, True)
+        _panel(b2, clase, "rop_mediana", "PR mediana [m/min]", 90, True)
         for ax, campo in ((b1, "pep_mediana"), (b2, "rop_mediana")):
             v_ = [f[campo] for f in FL_]; pad = 0.05 * (max(v_) - min(v_))
             ax.set_ylim(min(v_) - pad, max(v_) + pad); ax.set_xlabel("PP [bar] (intervalos de 10 bar)"); ax.set_title("")
@@ -806,7 +819,7 @@ if os.path.exists(FE):
         for nn in (100, 1000, 10000, 100000):
             h_.append(plt.scatter([], [], s=8 * np.log10(nn) ** 2, color="#A5A5A5", edgecolor="white")); l_.append(f"{mil(nn)} registros")
         fig.legend(h_, l_, fontsize=9, ncol=4, loc="outside lower center")
-        fig.suptitle(f"PEP y ROP por intervalo de PP — {ETC[clase]} (tamaño del punto = registros del intervalo)")
+        fig.suptitle(f"PEP y PR por intervalo de PP — {ETC[clase]} (tamaño del punto = registros del intervalo)")
         guardar(fig, f"F6_13_PEP_ROP_PP_{suf}.png")
 
     fig, axs = plt.subplots(1, 2, figsize=(13.5, 5.4), sharey=True)
@@ -824,7 +837,7 @@ if os.path.exists(FE):
     fig.suptitle("UCS modelada por el Random Forest según la presión de percusión (punteado: UCS referencial)")
     guardar(fig, "F6_13e_UCS_modelada_vs_PP.png")
 
-# ── ROP frente a las cuatro presiones (rop_presiones.py) ──────────────────
+# ── PR frente a las cuatro presiones (rop_presiones.py) ──────────────────
 FRP = os.path.join(os.path.dirname(SRC), "rop_presiones.json")
 if os.path.exists(FRP):
     RPJ = json.load(open(FRP, encoding="utf-8")); G0 = RPJ["grupos"]["Todas las litologías"]; PS = list(G0["presiones"])
@@ -841,9 +854,9 @@ if os.path.exists(FRP):
         for b_, x in zip(bb, v):
             a1.annotate(("+" if x >= 0 else "") + dec(x, 3), (b_.get_x() + b_.get_width() / 2, x),
                         xytext=(0, 4 if x >= 0 else -13), textcoords="offset points", ha="center", fontsize=9)
-    a1.axhline(0, color="#333", lw=0.8); a1.set_ylim(-0.3, 0.3); a1.set_xticks(xx); a1.set_xticklabels(PS)
-    a1.set_ylabel("ρ de Spearman con la ROP"); a1.legend(fontsize=9, loc="upper right")
-    fig.suptitle("Correlación de la ROP con las presiones de percusión, avance, rotación y dámper")
+    a1.axhline(0, color="#333", lw=0.8); a1.set_ylim(-0.3, 0.3); a1.set_xticks(xx); a1.set_xticklabels(siglas_xml(PS))
+    a1.set_ylabel("ρ de Spearman con la PR"); a1.legend(fontsize=9, loc="upper right")
+    fig.suptitle("Correlación de la PR con las presiones de percusión, avance, rotación y dámper")
     guardar(fig, "F6_14_ROP_vs_presiones.png")
 
 json.dump(hechas, open(f"{OUT}/_hechas.json", "w"))

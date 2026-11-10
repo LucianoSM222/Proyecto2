@@ -8,6 +8,18 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
+# Siglas del XML IREDES (decisión del autor, 2026-11-10): PR = velocidad de
+# penetración, FP = avance, FLP = flujo de barrido. Los JSON calculados antes
+# traen las siglas viejas (ROP, AP = avance, FP = barrido); se traducen al
+# dibujar, solo si el conjunto de siglas es el viejo (trae ROP o AP).
+_XML_VIEJA = {"ROP": "PR", "AP": "FP", "FP": "FLP"}
+
+
+def siglas_xml(lista):
+    lista = list(lista); viejo = any(s in ("ROP", "AP") or str(s).startswith(("AP-", "ROP")) or "-AP" in str(s) for s in lista)
+    if not viejo: return lista
+    return ["-".join(_XML_VIEJA.get(t, t) for t in str(s).split("-")) for s in lista]
+
 SRC, OUT = sys.argv[1], sys.argv[2]
 R = json.load(open(SRC, encoding="utf-8"))
 FM = os.path.join(os.path.dirname(SRC), "pep_muestra.json")
@@ -16,7 +28,7 @@ S = json.load(open(FM, encoding="utf-8")) if os.path.exists(FM) else None
 FUENTE = "Calibri"
 CAB = PatternFill("solid", fgColor="4472C4"); BANDA = PatternFill("solid", fgColor="D9E1F2")
 BORDE = Border(bottom=Side(style="thin", color="FFFFFF"))
-SIG = {"pp": "PP", "pr": "RP", "pd": "DP", "pf": "FP", "pa": "AP"}
+SIG = {"pp": "PP", "pr": "RP", "pd": "DP", "pf": "FLP", "pa": "FP"}
 NOM_LITO = {"Kpcli": "Lavas inferiores (Kpcli)", "Bht": "Brecha hidrotermal (Bht)",
             "Kpcls": "Lavas superiores (Kpcls)", "Brecha_mixta": "Brecha mixta"}
 wb = Workbook(); wb.remove(wb.active)
@@ -77,7 +89,7 @@ tabla(ws, ["Elemento", "Valor"], [
     ["Largo de barra [m]", R["tabla_6_1"]["largo_barra_m"]],
     ["Random Forest", "200 árboles · profundidad 8 · min_samples_split 6 · min_samples_leaf 3 · max_features √p · semilla 42"],
     ["Agregación del bosque", "mediana de los 200 árboles"],
-    ["Siglas", "FP = flujo · AP = avance · PEP = (PP + RP + AP) / ROP [bar·min/m]"],
+    ["Siglas", "FLP = flujo · FP = avance · PEP = (PP + RP + FP) / PR [bar·min/m]"],
 ], fmt=[None, None])
 
 # ── Tabla 6.1 ──────────────────────────────────────────────────────────────
@@ -115,7 +127,7 @@ tabla(ws, ["UCS referencial [MPa]", "Litología", "Registros"],
       [[float(k), NOM_LITO.get(lit_de.get(str(float(k))), "—"), v] for k, v in E["etiquetas"].items()], fmt=["0.0", None, "#,##0"])
 
 # ── Pearson ────────────────────────────────────────────────────────────────
-pe = R["pearson"]; V = pe["variables"]; ws = hoja("Pearson")
+pe = R["pearson"]; V = siglas_xml(pe["variables"]); ws = hoja("Pearson")
 for clave, tt in (("crudas", "Correlación de Pearson · señales registradas"),
                   ("perfiles_varianza", "Correlación de Pearson · varianza móvil estandarizada (entrada del DI)")):
     titulo(ws, tt)
@@ -132,7 +144,7 @@ for f in T2["filas"]:
     filas.append([f["radio_m"], f.get("n_pares") if ok else (f.get("n_intervalos") or 0), f.get("n_sondajes"),
                   *[w.get(k) if ok else None for k in ("pp", "pr", "pd", "pf")],
                   f.get("rho_ajuste") if ok else None, f.get("rho_validacion") if ok else None])
-tabla(ws, ["Radio [m]", "Pares", "Sondajes", "Peso PP", "Peso RP", "Peso DP", "Peso FP", "ρ ajuste", "ρ validación"],
+tabla(ws, ["Radio [m]", "Pares", "Sondajes", "Peso PP", "Peso RP", "Peso DP", "Peso FLP", "ρ ajuste", "ρ validación"],
       filas, fmt=["0.0", "0", "0", "0.00", "0.00", "0.00", "0.00", "+0.000;-0.000", "+0.000;-0.000"])
 nota(ws, f"Umbral {T2['umbral']} · ventana {T2['ventana']} · {T2['n_candidatos']} combinaciones (400 Dirichlet + convención, semilla {T2['semilla']}). Celdas vacías: sin pares suficientes.")
 
@@ -237,7 +249,7 @@ if os.path.exists(FL):
 
 # ── Importancia, comparación ───────────────────────────────────────────────
 ws = hoja("Importancia"); titulo(ws, "Importancia por permutación de las predictoras")
-tabla(ws, ["Predictora", "Importancia"], sorted(([k, v] for k, v in RF["feat_imp"].items()), key=lambda x: -x[1]),
+tabla(ws, ["Predictora", "Importancia"], sorted(([k, v] for k, v in zip(siglas_xml(RF["feat_imp"]), RF["feat_imp"].values())), key=lambda x: -x[1]),
       fmt=[None, "0.000"])
 nota(ws, RF["feat_imp_motivo"])
 titulo(ws, "Ajuste del modelo de producción")
@@ -269,17 +281,17 @@ tabla(ws, ["Roca", "Registros", "Media [MPa]", "Mediana [MPa]"],
       fmt=[None, "#,##0", "0.0", "0.0"])
 
 # ── PEP ────────────────────────────────────────────────────────────────────
-ws = hoja("PEP estratos"); titulo(ws, "PEP y ROP medianas por litología y estrato de PP (roca intacta entrenable)")
-tabla(ws, ["Litología", "UCS referencial [MPa]", "Estrato PP [bar]", "Registros", "PEP mediana [bar·min/m]", "CV PEP", "ROP mediana [m/min]"],
+ws = hoja("PEP estratos"); titulo(ws, "PEP y PR medianas por litología y estrato de PP (roca intacta entrenable)")
+tabla(ws, ["Litología", "UCS referencial [MPa]", "Estrato PP [bar]", "Registros", "PEP mediana [bar·min/m]", "CV PEP", "PR mediana [m/min]"],
       [[NOM_LITO.get(e["lito"], e["lito"]), e["ucs_lab"], f"{e['pp_bin']}–{e['pp_bin'] + 10}", e["n"], e["pep_mediana"], e["pep_cv"], e["rop_mediana"]]
        for e in R["pep_estratos"]], fmt=[None, "0.0", None, "#,##0", "0.0", "0.000", "0.000"])
 if S:
     titulo(ws, "Correlación de Spearman de la PEP por registro")
     tabla(ws, ["Variable", "ρ de Spearman con la PEP"],
-          [["UCS referencial", S["spearman_pep"]["ucs_ref"]], ["ROP", S["spearman_pep"]["rop"]], ["PP", S["spearman_pep"]["pp"]]],
+          [["UCS referencial", S["spearman_pep"]["ucs_ref"]], ["PR", S["spearman_pep"]["rop"]], ["PP", S["spearman_pep"]["pp"]]],
           fmt=[None, "+0.000;-0.000"])
-    nota(ws, f"{S['n']:,} registros entrenables de roca intacta con PEP ≤ {S['pep_max']:.0f} y ROP ≥ {S['rop_min']} m/min; "
-             f"{S['fuera_pep_max']:,} excluidos por PEP > {S['pep_max']:.0f} (ROP ≈ 0).".replace(",", "."))
+    nota(ws, f"{S['n']:,} registros entrenables de roca intacta con PEP ≤ {S['pep_max']:.0f} y PR ≥ {S['rop_min']} m/min; "
+             f"{S['fuera_pep_max']:,} excluidos por PEP > {S['pep_max']:.0f} (PR ≈ 0).".replace(",", "."))
 
 # ── Ajustes UCS referencial ~ PEP ──────────────────────────────────────────
 FA = os.path.join(os.path.dirname(SRC), "pep_ajustes.json")
@@ -305,18 +317,18 @@ if os.path.exists(FA):
           [[p["grupo"], p["pep_mediana"], p["ucs_ref"]] for p in PA["conjuntos"]["todo"]["litologia_caseron"]["puntos"]],
           fmt=[None, "0.0", "0.0"])
 
-# ── ROP frente a las presiones ─────────────────────────────────────────────
+# ── PR frente a las presiones ─────────────────────────────────────────────
 FRP = os.path.join(os.path.dirname(SRC), "rop_presiones.json")
 if os.path.exists(FRP):
-    RPJ = json.load(open(FRP, encoding="utf-8")); ws = hoja("ROP vs presiones")
-    titulo(ws, "Relación de la ROP con PP, AP, RP y DP (roca continua entrenable; FP excluida por criterio físico)")
+    RPJ = json.load(open(FRP, encoding="utf-8")); ws = hoja("PR vs presiones")
+    titulo(ws, "Relación de la PR con PP, FP, RP y DP (roca continua entrenable; FLP excluida por criterio físico)")
     tabla(ws, ["Grupo", "Presión", "Registros", "Pozos", "ρ simple", "ρ parcial", "ρ dentro del pozo", "R² sola (rangos)", "R² las 4 (rangos)", "Mediana [bar]"],
           [[NOM_LITO.get(g, g), p, d["n"], d["n_pozos"], v["rho_simple"], v["rho_parcial"], v["rho_intra_pozo"], v["r2_sola"], d["r2_rangos_las_4"], v["mediana"]]
-           for g, d in RPJ["grupos"].items() for p, v in d["presiones"].items()],
+           for g, d in RPJ["grupos"].items() for p, v in zip(siglas_xml(d["presiones"]), d["presiones"].values())],
           fmt=[None, None, "#,##0", "#,##0", "+0.000;-0.000", "+0.000;-0.000", "+0.000;-0.000", "0.000", "0.000", "0.0"])
     nota(ws, "ρ parcial: rangos descontando linealmente las otras tres presiones. ρ dentro del pozo: desviaciones respecto de la mediana de cada pozo.")
     titulo(ws, "Correlación entre presiones (todas las litologías)")
-    tabla(ws, ["Par", "ρ de Spearman"], [[k, v] for k, v in RPJ["grupos"]["Todas las litologías"]["correlacion_entre_presiones"].items()],
+    tabla(ws, ["Par", "ρ de Spearman"], [[k, v] for k, v in zip(siglas_xml(RPJ["grupos"]["Todas las litologías"]["correlacion_entre_presiones"]), RPJ["grupos"]["Todas las litologías"]["correlacion_entre_presiones"].values())],
           fmt=[None, "+0.000;-0.000"])
 
 # ── Concordancia ───────────────────────────────────────────────────────────
@@ -328,6 +340,7 @@ _, a, b = tabla(ws, ["Umbral DI", "Picos", "Cruces", "Precisión", "Recall", "Pr
 for i in range(a, b + 1):
     ws.cell(i, 7, f"=D{i}-F{i}").number_format = "+0.0%;-0.0%"; ws.cell(i, 7).alignment = Alignment(horizontal="center")
 import numpy as np
+
 dl = np.array(CO["desfases"])
 titulo(ws, "Desfase pico de DI − cruce de malla más cercano")
 tabla(ws, ["Estadístico", "Valor [m]"], [["Picos", int(dl.size)], ["Media", float(dl.mean())], ["Mediana", float(np.median(dl))],
@@ -360,8 +373,8 @@ nota(ws, f"{Dm['n_grupos']} grupos en total; tramos de {Dm['tramo_m']} m, UCS ±
 
 RK = R["ranking"]; ws = hoja("T6.4 Ranking")
 titulo(ws, f"Tabla 6.4 · Ranking de 5 recomendaciones históricas de perforación — dominio {RK['grupo']}")
-CRIT = {"min_se_cv": "Mín. variación de PEP", "min_se": "Mínima PEP", "max_rop": "Máxima ROP"}
-tabla(ws, ["Criterio", "N°", "PP [bar]", "RP [bar]", "AP [bar]", "DP [bar]", "FP [bar]", "ROP [m/min]", "PEP [bar·min/m]", "CV PEP", "Pozo", "Prof. [m]", "Registros"],
+CRIT = {"min_se_cv": "Mín. variación de PEP", "min_se": "Mínima PEP", "max_rop": "Máxima PR"}
+tabla(ws, ["Criterio", "N°", "PP [bar]", "RP [bar]", "FP [bar]", "DP [bar]", "FLP [bar]", "PR [m/min]", "PEP [bar·min/m]", "CV PEP", "Pozo", "Prof. [m]", "Registros"],
       [[CRIT[k], i, c["pp"], c["pr"], c["pa"], c["pd"], c["pf"], c["vel"], c["se"], c["se_cv"], c["well"], c["largo"], c["n_pts"]]
        for k, lst in RK["criterios"].items() for i, c in enumerate(lst[:5], 1)],
       fmt=[None, "0", "0", "0", "0", "0", "0.0", "0.00", "0", "0.000", None, "0.0", "0"])

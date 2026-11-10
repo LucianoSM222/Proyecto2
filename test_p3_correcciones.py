@@ -481,8 +481,8 @@ def t39_reporte_justificacion_variables():
     corr = gw.correlation_matrix_report()
     check(corr["status"] == "ok", "con datos suficientes, la correlación se calcula de verdad")
     pares = {(pr["a"], pr["b"]) for pr in corr["pairs_flagged"]}
-    check(("ROP", "PP") in pares or ("PP", "ROP") in pares,
-          "la multicolinealidad ROP↔PP (vel≈pp/2 por construcción) se detecta",
+    check(("PR", "PP") in pares or ("PP", "PR") in pares,
+          "la multicolinealidad PR↔PP (vel≈pp/2 por construcción) se detecta",
           corr["pairs_flagged"])
 
     # 3.9d — comparación de modelos: <3 pozos etiquetados se declara, no se fuerza.

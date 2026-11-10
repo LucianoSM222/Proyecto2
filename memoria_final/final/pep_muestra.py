@@ -1,5 +1,5 @@
-"""Muestra por registro de PEP, UCS referencial, ROP y PP para la figura de tres
-paneles (PEP vs UCS referencial · vs ROP · vs PP). Misma configuración que
+"""Muestra por registro de PEP, UCS referencial, PR y PP para la figura de tres
+paneles (PEP vs UCS referencial · vs PR · vs PP). Misma configuración que
 final_calc.py: limpieza estándar, DI calibrado a 5 m con los pesos de final.json.
 Uso: python3 pep_muestra.py final.json pep_muestra.json
 """
@@ -32,7 +32,7 @@ anclas = gw._anclas_por_litologia()
 log("carga y DI listos")
 
 # Registros entrenables de roca intacta con UCS referencial; PEP ≤ 1.000 porque
-# con ROP ≈ 0 la PEP no tiene sentido físico (lavado del bit, no roca).
+# con PR ≈ 0 la PEP no tiene sentido físico (lavado del bit, no roca).
 filas, fuera_pep = [], 0
 for p in gw.all_points():
     if not p.entrenable or p.lito not in anclas or p.di is None or p.di > FIN["umbral"]: continue

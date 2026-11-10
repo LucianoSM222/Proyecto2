@@ -75,7 +75,7 @@ DECISIONES_DE_FAENA = {
 
 # Estas SÍ son constantes, y tienen que seguir siéndolo.
 CONVENCIONES_INTOCABLES = [
-    "MWD_VAL_ORDER",          # LT|ROP|PP|FP|DP|RP|FLP, exactamente 7
+    "MWD_VAL_ORDER",          # LT|PR|PP|FP|DP|RP|FLP, exactamente 7
     "BANDAS_RESISTENCIA",     # ISRM, Brown 1981
     "TERMINOLOGIA_C",         # "modelo geológico informado por MWD"
     "DI_VARIANTE_CONVENCION",
@@ -135,7 +135,7 @@ def las_convenciones_siguen_siendo_constantes():
     for pid in ("rqd.tramo_min_m", "visor.puntos_maximos", "carga.presupuesto_parseo"):
         check(pid not in gw.param_registry,
               f"«{pid}» ya no es un parámetro del perfil", pid)
-    check(gw.MWD_VAL_ORDER == ("LT", "ROP", "PP", "FP", "DP", "RP", "FLP"),
+    check(gw.MWD_VAL_ORDER == ("LT", "PR", "PP", "FP", "DP", "RP", "FLP"),
           "el orden de los campos Val es el de CLAUDE.md", gw.MWD_VAL_ORDER)
     check(len(gw.MWD_VAL_ORDER) == 7, "exactamente 7", len(gw.MWD_VAL_ORDER))
     # EL CONTRATO CAMBIÓ DOS VECES, y esta es la segunda.

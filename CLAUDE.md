@@ -8,21 +8,24 @@ mina subterránea de cobre.
 
 ## Convenciones inmutables — NO modificar
 
-- Orden de campos `Val` (siglas IREDES del XML): `LT | ROP | PP | FP | DP | RP | FLP`.
+- Orden de campos `Val` (siglas IREDES del XML): `LT | PR | PP | FP | DP | RP | FLP`.
   Exactamente 7. Todo campo excedente se descarta del uso pero se REPORTA UNA
-  VEZ en la carga. OJO: en el XML `FP` es el AVANCE y `FLP` el barrido; en
-  pantalla, figuras y memoria rige la nomenclatura de PUCOBRE: **FP = flujo de
-  barrido (`pf`), AP = avance (`pa`)** (decisión del autor, 2026-10-22).
+  VEZ en la carga. En pantalla, figuras y memoria rigen las SIGLAS DEL XML:
+  **PR = velocidad de penetración (`vel`), FP = avance (`pa`), FLP = flujo de
+  barrido (`pf`)** (decisión del autor, 2026-11-10; reemplaza la nomenclatura
+  de Pucobre FP = flujo, AP = avance, del 2026-10-22). Los JSON calculados
+  antes de esa fecha traen las siglas viejas y los scripts de figuras las
+  traducen al dibujar (`siglas_xml`).
 - TMatrix del DQ: fila0 -> Norte, fila1 -> Este, fila2 -> Cota.
 - Ejes DXF: X = Este, Y = Norte, Z = Cota.
 - Ray casting VERTICAL (0,0,1). El grid XY de aceleración solo vale con rayo
   vertical. Cambiarlo sin rehacer el grid llevó la exactitud de 82,4% a 7,1%.
-- DI: ventana 14 (≈28 cm), umbral 1,0, cuatro presiones (PP, RP, DP, FP; el
-  avance queda fuera). Convención de partida PP=0,35 DP=0,25 FP=0,20 RP=0,20;
+- DI: ventana 14 (≈28 cm), umbral 1,0, cuatro presiones (PP, RP, DP, FLP; el
+  avance queda fuera). Convención de partida PP=0,35 DP=0,25 FLP=0,20 RP=0,20;
   la memoria usa la variante CALIBRADA contra RQD a 5 m (ver
   `docs/resultados_finales.md`). Fernández et al. 2023,
   doi:10.1016/j.ijmst.2023.02.004. El autor es el profesor guía.
-- PEP (presión específica de penetración; id interno `se`) = (PP + RP + AP) / ROP,
+- PEP (presión específica de penetración; id interno `se`) = (PP + RP + FP) / PR,
   en bar·min/m. Distinto de Teale 1965: son presiones de
   reacción hidráulica, no valores impuestos. La distinción se preserva en todo
   comentario.
@@ -194,7 +197,7 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | B6 | SE sin estratificar · reporte de semillas | — | ✅ |
 | C1 | Tres constantes de vuelta desde el perfil (Deere, visor, parseo) | — | ✅ |
 | C2 | Guardar/Cargar proyecto responden de verdad | — | ✅ |
-| C3 | SE≥1000 fuera del reporte por pozo (ROP≈0, lavado del bit) | — | ✅ |
+| C3 | SE≥1000 fuera del reporte por pozo (PR≈0, lavado del bit) | — | ✅ |
 | C4 | Calibración antes del cálculo · transfiere a las casillas · avance en P3-3.7 | — | ✅ |
 | C5 | `min_puntos` de RQD, control que no controlaba | — | ✅ |
 | C6 | Visor 3D: mallas recortadas a la vista, 52→13 MB por caserón | — | ✅ |
@@ -213,7 +216,7 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 Hallazgos que condicionan la interpretación, no defectos pendientes:
 
 - LOOCV-Caserón R² < 0: el modelo no transfiere entre caserones.
-- SE↔UCS: ρ(UCS, ROP) = +1,00 dentro de cada estrato de PP. El MWD tiene
+- SE↔UCS: ρ(UCS, PR) = +1,00 dentro de cada estrato de PP. El MWD tiene
   señal física consistente; lo que no calza son las bandas de UCS asignadas.
   Bht y Kpcli son indistinguibles en MWD pese a 62 MPa nominales de
   diferencia.
@@ -296,9 +299,9 @@ predictoras.
 ## Cómo se resume la SE de una litología
 
 `se.control_pp` = `directo` (defecto) o `por_estrato`. Decisión del autor, con
-su razón: SE_reacción = (PP + RP + AP) / ROP **ya lleva ROP en el
+su razón: SE_reacción = (PP + RP + FP) / PR **ya lleva PR en el
 denominador**, así que la percusión entra CONTRASTADA contra la velocidad. Si
-subir PP consigue subir ROP, la SE se normaliza y sigue hablando de la roca; si
+subir PP consigue subir PR, la SE se normaliza y sigue hablando de la roca; si
 la SE no se mueve pese a más PP, es porque la roca resiste esa percusión, que
 también es hablar de la roca. En los dos casos el número describe el macizo y
 no la decisión del operador, así que estratificar sobra.

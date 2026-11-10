@@ -240,7 +240,7 @@ def parser_excedente_reportado_una_vez():
     p = mw["puntos"][0]
     check((p.largo, p.vel, p.pp, p.pa, p.pd, p.pr, p.pf) ==
           (0.020, 1.0, 150.0, 40.0, 100.0, 55.0, 6.0),
-          "los 7 campos se leen en el orden LT|ROP|PP|FP|DP|RP|FLP",
+          "los 7 campos se leen en el orden LT|PR|PP|FP|DP|RP|FLP",
           (p.largo, p.vel, p.pp, p.pa, p.pd, p.pr, p.pf))
     avisos = [w for w in gw.parse_warnings if "excedente" in w]
     check(len(avisos) == 1, "el campo excedente se reporta EXACTAMENTE una vez", avisos)

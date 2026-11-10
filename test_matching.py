@@ -409,7 +409,7 @@ def test_campo_excedente_se_reporta():
         f"Orden de <Val> alterado: esperado {[lt,rop,pp,fp_feed,dp,rp,flp]}, "
         f"leído {leido}")
     print("[TEST excedente] OK — OPT1 descartado y reportado una vez; "
-          "orden LT|ROP|PP|FP|DP|RP|FLP intacto.")
+          "orden LT|PR|PP|FP|DP|RP|FLP intacto.")
     return True
 
 

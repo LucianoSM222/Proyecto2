@@ -161,8 +161,8 @@ def el_resultado_declara_como_se_resumio():
     _escenario()
     nota = gw._nota_control_pp()
     check("DIRECTO" in nota, "en directo lo declara", nota[:70])
-    check("ROP" in nota,
-          "y con la razón: la SE ya lleva ROP en el denominador", nota[:120])
+    check("PR en el denominador" in nota,
+          "y con la razón: la SE ya lleva PR (velocidad) en el denominador", nota[:120])
     gw.set_param("pep.control_pp", "por_estrato")
     nota2 = gw._nota_control_pp()
     gw.reset_param("pep.control_pp")

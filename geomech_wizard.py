@@ -46,17 +46,17 @@ NS_DR = "http://www.iredes.org/xml/DrillRig"
 IR, DR = f"{{{NS_IR}}}", f"{{{NS_DR}}}"
 
 ML_FEATURES = ["vel","pp","pa","pd","pr","pf","se"]
-# Siglas de PUCOBRE, en el MISMO orden posicional que ML_FEATURES: FP es el
-# FLUJO de barrido (`pf`) y AP el AVANCE (`pa`). Ojo: en el XML IREDES el campo
-# del avance se llama «FP» (Feed Pressure) y el del barrido «FLP»; eso solo
-# importa al PARSEAR (MWD_VAL_ORDER) y no se muestra. La memoria y la faena
-# usan la nomenclatura de Pucobre, decisión del autor del 2026-10-22. Y
-# `se` es PEP, PRESIÓN ESPECÍFICA DE PENETRACIÓN: (PP+RP+AP)/ROP sobre presiones
+# Siglas del XML IREDES, en el MISMO orden posicional que ML_FEATURES: PR es la
+# velocidad de penetración (PenetrRate, `vel`), FP el AVANCE (FeedPressure,
+# `pa`) y FLP el FLUJO de barrido (FlushPressure, `pf`). Decisión del autor del
+# 2026-11-10: en pantallas, figuras y memoria rigen las siglas del archivo
+# (antes se usaba la nomenclatura de Pucobre, FP = flujo y AP = avance). Y
+# `se` es PEP, PRESIÓN ESPECÍFICA DE PENETRACIÓN: (PP+RP+FP)/PR sobre presiones
 # de REACCIÓN hidráulica, no la energía específica de Teale 1965, que usa
 # empuje y torque IMPUESTOS. El identificador interno sigue siendo `se` —
 # cambiarlo rompería los .gwz y los perfiles ya exportados—; lo que cambia es
 # la sigla visible. La sigla canónica de cada presión vive en CAL_SIGLAS.
-ML_LABELS   = ["ROP","PP","AP","DP","RP","FP","PEP"]
+ML_LABELS   = ["PR","PP","FP","DP","RP","FLP","PEP"]
 # (B4.2) CONFIGURACIÓN ÚNICA DEL BOSQUE. Había cuatro RandomForestRegressor
 # con hiperparámetros distintos —comparador del Paso 4, holdout interno,
 # ablación de cota y mediana del diagnóstico SE↔UCS—, de modo que las cifras
@@ -88,7 +88,7 @@ PARSE_BUDGET_S = 12.0
 # Convención inmutable del orden de campos de <Val> en el MWD IREDES. Son
 # EXACTAMENTE 7; todo campo excedente se descarta del uso pero se reporta una
 # vez en la carga (parse_mw), nunca en silencio.
-MWD_VAL_ORDER = ("LT", "ROP", "PP", "FP", "DP", "RP", "FLP")
+MWD_VAL_ORDER = ("LT", "PR", "PP", "FP", "DP", "RP", "FLP")
 MWD_VAL_FIELDS = len(MWD_VAL_ORDER)
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -1768,7 +1768,7 @@ prelim_model = None
 #     abiertas que provoquen pérdida de presión, y descarta el AVANCE por el
 #     efecto del cilindro de dos pasos que controla el nivel para evitar
 #     desviaciones del tiro.
-#   · ESTE TRABAJO usa cuatro presiones: PP, RP, DP y FP (flujo). Incluye el flujo de
+#   · ESTE TRABAJO usa cuatro presiones: PP, RP, DP y FLP (flujo). Incluye el flujo de
 #     barrido —en MPC sí hay fracturas abiertas que lo hacen caer— y excluye el
 #     avance, coincidiendo con la fuente en ese punto por la misma razón del
 #     cilindro de dos pasos. Los pesos de abajo son una ADAPTACIÓN, no una cita.
@@ -1783,13 +1783,13 @@ DI_DEFAULTS = {"window": 14, "threshold": 1.0,
 # pasos es exactamente 2,0 cm y el 93,3% cae en 2,0-2,1 cm.
 MWD_PASO_NOMINAL_M = 0.02
 DI_VENTANA_CM = round(DI_DEFAULTS["window"] * MWD_PASO_NOMINAL_M * 100.0, 2)  # 28 cm
-# Sigla de cada presión según la nomenclatura de PUCOBRE (FP = flujo de
-# barrido, AP = avance), y el ORDEN en que se muestran. Vive acá arriba —y no
+# Sigla de cada presión según el XML IREDES (FP = avance, FLP = flujo de
+# barrido), y el ORDEN en que se muestran. Vive acá arriba —y no
 # junto a CAL_ETIQUETAS, que se arma desde ella— porque la sigla se escribía en
 # dos lugares y llegaron a cruzarse: di_config_summary() omitía el avance. Una
-# sola fuente para la sigla evita repetir ese cruce. La sigla IREDES del XML
-# (donde «FP» es el avance) vive solo en MWD_VAL_ORDER, para parsear.
-CAL_SIGLAS = {"pp": "PP", "pd": "DP", "pf": "FP", "pr": "RP", "pa": "AP"}
+# sola fuente para la sigla evita repetir ese cruce. Coincide con las siglas
+# de MWD_VAL_ORDER, el orden en que el XML trae los campos.
+CAL_SIGLAS = {"pp": "PP", "pd": "DP", "pf": "FLP", "pr": "RP", "pa": "FP"}
 # Nombre de la variante de convención. Vive acá arriba, junto a DI_DEFAULTS,
 # porque `di_variante_activa` lo necesita antes de que se declare el registro
 # de variantes; el registro mismo se siembra más abajo (seed_di_variants).
@@ -3199,7 +3199,7 @@ def _collar_dist(a: Dict, b: Dict) -> Optional[float]:
 
 def parse_mw(path, fname):
     """
-    Val = LT | ROP | PP | FP(Feed=AP) | DP | RP | FLP(Flush=FP). Simba COPROD.
+    Val = LT | PR | PP | FP (avance) | DP | RP | FLP (barrido). Simba COPROD.
 
     (E.3 — Escala) Streaming con ET.iterparse en vez de ET.parse().getroot():
     con ~150 pozos por caserón, materializar los 150 árboles DOM completos en
@@ -3218,7 +3218,7 @@ def parse_mw(path, fname):
         nonlocal declarados_cerrado, n_extra_decl
         if declarados_cerrado: return
         declarados_cerrado = True
-        # Orden inmutable de `Val`: LT | ROP | PP | FP | DP | RP | FLP. Exactamente 7.
+        # Orden inmutable de `Val`: LT | PR | PP | FP | DP | RP | FLP. Exactamente 7.
         # Los equipos declaran a veces columnas extra (Simba COPROD emite OPT1,
         # "DRMWDoption"); se descartan del uso, pero la convención exige
         # REPORTARLAS UNA VEZ en la carga: un campo excedente silencioso es
@@ -3690,9 +3690,9 @@ def add_rango_fisico_pp_filter():
     """Excluye del entrenamiento los registros con PP fuera del rango
     operacional del perfil (`pp.min_bar`–`pp.max_bar`, 90–230 bar en MPC).
     Es un LÍMITE FÍSICO declarado, no un percentil. Sin él entraban ~13.000
-    registros con PP de 0 a 10 bar y ROP de 3 a 10 m/min: la sarta avanzando
+    registros con PP de 0 a 10 bar y PR de 3 a 10 m/min: la sarta avanzando
     sin percutir (maniobra, no perforación). Explicaban 7.035 de los 7.168
-    registros con ROP > 3 m/min y encabezaban el ranking por mínima PEP."""
+    registros con PR > 3 m/min y encabezaban el ranking por mínima PEP."""
     lo, hi = float(get_param("pp.min_bar")), float(get_param("pp.max_bar"))
     all_pts = list(all_points())
     before = sum(1 for p in all_pts if p.entrenable)
@@ -3815,7 +3815,7 @@ def di_profile_serie(points, window, params=None, weights=None):
 # ║  PASO 1 — VARIANTES DEL DI, SIN TOCAR LA CONVENCIÓN                     ║
 # ║                                                                          ║
 # ║  CLAUDE.md fija el DI de los valores por defecto como convención           ║
-# ║  inmutable: ventana 14, pesos PP 0,35 · DP 0,25 · FP 0,20 · RP 0,20,     ║
+# ║  inmutable: ventana 14, pesos PP 0,35 · DP 0,25 · FLP 0,20 · RP 0,20,     ║
 # ║  umbral 1,5. Calibrar esos pesos contra el RQD de los sondajes es lo     ║
 # ║  que hace falta, y sobrescribirlos sería violar la convención.           ║
 # ║                                                                          ║
@@ -4421,9 +4421,9 @@ def seed_param_registry(force: bool = False):
                "Bajo esto la mediana del bin no significa nada.",
                2, 10000, "PP_MIN_PUNTOS_BIN"),
         # ── Límites físicos ──────────────────────────────────────────────────
-        _param("rop.min_fisica", "Límites físicos", "ROP mínima con sentido físico",
+        _param("rop.min_fisica", "Límites físicos", "PR mínima con sentido físico",
                0.05, "float", "m/min", "Bajo esto la presión específica de penetración (PEP) no tiene "
-               "significado físico: PEP = (PP+RP+AP)/ROP se dispara. Criterio "
+               "significado físico: PEP = (PP+RP+FP)/PR se dispara. Criterio "
                "físico y trazable, NO un percentil.",
                0.001, 1.0, "ROP_MIN_FISICA"),
         _param("ucs.estadistica_ml", "Etiqueta de UCS",
@@ -4467,10 +4467,10 @@ def seed_param_registry(force: bool = False):
                "con la roca. Formato «a-b,c-d», en bar.", global_name="_PP_ESTRATOS_TXT"),
         _param("pep.control_pp", "Percusión (PP)",
                "Cómo se resume la SE de una litología", "directo", "opcion", "—",
-               "Decisión del autor, y su razón: PEP = (PP + RP + AP) / ROP ya "
-               "lleva ROP en el denominador, así que la percusión entra "
+               "Decisión del autor, y su razón: PEP = (PP + RP + FP) / PR ya "
+               "lleva PR en el denominador, así que la percusión entra "
                "CONTRASTADA contra la velocidad. Si subir PP consigue subir "
-               "ROP, la SE se normaliza y sigue hablando de la roca; si la SE "
+               "PR, la SE se normaliza y sigue hablando de la roca; si la SE "
                "no se mueve pese a más PP, es porque la roca resiste esa "
                "percusión, que también es hablar de la roca. En los dos casos "
                "el número describe el macizo, no la decisión del operador, y "
@@ -5955,11 +5955,11 @@ def concordance_full_report(fuente: str = "sondajes", capas=None) -> Dict:
 # ║    · ¿el MWD tiene señal física?           -> este reporte              ║
 # ║    · ¿las etiquetas alcanzan para entrenar? -> el R² y el LOOCV-Caserón       ║
 # ║                                                                          ║
-# ║  EL CONFUNDIMIENTO A SORTEAR: PEP = (PP+RP+AP)/ROP, y PP        ║
+# ║  EL CONFUNDIMIENTO A SORTEAR: PEP = (PP+RP+FP)/PR, y PP        ║
 # ║  es la ÚNICA variable que el operador manipula — y la sube en roca      ║
 # ║  dura. Parte de la relación SE↔UCS podría venir de la RESPUESTA DEL     ║
 # ║  OPERADOR, no de la roca. Por eso el reporte estratifica por PP y mira  ║
-# ║  ROP por separado: ROP no se fija directamente, así que si también      ║
+# ║  PR por separado: PR no se fija directamente, así que si también      ║
 # ║  ordena las litologías, la señal es de la roca.                         ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
@@ -5975,8 +5975,8 @@ def _spearman(x, y) -> Optional[float]:
 
 # Velocidad de penetración mínima FÍSICA. Por debajo, la broca no está
 # rompiendo roca: es cambio de barra, atasco o registro con el avance
-# detenido, y PEP = (PP+RP+AP)/ROP se dispara a valores sin significado
-# (se observaron medianas de 2·10¹¹ en tramos con ROP→0). Es un límite
+# detenido, y PEP = (PP+RP+FP)/PR se dispara a valores sin significado
+# (se observaron medianas de 2·10¹¹ en tramos con PR→0). Es un límite
 # físico y trazable, NO un percentil: el proyecto prohíbe filtrar por
 # percentiles justamente para no recortar datos válidos sin criterio.
 ROP_MIN_FISICA = 0.05          # m/min
@@ -5984,7 +5984,7 @@ ROP_MIN_FISICA = 0.05          # m/min
 
 def _se_por_dominio(solo_roca_intacta: bool = True) -> Tuple[Dict[str, Dict], Dict]:
     """
-    SE, ROP y PP agregados por LITOLOGÍA con UCS de laboratorio conocido.
+    SE, PR y PP agregados por LITOLOGÍA con UCS de laboratorio conocido.
 
     Dos exclusiones, ambas declaradas en el reporte:
 
@@ -5994,7 +5994,7 @@ def _se_por_dominio(solo_roca_intacta: bool = True) -> Tuple[Dict[str, Dict], Di
       análisis: con los datos reales inflaba tres litologías a diecinueve
       dominios, todos repitiendo el mismo UCS con SE dispares, lo que anula
       la correlación de rangos.
-    · Puntos con ROP por debajo de ROP_MIN_FISICA, donde SE no tiene
+    · Puntos con PR por debajo de ROP_MIN_FISICA, donde SE no tiene
       significado físico.
 
     `solo_roca_intacta` aparta además los puntos con DI sobre el umbral, que
@@ -6106,7 +6106,7 @@ def se_ucs_coherence_report() -> Dict:
     Devuelve además:
       · la MISMA comparación SIN apartar las discontinuidades, para ver si
         el DI mejora la coherencia (validación empírica del DI);
-      · la relación estratificada por PP, y la de ROP sola, para separar la
+      · la relación estratificada por PP, y la de PR sola, para separar la
         señal de la roca de la respuesta del operador.
     """
     intacta, excl = _se_por_dominio(solo_roca_intacta=True)
@@ -6207,12 +6207,12 @@ def se_ucs_coherence_report() -> Dict:
             "apoyarse en él." if di_mejora is False else
             "No hay con qué comparar el efecto de apartar discontinuidades."),
         "rop": {"rho_spearman": base["rho_rop"],
-                "nota": ("ROP NO la fija directamente el operador: si también ordena "
+                "nota": ("PR NO la fija directamente el operador: si también ordena "
                          "las litologías por UCS, la señal es de la roca y no de la "
                          "respuesta del operador.")},
         "estratos_pp": estratos,
         "advertencia_pp": (
-            "PEP = (PP + RP + AP) / ROP, y PP es la ÚNICA variable que el "
+            "PEP = (PP + RP + FP) / PR, y PP es la ÚNICA variable que el "
             "operador manipula — y la sube en roca dura. Parte de la relación SE↔UCS "
             "puede venir de esa respuesta y no de la roca. Por eso se reporta la "
             "relación DENTRO de estratos estrechos de PP: si se sostiene ahí, no es "
@@ -6254,7 +6254,7 @@ def _bins_pp(pp: float) -> float:
 
 
 def _curva_pp(puntos) -> List[Dict]:
-    """Curva PP → (ROP, SE, CV(PEP)) a partir de una lista de MWDPoint."""
+    """Curva PP → (PR, SE, CV(PEP)) a partir de una lista de MWDPoint."""
     acc: Dict[float, Dict[str, list]] = {}
     for p in puntos:
         if p.pp is None or not np.isfinite(p.pp): continue
@@ -6278,8 +6278,8 @@ def _curva_pp(puntos) -> List[Dict]:
 
 def _saturacion(curva: List[Dict]) -> Optional[float]:
     """
-    PP a partir del cual subir más deja de mejorar la ROP. Se toma el primer
-    bin cuya ROP ya alcanzó el 98% del máximo de la curva: pasado ese punto,
+    PP a partir del cual subir más deja de mejorar la PR. Se toma el primer
+    bin cuya PR ya alcanzó el 98% del máximo de la curva: pasado ese punto,
     más percusión es desgaste sin retorno.
     """
     if len(curva) < 3: return None
@@ -6300,7 +6300,7 @@ def _pendiente(xs, ys) -> Optional[float]:
 
 def pp_response_curves(solo_roca_intacta: bool = True) -> Dict:
     """
-    (Sesión 7) Curvas PP → (ROP, SE, CV(PEP)) POR DOMINIO, con punto de
+    (Sesión 7) Curvas PP → (PR, SE, CV(PEP)) POR DOMINIO, con punto de
     saturación. Estratificado por dominio siempre: el agregado se calcula
     aparte y viene con su advertencia, porque es justo la lectura que el
     confundimiento del operador vuelve engañosa.
@@ -6341,7 +6341,7 @@ def pp_response_curves(solo_roca_intacta: bool = True) -> Dict:
             f"Dentro de {dom}, subir PP "
             + ("MEJORA el avance" if (pend or 0) > 0 else
                "NO mejora el avance" if (pend or 0) == 0 else "EMPEORA el avance")
-            + (f"; la ROP satura en {sat:g} bar, y más percusión pasado ese punto es "
+            + (f"; la PR satura en {sat:g} bar, y más percusión pasado ese punto es "
                f"desgaste sin retorno." if sat is not None else
                "; no se detecta saturación en el rango observado."))
         dominios[dom] = {"curva": curva, "pp_saturacion": sat,
@@ -6441,7 +6441,7 @@ def pp_prescription(dominio: str, objetivo: str = "rop") -> Dict:
                  if d["pp_saturacion"] is not None else None)
         if mejor is None:
             mejor = max(curva, key=lambda c: c["rop_mediana"])
-        obj_txt = "maximizar ROP sin pasar el punto de saturación"
+        obj_txt = "maximizar PR sin pasar el punto de saturación"
     pp = float(np.clip(mejor["pp"], PP_MIN_OPERACIONAL, PP_MAX_OPERACIONAL))
     return {"status": "ok", "dominio": dominio, "pp_recomendada": pp,
             "objetivo": obj_txt, "rol_de_pp": "variable de decisión",
@@ -7545,10 +7545,10 @@ def _tramo_di_de_pozo(well, variante: Optional[str], largo_centro: float,
 CAL_N_MUESTRAS = 400
 CAL_SEMILLA = 42
 CAL_MIN_SONDAJES = 2
-# TODAS las presiones entran como candidatas, incluida la de avance (AP), que
+# TODAS las presiones entran como candidatas, incluida la de avance (FP), que
 # la valores por defecto no usa. Decisión del autor: qué presión queda
 # fuera lo decide la CALIBRACIÓN, con un peso cercano a cero, no un descarte
-# previo. ROP no entra: es una velocidad, no una presión.
+# previo. PR no entra: es una velocidad, no una presión.
 CAL_PARAMS = ("pp", "pr", "pd", "pf", "pa")
 
 
@@ -8951,13 +8951,13 @@ def variable_justification_report():
 # ║  dentro del dominio sino transferencia a un dominio nuevo.               ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
-# Predictoras del ML. SE queda FUERA: es exactamente (PP+RP+AP)/ROP —error de
+# Predictoras del ML. SE queda FUERA: es exactamente (PP+RP+FP)/PR —error de
 # reconstrucción 3,5e-07 sobre datos reales, correlación 1,000000— y sus cuatro
 # componentes ya están en la lista. El guardián de multicolinealidad no lo
 # detecta porque la dependencia es un cociente y no una relación lineal (el
 # máximo |r| observado entre predictoras es 0,57).
 ML_FEATURES_SIN_SE = ["vel", "pp", "pa", "pd", "pr", "pf"]
-MOTIVO_SIN_SE = ("PEP = (PP+RP+AP)/ROP, con error de reconstrucción 3,5e-07 y "
+MOTIVO_SIN_SE = ("PEP = (PP+RP+FP)/PR, con error de reconstrucción 3,5e-07 y "
                  "correlación 1,000000 sobre los datos reales: sus cuatro "
                  "componentes ya son predictoras y SE no aporta información "
                  "nueva al modelo. Sigue siendo el eje de la relación directa "
@@ -8992,8 +8992,8 @@ def _puntos_de_litologia(lito: str) -> List:
     """
     Puntos de una litología utilizables para la relación SE↔UCS.
 
-    Se exige ROP ≥ ROP_MIN_FISICA. Sin ese filtro entran mediciones con ROP
-    tendiendo a cero, y como PEP = (PP+RP+AP)/ROP eso produce valores de hasta
+    Se exige PR ≥ ROP_MIN_FISICA. Sin ese filtro entran mediciones con PR
+    tendiendo a cero, y como PEP = (PP+RP+FP)/PR eso produce valores de hasta
     3,5e11 bar·min/m: no son una medición, son una división por casi cero. Con
     ellos dentro, en el estrato bajo de PP más del 16% de los puntos son
     absurdos, la σ robusta de SE explota a 3,3e10, y el mapeo sobre la banda
@@ -9017,7 +9017,7 @@ def _nota_control_pp() -> str:
     if get_param("pep.control_pp") == "por_estrato":
         return ("PEP resumida POR ESTRATO DE PP (mediana dentro de cada tramo, "
                 "después mediana de las medianas).")
-    return ("PEP resumida DIRECTO, sin estratificar por PP: la PEP ya lleva ROP "
+    return ("PEP resumida DIRECTO, sin estratificar por PP: la PEP ya lleva PR "
             "en el denominador, así que la percusión entra contrastada contra "
             "la velocidad y el número sigue hablando de la roca.")
 
@@ -9027,9 +9027,9 @@ def _se_representativa(lito: str) -> Optional[float]:
     SE representativa de una litología.
 
     POR QUÉ YA NO SE ESTRATIFICA POR PP (decisión del autor, con su razón):
-    PEP = (PP + RP + AP) / ROP lleva ROP en el denominador, así que la
+    PEP = (PP + RP + FP) / PR lleva PR en el denominador, así que la
     percusión entra CONTRASTADA contra la velocidad. Si subir PP consigue
-    subir ROP, la SE se normaliza y sigue hablando de la roca; si la SE no se
+    subir PR, la SE se normaliza y sigue hablando de la roca; si la SE no se
     mueve pese a más PP, es porque la roca resiste esa percusión, que también
     es hablar de la roca. En los dos casos el número describe el macizo y no
     la decisión del operador.
@@ -9556,8 +9556,8 @@ def predict_ucs_relacion() -> Dict:
 
 MOTIVO_BANDA_SIN_ML = (
     "El ML NO usa la etiqueta por banda. Esa etiqueta es f(SE), y aunque SE "
-    "está fuera de sus predictoras, PP+RP+AP y ROP siguen dentro y determinan "
-    "SE exactamente (PEP = (PP+RP+AP)/ROP, error de reconstrucción 3,5e-07). El "
+    "está fuera de sus predictoras, PP+RP+FP y PR siguen dentro y determinan "
+    "SE exactamente (PEP = (PP+RP+FP)/PR, error de reconstrucción 3,5e-07). El "
     "bosque aprendería f y sería una copia peor de la relación directa: es "
     "circularidad lavada a través de la identidad. El ML se queda con la "
     "etiqueta central, que es una pregunta distinta y legítima.")
@@ -9647,7 +9647,7 @@ def _se_escala_lito(lito: str) -> Optional[Tuple[float, float]]:
     (SE mediana, σ robusta de SE) de una litología.
 
     Mismo criterio que `_se_representativa`: por defecto NO se estratifica por
-    PP, porque SE ya lleva ROP en el denominador y la percusión entra
+    PP, porque SE ya lleva PR en el denominador y la percusión entra
     contrastada contra la velocidad. «pep.control_pp» conserva el otro camino.
     """
     pts = _puntos_de_litologia(lito)
@@ -10060,7 +10060,7 @@ def top_drilling(group_id, n=5, method="min_se_cv"):
       MÁS ESTABLE/consistente, aunque su SE medio no sea el mínimo absoluto.
     - "min_se": minimiza directamente la SE media del segmento (menor energía
       específica = perforación más eficiente energéticamente).
-    - "max_rop": maximiza la ROP media del segmento (mayor velocidad de
+    - "max_rop": maximiza la PR media del segmento (mayor velocidad de
       penetración = mayor productividad).
 
     En los 3 casos, los segmentos candidatos pertenecen al MISMO dominio
@@ -10829,7 +10829,7 @@ COLOR_FIELDS = {
     "se":("SE [bar·min/m]", 0, 500, False,
           "PEP, presión específica de penetración: cuánto le cuesta a la perforadora "
           "avanzar. Es el eje de la relación directa con UCS."),
-    "vel":("ROP [m/min]", 0, 2.5, False, "Velocidad de penetración."),
+    "vel":("PR [m/min]", 0, 2.5, False, "Velocidad de penetración."),
     "pp":("Percusión [bar]", 0, 230, False,
           "La única variable que manipula el operador."),
     "pa":("Avance [bar]", 0, 150, False, "Presión de avance."),
@@ -10854,20 +10854,20 @@ def _fmt_ucs_interval(p):
     return f"{p.ucs_ml:.0f} MPa"
 
 REPORT_VARS = {
-    "vel": "ROP [m/min]", "pp": "Percusión [bar]", "pa": "Avance [bar]",
+    "vel": "PR [m/min]", "pp": "Percusión [bar]", "pa": "Avance [bar]",
     "pr": "Rotación [bar]", "pd": "Damper [bar]", "pf": "Flujo [bar]",
     "se": "SE [bar·min/m]", "di": "DI (discontinuidad)",
     "ucs_ml": "UCS ML [MPa]", "ucs_matriz": "UCS matriz (sin discontinuidades) [MPa]",
 }
 # (P3-3.6) Variables cuyo histograma se recorta EN LA VISTA a percentiles
 # 1-99 (nunca se filtran ni se borran datos). SE se aplasta con valores
-# extremos cuando ROP tiende a cero (P_percusión+P_rotación+P_avance)/ROP.
+# extremos cuando PR tiende a cero (P_percusión+P_rotación+P_avance)/PR.
 REPORT_HIST_CLIP_VARS = {"se"}
 
 # Límite FÍSICO de SE en los reportes por pozo, distinto del recorte de vista
-# de arriba. Cuando ROP tiende a cero el equipo está rotando el bit para
+# de arriba. Cuando PR tiende a cero el equipo está rotando el bit para
 # LAVADO, no perforando —esto pasa siempre, con cualquier faena—, y
-# SE=(PP+RP+AP)/ROP se dispara a valores sin sentido físico (hasta 3,5e11
+# SE=(PP+RP+FP)/PR se dispara a valores sin sentido físico (hasta 3,5e11
 # bar·min/m sobre datos reales). No es un percentil de la distribución —eso
 # lo prohíbe CLAUDE.md—: es un techo trazable a la física de la fórmula,
 # igual categoría que ROP_MIN_FISICA. Se aplica SOLO a la vista de reportes
@@ -10885,7 +10885,7 @@ def well_basic_stats(well_name):
     """
     Estadísticas descriptivas básicas de un pozo: media, mediana, std, min,
     max por variable. SE queda bajo SE_MAX_REPORTE: sin el techo, un solo
-    registro con ROP≈0 (lavado del bit, no perforación) manda el máximo a
+    registro con PR≈0 (lavado del bit, no perforación) manda el máximo a
     valores sin sentido físico y arrastra con él media y desviación.
     """
     well = wells.get(well_name)
@@ -10913,12 +10913,12 @@ def build_well_report_figure(well_name, hist_vars=None, profile_var="di"):
     usuario.
 
     (P3-3.6) El histograma de variables en REPORT_HIST_CLIP_VARS (SE: se
-    aplasta cuando ROP tiende a cero) se recorta EN LA VISTA a los percentiles
+    aplasta cuando PR tiende a cero) se recorta EN LA VISTA a los percentiles
     1-99 — los datos no se filtran ni se borran, solo cambia el rango visible
     del eje, y el subtítulo lo declara.
 
     (B5) SE, además, queda bajo el techo FÍSICO de SE_MAX_REPORTE en TODO el
-    reporte —perfil e histograma—, no solo en el rango del eje. Con ROP≈0 el
+    reporte —perfil e histograma—, no solo en el rango del eje. Con PR≈0 el
     equipo está lavando el bit, no perforando; eso pasa siempre, y sin este
     techo un solo registro dispara la SE a valores sin sentido y aplasta la
     escala de todo el gráfico. Es un límite físico trazable (misma categoría
@@ -12452,7 +12452,7 @@ def _tronadura_advertencia_di() -> str:
     nombre = di_activo()
     if nombre == DI_VARIANTE_CONVENCION:
         return ("El DI usa los pesos de convención de Fernández et al. 2023 "
-                "(PP=0,35 · DP=0,25 · FP=0,20 · RP=0,20), NO calibrados contra "
+                "(PP=0,35 · DP=0,25 · FLP=0,20 · RP=0,20), NO calibrados contra "
                 "el testigo de esta faena.")
     v = di_variantes.get(nombre)
     if v is None:
@@ -14931,7 +14931,7 @@ def do_di(n, window, thresh, w_pp, w_pd, w_pf, w_pr, w_pa, ref):
         return x, None
     campos = [(window, "Ventana", 3), (thresh, "Umbral", 0.0),
              (w_pp, "Peso PP", 0.0), (w_pd, "Peso DP", 0.0),
-             (w_pf, "Peso FP", 0.0), (w_pr, "Peso RP", 0.0),
+             (w_pf, "Peso FLP", 0.0), (w_pr, "Peso RP", 0.0),
              (w_pa, "Peso avance", 0.0)]
     valores, errores = [], []
     for v, etq, lo in campos:
@@ -15494,11 +15494,11 @@ def do_topn(n, group_id, method):
     if not results:
         return dbc.Alert("Sin segmentos candidatos suficientes en este dominio (mín. 5 muestras continuas).",
                           color="warning", style={"fontSize":"11px","padding":"6px 10px"})
-    method_labels = {"min_se_cv":"Mínima variación interna de SE","min_se":"Mínima SE","max_rop":"Máxima ROP"}
+    method_labels = {"min_se_cv":"Mínima variación interna de SE","min_se":"Mínima SE","max_rop":"Máxima PR"}
     header = dbc.Row([
         dbc.Col(html.Small("Pozo", style={"color":"#888","fontWeight":700}), width=2),
         dbc.Col(html.Small("Prof. [m]", style={"color":"#888","fontWeight":700}), width=1),
-        dbc.Col(html.Small("ROP", style={"color":"#888","fontWeight":700}), width=1),
+        dbc.Col(html.Small("PR", style={"color":"#888","fontWeight":700}), width=1),
         dbc.Col(html.Small("SE", style={"color":"#888","fontWeight":700}), width=1),
         dbc.Col(html.Small("CV(PEP)", style={"color":"#888","fontWeight":700}), width=1),
         dbc.Col(html.Small("PP", style={"color":"#888","fontWeight":700}), width=1),
@@ -15841,7 +15841,7 @@ def _step2():
             dbc.Row([
                 dbc.Col(dcc.Dropdown(id="sel-norm-var", value="se", clearable=False,
                     options=[{"label":l,"value":k} for k,l in
-                             {"se":"PEP","vel":"ROP","pp":"PP","pa":"AP","pr":"RP","pd":"DP","pf":"FP"}.items()],
+                             {"se":"PEP","vel":"PR","pp":"PP","pa":"FP","pr":"RP","pd":"DP","pf":"FLP"}.items()],
                     style={"fontSize":"11px"}), width=4),
                 dbc.Col(dcc.Dropdown(id="sel-norm-method", value="outliers_iqr", clearable=False,
                     options=[{"label":l,"value":v} for l,v in
@@ -15944,9 +15944,9 @@ def _di_sensitivity_card():
 
 
 # Nombres SIN ambigüedad de las cinco presiones candidatas. La sigla sola no
-# alcanza: en el XML IREDES «FP» es el AVANCE, mientras que en Pucobre —y en
-# esta herramienta— FP es el FLUJO de barrido y AP el avance. El nombre
-# completo al lado de la sigla deja claro cuál es cuál.
+# alcanza: «FP» (avance) y «FLP» (flujo de barrido) se confunden con facilidad,
+# y en Pucobre FP se usa para el barrido. La herramienta usa las siglas del
+# XML IREDES; el nombre completo al lado deja claro cuál es cuál.
 # El nombre completo se arma desde CAL_SIGLAS: la sigla se escribe UNA vez.
 CAL_ETIQUETAS = {k: f"{nombre} ({CAL_SIGLAS[k]})" for k, nombre in (
     ("pp", "Percusión"), ("pd", "Dámper"), ("pf", "Flujo"),
@@ -16078,7 +16078,7 @@ def _step3():
             html.Small(f"DIᵢ = √(Σⱼ βⱼ · zⱼ(i)²), ventana {DI_DEFAULTS['window']} muestras "
                        f"= {DI_VENTANA_CM:g} cm.", style={"color":"#ccc"}),
             html.Br(), html.Br(),
-            html.Small("Pesos los valores por defecto: PP=0.35, DP=0.25, FP=0.20, RP=0.20",
+            html.Small("Pesos los valores por defecto: PP=0.35, DP=0.25, FLP=0.20, RP=0.20",
                        style={"color":"#666"}),
         ]),
         # La calibración va ANTES de la configuración: es movvar contra el
@@ -16116,8 +16116,8 @@ def _step3():
                 dbc.Col([html.Small("Dámper (DP)", style={"color":"#666","display":"block"}),
                           dbc.Input(id="di-w-pd", type="number", value=_di_panel_valor("pd", 0.0),
                                      step=0.01, size="sm", style={"fontSize":"11px"})], width=2),
-                # Esta entrada escribe `pf`, el FLUJO de barrido: FP en la
-                # nomenclatura de Pucobre (en el XML IREDES se llama FLP).
+                # Esta entrada escribe `pf`, el FLUJO de barrido: FLP en el
+                # XML IREDES (en la nomenclatura de Pucobre se llama FP).
                 dbc.Col([html.Small(CAL_ETIQUETAS["pf"], style={"color":"#666","display":"block"}),
                           dbc.Input(id="di-w-pf", type="number", value=_di_panel_valor("pf", 0.0),
                                      step=0.01, size="sm", style={"fontSize":"11px"})], width=2),
@@ -16128,7 +16128,7 @@ def _step3():
                 # acá, así que una variante calibrada que le diera peso lo
                 # perdía en silencio en cuanto alguien volvía a pulsar
                 # «Calcular DI». Ahora participa como las otras cuatro.
-                dbc.Col([html.Small("Avance (FP/AP)", style={"color":"#666","display":"block"}),
+                dbc.Col([html.Small(CAL_ETIQUETAS["pa"], style={"color":"#666","display":"block"}),
                           dbc.Input(id="di-w-pa", type="number",
                                      value=_di_panel_valor("pa", 0.0),
                                      step=0.01, size="sm", style={"fontSize":"11px"})], width=2),
@@ -16533,7 +16533,7 @@ def _step5():
                     options=[
                         {"label":"Mínima variación interna de PEP (CV, cm a cm)","value":"min_se_cv"},
                         {"label":"Mínima PEP (perforación más eficiente)","value":"min_se"},
-                        {"label":"Máxima ROP (mayor productividad)","value":"max_rop"},
+                        {"label":"Máxima PR (mayor productividad)","value":"max_rop"},
                     ], value="min_se_cv", style={"fontSize":"11px"}), width=5),
                 dbc.Col(dbc.Button("Ranking", id="btn-topn", color="info", outline=True, size="sm"), width=2),
             ], className="g-1 mb-2") if domain_groups else

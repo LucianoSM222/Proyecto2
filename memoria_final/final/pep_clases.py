@@ -1,8 +1,8 @@
-"""PEP contra UCS referencial y ROP en roca intacta (DI ≤ 1) y fracturada
+"""PEP contra UCS referencial y PR en roca intacta (DI ≤ 1) y fracturada
 (DI > 1), sobre la POBLACIÓN completa (sin muestreo): ρ de Spearman y R² de
 los ajustes lineal y parabólico. Configuración final (limpieza estándar, serie
 depurada, pesos calibrados a 5 m de final.json). Mismo filtro que la figura
-PEP vs UCS: ROP ≥ mínimo físico, PEP finita y ≤ 1.000, litología con UCS
+PEP vs UCS: PR ≥ mínimo físico, PEP finita y ≤ 1.000, litología con UCS
 referencial.
 Uso: python3 pep_clases.py final.json pep_clases.json
 """

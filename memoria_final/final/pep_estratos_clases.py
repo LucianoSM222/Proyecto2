@@ -1,9 +1,9 @@
-"""PEP, ROP y UCS modelada (Random Forest, mediana de los árboles) por
+"""PEP, PR y UCS modelada (Random Forest, mediana de los árboles) por
 litología e intervalo de PP de 10 bar, separando roca continua (DI ≤ 1) y
 fracturada (DI > 1). Configuración final: limpieza estándar, serie depurada,
 pesos calibrados a 5 m de final.json, modelo de producción reentrenado igual
 que en final_calc.py. Registros entrenables (limpieza) con litología con UCS
-referencial, ROP ≥ mínimo físico y PEP finita; intervalos con ≥ pp.min_puntos_bin.
+referencial, PR ≥ mínimo físico y PEP finita; intervalos con ≥ pp.min_puntos_bin.
 Uso: python3 pep_estratos_clases.py final.json pep_estratos_clases.json
 """
 import sys, json, time

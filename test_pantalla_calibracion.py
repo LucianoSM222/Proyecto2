@@ -131,13 +131,13 @@ def estan_las_cinco_presiones_con_su_nombre():
         check(palabra in txt, f"la pantalla ofrece «{palabra}»")
 
     # El punto 2 del pedido: la sigla no puede estar sobre la variable de al lado.
-    check(gw.CAL_ETIQUETAS["pf"] == "Flujo (FP)",
-          "el FLUJO de barrido se rotula FP, nomenclatura de Pucobre",
+    check(gw.CAL_ETIQUETAS["pf"] == "Flujo (FLP)",
+          "el FLUJO de barrido se rotula FLP, sigla del XML",
           gw.CAL_ETIQUETAS["pf"])
-    check(gw.CAL_ETIQUETAS["pa"] == "Avance (AP)",
-          "y el AVANCE lleva AP", gw.CAL_ETIQUETAS["pa"])
+    check(gw.CAL_ETIQUETAS["pa"] == "Avance (FP)",
+          "y el AVANCE lleva FP", gw.CAL_ETIQUETAS["pa"])
     # Contra el orden inmutable de Val, que es la fuente de verdad.
-    check(gw.MWD_VAL_ORDER == ("LT", "ROP", "PP", "FP", "DP", "RP", "FLP"),
+    check(gw.MWD_VAL_ORDER == ("LT", "PR", "PP", "FP", "DP", "RP", "FLP"),
           "el orden de Val sigue siendo el de la convención", gw.MWD_VAL_ORDER)
 
 
@@ -145,8 +145,8 @@ def el_panel_del_di_ya_no_llama_FP_al_barrido():
     section("Calibración — el panel del DI deja de cruzar las siglas")
     reset()
     txt = " ".join(_textos(gw._step3()))
-    check("Flujo (FP)" in txt,
-          "la entrada que escribe `pf` se rotula Flujo (FP)", txt[:200])
+    check("Flujo (FLP)" in txt,
+          "la entrada que escribe `pf` se rotula Flujo (FLP)", txt[:200])
     check("Percusión (PP)" in txt and "Dámper (DP)" in txt
           and "Rotación (RP)" in txt,
           "y las otras tres también se nombran completas")

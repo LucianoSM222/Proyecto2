@@ -1,7 +1,7 @@
 """¿Qué ajuste UCS referencial ~ PEP representa mejor los datos, y sobre qué
 conjunto? Configuración final (limpieza estándar, serie depurada, pesos
 calibrados a 5 m de final.json). Registros entrenables con litología con UCS
-referencial, ROP ≥ mínimo físico y PEP finita ≤ 1.000.
+referencial, PR ≥ mínimo físico y PEP finita ≤ 1.000.
 
 Conjuntos: «intacta» (DI ≤ 1) y «todo» (intacta + fracturada).
 Agregación:
@@ -9,7 +9,7 @@ Agregación:
 - litologia: mediana de PEP por litología (un punto por litología);
 - litologia_caseron: mediana por litología y caserón;
 - litologia_estrato_pp: mediana por litología y estrato de PP de 10 bar
-  (≥ pp.min_puntos_bin registros), como la figura PEP–UCS–ROP–PP.
+  (≥ pp.min_puntos_bin registros), como la figura PEP–UCS–PR–PP.
 Formas: lineal, parabólica, potencial, exponencial y logarítmica; el R² se
 mide SIEMPRE en MPa (espacio original) para que sean comparables.
 Uso: python3 pep_ajustes.py final.json pep_ajustes.json

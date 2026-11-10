@@ -10,6 +10,17 @@ from matplotlib.patches import FancyBboxPatch, FancyArrowPatch, Rectangle
 S = "/home/user/Proyecto2/memoria_final"
 D = json.load(open(f"{S}/rf_figura_datos.json", encoding="utf-8"))
 C, RF = D["config"], D["config"]["rf"]
+# Siglas del XML IREDES (2026-11-10): PR, FP = avance, FLP = barrido. Si los
+# datos traen las siglas viejas (ROP, AP = avance, FP = barrido) se traducen
+# al dibujar; el árbol y la importancia salen de final.json y pueden ir con
+# siglas distintas de ml_labels, así que cada uno se revisa por separado.
+_XML_VIEJA = {"ROP": "PR", "AP": "FP", "FP": "FLP"}
+def _xml(lista):
+    lista = list(lista)
+    return [_XML_VIEJA.get(x, x) for x in lista] if any(x in ("ROP", "AP") for x in lista) else lista
+C["ml_labels"] = _xml(C["ml_labels"])
+_VIEJO_IMP = any(k in ("ROP", "AP") for k in D["importancia"])
+D["importancia"] = dict(zip(_xml(D["importancia"]), D["importancia"].values()))
 
 # Liberation Sans: métricamente compatible con Arial, que no está en el sistema.
 plt.rcParams.update({"font.family": "Carlito", "font.size": 8.5})
@@ -124,7 +135,7 @@ ax.text(26.0, 54.7, f"Árbol real del bosque — primeros 2 niveles de {mil(AR['
 def nodo(n, x, y, w):
     if n is None: return
     t = (f"hoja\n{mil(n['n_muestras'])} muestras\n{dec(n['valor_UCS'],1)} MPa" if n.get("hoja")
-         else f"{n['variable']} ≤ {dec(n['umbral'],2)}\n{mil(n['n_muestras'])} muestras\n{dec(n['valor_UCS'],1)} MPa")
+         else f"{_XML_VIEJA.get(n['variable'], n['variable']) if _VIEJO_IMP else n['variable']} ≤ {dec(n['umbral'],2)}\n{mil(n['n_muestras'])} muestras\n{dec(n['valor_UCS'],1)} MPa")
     ax.add_patch(FancyBboxPatch((x - w / 2, y), w, 2.9, boxstyle="round,pad=0.1,rounding_size=0.35",
                                 facecolor="white", edgecolor="#1F4E79", linewidth=0.8, zorder=3))
     for i, ln in enumerate(t.split("\n")):

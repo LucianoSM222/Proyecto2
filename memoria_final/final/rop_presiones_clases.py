@@ -1,4 +1,4 @@
-"""ρ de Spearman simple entre la ROP y PP, AP, RP y DP en roca continua
+"""ρ de Spearman simple entre la PR y PP, FP, RP y DP en roca continua
 (DI ≤ 1) y fracturada (DI > 1). Mismo filtro que rop_presiones.py, salvo el DI.
 Uso: python3 rop_presiones_clases.py final.json rop_presiones_clases.json
 """
@@ -11,7 +11,7 @@ import cargar_caserones as cc
 
 SRC, OUT = sys.argv[1], sys.argv[2]
 FIN = json.load(open(SRC, encoding="utf-8"))["di_vigente"]
-PRES = [("pp", "PP"), ("pa", "AP"), ("pr", "RP"), ("pd", "DP")]
+PRES = [("pp", "PP"), ("pa", "FP"), ("pr", "RP"), ("pd", "DP")]
 cc.asegurar_datos_extraidos()
 with open(cc.VOCABULARIO, encoding="utf-8") as f: gw.import_vocabulary(f.read())
 gw.seed_param_registry()
@@ -26,7 +26,7 @@ filas = {"continua": [], "fracturada": []}; pozos = {"continua": set(), "fractur
 for wn, w in gw.wells.items():
     for p in w.points:
         if not p.entrenable or p.lito not in anclas or p.di is None: continue
-        if p.vel is None or not np.isfinite(p.vel): continue   # mismo conjunto que el entrenamiento: sin corte de ROP
+        if p.vel is None or not np.isfinite(p.vel): continue   # mismo conjunto que el entrenamiento: sin corte de PR
         v = [getattr(p, k) for k, _ in PRES]
         if any(x is None or not np.isfinite(x) for x in v): continue
         k = "fracturada" if p.di > FIN["umbral"] else "continua"

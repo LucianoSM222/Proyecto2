@@ -10,6 +10,10 @@ from matplotlib.patches import FancyBboxPatch, FancyArrowPatch, Rectangle, Ellip
 
 S = "/home/user/Proyecto2/memoria_final"
 D = json.load(open("/home/user/Proyecto2/memoria_final/rf_figura_datos.json", encoding="utf-8"))
+# Siglas del XML IREDES (2026-11-10); traduce si los datos traen las viejas.
+_XML_VIEJA = {"ROP": "PR", "AP": "FP", "FP": "FLP"}
+if any(x in ("ROP", "AP") for x in D["config"]["ml_labels"]):
+    D["config"]["ml_labels"] = [_XML_VIEJA.get(x, x) for x in D["config"]["ml_labels"]]
 RF = D["config"]["rf"]
 emb = {e["etapa"]: e["quedan"] for e in D["embudo"]}
 gk, lo = D["groupkfold"], D["loocv"]

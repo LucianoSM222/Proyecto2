@@ -15,10 +15,10 @@ están en `figuras/finales/`; los valores de todas las tablas, en
 | Percusión de empate | caída ≥ 0,25 respecto de las dos vecinas, vecinas a ≤ 12,5% entre sí (12.786 sobre el total; 8.911 fuera del emboquillado) |
 | Total no entrenable por limpieza | 112.961 (11,5%) |
 | DI | ventana 14 (≈ 28 cm), umbral 1,0, PP · RP · DP · FP (sin avance) |
-| Pesos del DI (calibrados a 5 m) | **PP 0,01 · RP 0,39 · DP 0,07 · FP 0,54** |
+| Pesos del DI (calibrados a 5 m) | **PP 0,01 · RP 0,39 · DP 0,07 · FLP 0,54** |
 | Random Forest | 200 árboles · profundidad 8 · min_samples_split 6 · min_samples_leaf 3 · max_features √p · semilla 42 |
 | Agregación | **mediana** de los 200 árboles (predicción y todas las métricas) |
-| Siglas | FP = flujo, AP = avance (Pucobre) · PEP = presión específica de penetración |
+| Siglas | del XML IREDES: PR = velocidad de penetración, FP = avance, FLP = flujo de barrido (2026-11-10) · PEP = (PP + RP + FP) / PR, presión específica de penetración |
 | UCS de laboratorio | «referencial» de cada litología (antes «ancla») |
 
 ## Cifras
@@ -36,7 +36,7 @@ están en `figuras/finales/`; los valores de todas las tablas, en
 | LOOCV-Caserón | **R² −2,766** (PCC_0042 −3,55 · PCC_1541 −4,14 · PCS_1043 −0,61; PCS_1059 tiene una sola etiqueta: indefinido); RMSE medio 50,5 MPa; ρ +0,111 |
 | Línea base «media global» (153,3 MPa) | RMSE 36,1 MPa |
 | Métodos bajo LOOCV-Caserón (media de los caserones) | RMSE: línea base 48,9 · banda 96,5 · relación directa 79,5 · RF 50,6 MPa · r de Pearson: banda +0,110 · relación +0,140 · RF +0,153 · ρ de Spearman: banda +0,024 · relación +0,022 · RF +0,111 (línea base constante: correlación indefinida) |
-| Importancia por permutación | FP 0,223 · RP 0,131 · PEP 0,049 · PP 0,043 · AP 0,041 · ROP 0,016 · DP 0,009 (271 pozos no vistos) |
+| Importancia por permutación | FLP 0,223 · RP 0,131 · PEP 0,049 · PP 0,043 · FP 0,041 · PR 0,016 · DP 0,009 (271 pozos no vistos) |
 | UCS predicha, p50 vs. referencial | Kpcli 167,3 (180) · Bht 137,6 (128,1) · Brecha mixta 154,6 (111,5) · Kpcls 133,0 (60) |
 | Comparación de algoritmos (R² prueba / entrenamiento) | **RF +0,166 / 0,485** · HGB +0,147 / 0,594 · Lineal +0,136 / 0,184 · MLP +0,088 / 0,492 · KNN −0,059 / 0,703 (59.326 registros, 76 pozos) |
 | Concordancia DI ↔ mallas, PCC_1541 | 1.596 picos; en pozos con cruces 1.320; **precisión 58,0%** (azar 52,6%) · **recall 92,8%** (radio 3 m) |
@@ -60,7 +60,7 @@ están en `figuras/finales/`; los valores de todas las tablas, en
 - **La validación de la calibración pasa a positiva** (ρ +0,051, antes
   −0,157), aunque sigue siendo baja: con 4 sondajes la calibración no se
   asienta.
-- **Los pesos vuelven a moverse:** FP 0,54 y RP 0,39 dominan; PP y DP quedan
+- **Los pesos vuelven a moverse:** FLP 0,54 y RP 0,39 dominan; PP y DP quedan
   casi en cero.
 
 ## Figuras y tablas (`figuras/finales/`)
@@ -90,7 +90,7 @@ están en `figuras/finales/`; los valores de todas las tablas, en
 | `T6_03_dominios.png/.csv` | Tabla 6.3 |
 | `T6_04_ranking_recomendaciones.png/.csv` | Tabla 6.4 |
 | `F6_13_PEP_UCS_ROP_PP.png` | Fig. 6.13 |
-| `F6_13b_PEP_UCS_ROP_PP_registros.png` | PEP por registro contra UCS referencial, ROP y PP (color = PP) |
+| `F6_13b_PEP_UCS_ROP_PP_registros.png` | PEP por registro contra UCS referencial, PR y PP (color = PP) |
 | `tablas_capitulo6.xlsx` | valores de todas las tablas y figuras, una hoja por tema |
 | `F_RF_esquema.png`, `F_RF_detalle.png` | esquema y detalle del bosque |
 | `F_DI_vs_estructura.png` | DI de P20_H12 contra el modelo geológico |

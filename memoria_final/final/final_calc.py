@@ -240,7 +240,7 @@ for lito, v in porlito.items():
 log(f"ucs por litología: {[(k, v['ancla'], round(v['p50'],1)) for k, v in R['ucs_por_litologia'].items()]}")
 guardar()
 
-# ── PEP por litología × estrato de PP (figura PEP vs UCS lab, ROP, PP) ──────
+# ── PEP por litología × estrato de PP (figura PEP vs UCS lab, PR, PP) ──────
 cel = defaultdict(lambda: {"pep": [], "rop": []})
 for p in PTS:
     if not p.entrenable or p.lito not in anclas or p.di is None or p.di > 1.0: continue

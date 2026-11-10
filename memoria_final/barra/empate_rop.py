@@ -1,10 +1,10 @@
-"""Percusión de empate detectada por la caída relativa de la ROP (no de la PP).
+"""Percusión de empate detectada por la caída relativa de la PR (no de la PP).
 
 Mismo detector que el filtro vigente (detectar_percusion_de_empate: un
 registro cae ≥ umbral bajo el promedio de sus dos vecinos y estos se parecen
-entre sí), aplicado a la ROP. Dos escenarios:
+entre sí), aplicado a la PR. Dos escenarios:
 
-  R1: solo la caída relativa de ROP ≥ 0,25.
+  R1: solo la caída relativa de PR ≥ 0,25.
   R2: R1 + periodicidad de barra a lo largo del pozo: en cada pozo se busca la
       fase φ de la grilla φ + k·L (L = 1,756 m) que alinea más marcas a ±6 cm;
       se aceptan solo las marcas sobre esa grilla y solo si la grilla se

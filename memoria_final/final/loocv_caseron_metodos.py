@@ -54,7 +54,7 @@ se = X[:, gw.ML_FEATURES.index("se")]
 LO, HI = gw.UCS_CONFIG["physical_min"], gw.UCS_CONFIG["physical_max"]
 
 # PEP de cada litología por caserón, con el mismo criterio que la herramienta
-# (_puntos_de_litologia): entrenable, ROP ≥ mínimo físico, roca intacta.
+# (_puntos_de_litologia): entrenable, PR ≥ mínimo físico, roca intacta.
 pep_cl = defaultdict(list)
 for w in gw.wells.values():
     c = gw.caseron_de_pozo(w)
