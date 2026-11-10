@@ -1,0 +1,32 @@
+{
+ "registros_PR_cero": 19950,
+ "pozos_con_PR_cero": 928,
+ "rachas": 16775,
+ "rachas_por_largo": {
+  "1": 15459,
+  "2": 950,
+  "3": 137,
+  "4": 59,
+  "5": 39,
+  "6 o más": 131
+ },
+ "registros_en_rachas_ge_10": 1287,
+ "racha_mas_larga": 93,
+ "posicion_registros": {
+  "emboquillado (< 2 m)": 3141,
+  "cuerpo del pozo": 16432,
+  "final del pozo": 377
+ },
+ "por_que_no_se_detecta_registros": {
+  "en el borde del registro (sin vecino a un lado)": 1439,
+  "vecinos distintos entre sí (no «se recupera»)": 11585,
+  "cumple: el detector sí lo marca": 2932,
+  "racha de 2 o más registros (el detector busca uno solo)": 3994
+ },
+ "periodicidad": {
+  "rachas_fuera_emboquillado": 14236,
+  "rachas_sobre_grilla_de_barra": 10124,
+  "esperado_al_azar": 2460.7,
+  "azar_sd": 35.0
+ }
+}
