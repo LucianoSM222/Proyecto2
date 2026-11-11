@@ -34,6 +34,10 @@ mina subterránea de cobre.
   en bar·min/m. Distinto de Teale 1965: son presiones de
   reacción hidráulica, no valores impuestos. La distinción se preserva en todo
   comentario.
+  Observación del profesor guía (2026-11-11): la suma de presiones de circuitos
+  distintos carece de sustento físico. Se evaluaron alternativas (Teale con
+  constantes del equipo, normalización de Schunnesson 1998); decisión del
+  autor: la PEP se MANTIENE tal como está, sin cambios en código ni figuras.
 - UCS: límites físicos 0 a 450 MPa. Sin truncamiento silencioso jamás.
 - PP: 90 a 230 bar. Es la ÚNICA variable manipulada por el operador.
 - Validación: GroupKFold por pozo y LOOCV-Caserón (un caserón fuera). El
