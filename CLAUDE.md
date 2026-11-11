@@ -39,8 +39,9 @@ mina subterránea de cobre.
   constantes del equipo, normalización de Schunnesson 1998); decisión del
   autor: la PEP se MANTIENE tal como está, sin cambios en código ni figuras.
 - UCS: límites físicos 0 a 450 MPa. Sin truncamiento silencioso jamás.
-- PP: 90 a 225 bar (antes 230; decisión del autor 2026-11-11). Es la ÚNICA
-  variable manipulada por el operador.
+- PP: 90 a 230 bar. Es la ÚNICA variable manipulada por el operador. La meseta
+  más alta sostenida 5 m es 225,1 bar (`meseta_maxima.py`): un tope de 225
+  parte el punto de operación.
 - Validación: GroupKFold por pozo y LOOCV-Caserón (un caserón fuera). El
   bosque se evalúa y predice con la MEDIANA de sus 200 árboles. La
   LOOCV-Litología se retiró de la memoria (decisión del autor, 2026-10-22);
@@ -63,21 +64,28 @@ mina subterránea de cobre.
     fijo (`apply_inicio_filter`, modo "fijo") sigue disponible en el Paso 2.
   · **Límites del equipo** (`add_limites_equipo_filter`, id interno
     `rango_fisico`, alias `add_rango_fisico_pp_filter`): PR 0,1-1,5 m/min,
-    PP 90-225, FP 20-150, DP 25-150, RP 30-60, FLP 2-10 bar. Solo
-    entrenamiento; la serie del DI pierde solo PR > `limites.pr_max_di`
-    (10 m/min, cavidades). Parámetros `limites.*` y `pp.min_bar/max_bar`.
+    PP 90-230, FP 20-150, DP 25-150, RP 30-80, FLP 2-10 bar; todo registro
+    fuera no entrena. Parámetros `limites.*` y `pp.min_bar/max_bar`. Topes de
+    PP y RP medidos: meseta más alta sostenida 5 m = 225,1 y 81 bar.
+    CRITERIO EQUIPO / ROCA (decisión del autor, 2026-11-11): lo que es del
+    EQUIPO sale también de la serie del DI —PR = 0, PP < mínimo, FP < mínimo,
+    PR > `limites.pr_max_di` (10 m/min)—; lo que puede ser ROCA —PR alta por
+    cavidades, RP, DP, FLP fuera de rango— se queda en el DI.
   · Continuidad del registro (salto > 2,95 cm ≈ 1,5 × el espaciamiento
     nominal de 2 cm): solo entrenamiento.
   · La **regulación automática de la percusión** (`detectar_percusion_de_empate`,
     id `percusion_empate`) SALIÓ de la limpieza estándar (2026-11-11); sigue
     disponible como filtro opcional del Paso 2.
-  Las cifras de registros de la limpieza anterior (emboquillado 72.752, etc.)
-  quedaron obsoletas: se rehacen en la próxima corrida de `final_calc.py`.
+  Sobre los cuatro caserones (`memoria_final/barra/limpieza_vigente.py`):
+  emboquillado 75.104 (corte mediano 1,50 m, 11 pozos sin meseta), cambio de
+  barra 19.424, límites del equipo 46.806, continuidad 5.201; entrenables
+  835.885 (85,1%), en la serie del DI 864.589 (88,0%).
 - El DI se calcula sobre la SERIE DEPURADA (`mascara_serie_di`,
-  `di_profile_serie`): el emboquillado, el cambio de barra y la PR sobre
-  10 m/min salen de la serie antes de la varianza móvil y la estandarización por pozo,
-  y su DI queda en `None`. Los límites del equipo y la continuidad solo excluyen del
-  entrenamiento del UCS. La calibración contra RQD usa la misma serie
+  `di_profile_serie`): el emboquillado, el cambio de barra y los registros
+  en que el equipo no perfora (PR = 0, PP o FP bajo su mínimo, PR > 10 m/min)
+  salen de la serie antes de la varianza móvil y la estandarización por pozo,
+  y su DI queda en `None`. Los demás límites del equipo y la continuidad solo
+  excluyen del entrenamiento del UCS. La calibración contra RQD usa la misma serie
   (`_z2_por_param`). Decisión del autor, 2026-10-22.
 
 ## Prohibiciones
@@ -250,7 +258,7 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | E1 | Siglas del XML (PR, FP = avance, FLP = barrido) en todo | — | ✅ |
 | E2 | Emboquillado por meseta de PP · cambio de barra · regulación automática | — | ✅ — falta recorrer `final_calc.py` y regenerar figuras |
 | E3 | DI en dos clases: continua (≤ 1) / discontinua (> 1) | — | ✅ — figuras sin regenerar |
-| E4 | Barra validada (1,755 m) · margen tras la detención · límites del equipo · sin regulación | — | ✅ — falta correr `final_calc.py` |
+| E4 | Barra validada (1,755 m) · margen tras la detención · límites del equipo (equipo sale del DI, roca se queda) · sin regulación | — | ✅ — falta correr `final_calc.py` |
 
 Hallazgos que condicionan la interpretación, no defectos pendientes:
 

@@ -14,7 +14,7 @@ def _pt(largo, pp):
 
 def test_rango_fisico_pp():
     gw.wells.clear(); gw.clean_filters.clear(); gw.seed_param_registry()
-    pps = [5.0, 89.9, 90.0, 150.0, 225.0, 225.1]   # tope 225 bar desde 2026-11-11
+    pps = [5.0, 89.9, 90.0, 150.0, 230.0, 230.6]
     w = gw.Well(well_name="W", plan_id="CAS_PR01_TH_W", hole_id="W",
                 points=[_pt(5 + i * 0.02, v) for i, v in enumerate(pps)])
     gw.wells["W"] = w

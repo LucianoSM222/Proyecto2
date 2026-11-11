@@ -3841,11 +3841,12 @@ def limites_equipo() -> Dict[str, Tuple[str, float, float]]:
 def add_limites_equipo_filter():
     """Excluye del ENTRENAMIENTO todo registro con alguna variable fuera del
     rango sano del equipo (`limites_equipo`, decisión del autor 2026-11-11):
-    PR 0,1-1,5 m/min, PP 90-225, FP 20-150, DP 25-150, RP 30-60 y FLP 2-10 bar.
+    PR 0,1-1,5 m/min, PP 90-230, FP 20-150, DP 25-150, RP 30-80 y FLP 2-10 bar.
     Son LÍMITES FÍSICOS declarados en el perfil, no percentiles. PR = 0 queda
     fuera por construcción: un registro sin avance no perfora roca y su PEP
-    es infinita. La serie del DI no se toca (salvo PR > `limites.pr_max_di`,
-    en `mascara_serie_di`). Reemplaza al rango de PP solo, cuyo nombre interno
+    es infinita. De la serie del DI sale solo lo que es del equipo
+    (`mascara_serie_di`): PR = 0, PP y FP bajo su mínimo y PR sobre
+    `limites.pr_max_di`. Reemplaza al rango de PP solo, cuyo nombre interno
     (`rango_fisico`) conserva para los proyectos guardados."""
     lim = limites_equipo()
     all_pts = list(all_points())
@@ -3959,9 +3960,20 @@ def mascara_serie_di(points) -> np.ndarray:
         ok &= np.array([not p.emboquillado for p in points], dtype=bool)
     metodos = {f.get("method") for f in clean_filters}
     if "rango_fisico" in metodos and "limites.pr_max_di" in param_registry:
+        # Lo que es del EQUIPO sale desde el inicio (decisión del autor,
+        # 2026-11-11): sin avance (PR = 0: detención, lavado del bit), sin
+        # percusión efectiva (PP bajo el mínimo), sin empuje (FP bajo el
+        # mínimo) o con una PR que no es física. Lo que puede ser ROCA —PR
+        # alta por cavidades, RP, DP o FLP fuera de rango— se queda.
         tope = float(get_param("limites.pr_max_di"))
-        ok &= np.array([not (p.vel is not None and np.isfinite(p.vel) and p.vel > tope)
-                        for p in points], dtype=bool)
+        pp_min = float(get_param("pp.min_bar")); fp_min = float(get_param("limites.fp_min"))
+        def _equipo(p):
+            v = p.vel
+            if v is None or not np.isfinite(v) or v <= 0 or v > tope: return True
+            if p.pp is None or not np.isfinite(p.pp) or p.pp < pp_min: return True
+            if p.pa is None or not np.isfinite(p.pa) or p.pa < fp_min: return True
+            return False
+        ok &= np.array([not _equipo(p) for p in points], dtype=bool)
     if metodos & {"percusion_empate", "cambio_barra"}:
         orden = sorted(range(n), key=lambda i: points[i].largo)
         ps = [points[i] for i in orden]
@@ -4587,11 +4599,15 @@ def seed_param_registry(force: bool = False):
                "para MPC. PP es la ÚNICA variable que manipula el operador.",
                0.0, 500.0, "PP_MIN_OPERACIONAL"),
         _param("pp.max_bar", "Presión de percusión", "PP máxima operacional",
-               225.0, "float", "bar", "Límite sano del equipo (decisión del "
-               "autor, 2026-11-11; antes 230).", 0.0, 500.0, "PP_MAX_OPERACIONAL"),
+               230.0, "float", "bar", "Límite sano del equipo. La meseta de PP "
+               "más alta sostenida 5 m es 225,1 bar: el tope de 225 partía el "
+               "punto de operación (99.754 registros sobre 225, 4 sobre 230; "
+               "meseta_maxima.py, 2026-11-11).", 0.0, 500.0, "PP_MAX_OPERACIONAL"),
         # ── Límites operacionales del equipo (decisión del autor, 2026-11-11) ─
         # Rango sano de cada variable para el Simba E70S. Excluyen del
-        # ENTRENAMIENTO; la serie del DI solo pierde PR sobre `limites.pr_max_di`.
+        # ENTRENAMIENTO. De la serie del DI sale solo lo que es del EQUIPO
+        # (PR = 0, PP y FP bajo su mínimo, PR sobre `limites.pr_max_di`); lo
+        # que puede ser ROCA (PR, RP, DP, FLP altas) se queda.
         _param("limites.pr_min", "Límites del equipo", "PR mínima para entrenar",
                0.1, "float", "m/min", "Bajo esto el equipo no está perforando "
                "roca (PR = 0: detención, lavado del bit) y la PEP se dispara.",
@@ -4612,8 +4628,10 @@ def seed_param_registry(force: bool = False):
                "Presión del dámper: límite sano del equipo.", 0.0, 500.0),
         _param("limites.rp_min", "Límites del equipo", "RP mínima", 30.0, "float", "bar",
                "Presión de rotación: límite sano del equipo.", 0.0, 500.0),
-        _param("limites.rp_max", "Límites del equipo", "RP máxima", 60.0, "float", "bar",
-               "Presión de rotación: límite sano del equipo.", 0.0, 500.0),
+        _param("limites.rp_max", "Límites del equipo", "RP máxima", 80.0, "float", "bar",
+               "Presión de rotación. La meseta más alta sostenida 5 m es "
+               "81 bar; sobre 80 quedan 578 registros (0,07%) contra 109.345 "
+               "sobre 60 (meseta_maxima.py, 2026-11-11).", 0.0, 500.0),
         _param("limites.flp_min", "Límites del equipo", "FLP mínima", 2.0, "float", "bar",
                "Presión del flujo de barrido: límite sano del equipo.", 0.0, 100.0),
         _param("limites.flp_max", "Límites del equipo", "FLP máxima", 10.0, "float", "bar",

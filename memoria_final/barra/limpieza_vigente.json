@@ -1,0 +1,73 @@
+{
+ "limpieza": {
+  "emboquillado_modo": "meseta",
+  "emboquillado_m": 2.0,
+  "emboquillado_corte_mediano_m": 1.496,
+  "pozos_sin_meseta": 11,
+  "emboquillado_marcados": 75104,
+  "limites_equipo": 46806,
+  "limites_por_variable": {
+   "PR": 56673,
+   "PP": 19181,
+   "FP": 584,
+   "DP": 3665,
+   "RP": 7458,
+   "FLP": 3568
+  },
+  "cambio_barra": 19424,
+  "continuidad": 5201,
+  "no_entrenables": 146535
+ },
+ "registros": 982420,
+ "en_serie_DI": 864589,
+ "fuera_serie_DI": 117831,
+ "entrenables": 835885,
+ "equipo_fuera_del_emboquillado": {
+  "PR = 0": 17074,
+  "PR > 10": 72,
+  "PP < min": 7997,
+  "FP < min": 393
+ },
+ "por_grupo": {
+  "PCS_1043": {
+   "total": 157195,
+   "entrenables": 135635,
+   "pct": 86.3
+  },
+  "Bht": {
+   "total": 306552,
+   "entrenables": 258468,
+   "pct": 84.3
+  },
+  "Kpcli": {
+   "total": 558344,
+   "entrenables": 486601,
+   "pct": 87.2
+  },
+  "Brecha_mixta": {
+   "total": 20659,
+   "entrenables": 18928,
+   "pct": 91.6
+  },
+  "PCC_0042": {
+   "total": 479316,
+   "entrenables": 415452,
+   "pct": 86.7
+  },
+  "PCS_1059": {
+   "total": 143082,
+   "entrenables": 123393,
+   "pct": 86.2
+  },
+  "PCC_1541": {
+   "total": 202827,
+   "entrenables": 161405,
+   "pct": 79.6
+  },
+  "Kpcls": {
+   "total": 96865,
+   "entrenables": 71888,
+   "pct": 74.2
+  }
+ }
+}

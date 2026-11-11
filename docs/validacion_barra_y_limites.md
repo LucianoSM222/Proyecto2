@@ -107,6 +107,86 @@ RP > 60, y no cae parejo:
 Conviene confirmar que 225 bar y 60 bar son límites del equipo y no valores
 de operación normal en estos caserones.
 
+## 3b. Topes de PP y RP: la meseta más alta sostenida
+
+La tabla anterior corresponde a la primera propuesta (PP hasta 225 y RP hasta
+60 bar). Para fijar los topes se buscó, en cada pozo, la meseta estable más
+alta que se mantiene al menos 5 m: una ventana de 5 m de registros de
+perforación con el 90% dentro de una banda en torno a su mediana (±15 bar
+para la PP, ±10 bar para la RP). Script: `memoria_final/barra/meseta_maxima.py`.
+
+| | PP | RP |
+|---|---:|---:|
+| Pozos con alguna meseta de 5 m | 719 | 817 |
+| Meseta más alta | **225,1 bar** | **81,0 bar** |
+| Mediana de la meseta más alta por pozo | 223,3 bar | 48,7 bar |
+| Máximo registrado en un registro aislado | 230,5 bar | 142,6 bar |
+
+| Tope de PP [bar] | 220 | 225 | 228 | **230** |
+|---|---:|---:|---:|---:|
+| Registros sobre el tope | 365.483 | 99.754 | 78 | **4** |
+| Pozos con meseta sobre el tope | 435 | 55 | 0 | 0 |
+
+| Tope de RP [bar] | 60 | 65 | 70 | 75 | **80** | 90 |
+|---|---:|---:|---:|---:|---:|---:|
+| Registros sobre el tope | 109.345 | 41.048 | 8.448 | 1.838 | **578** | 72 |
+| Pozos con meseta sobre el tope | 127 | 57 | 10 | 2 | 1 | 0 |
+
+- **PP.** El equipo trabaja con la percusión fijada en torno a 225 bar: hay 55
+  pozos con mesetas de 225,0–225,1 bar. Un tope de 225 parte ese punto de
+  operación por la mitad. Sobre 228 bar no queda ninguna meseta, y sobre
+  230 bar hay 4 registros.
+- **RP.** Hay 127 pozos que perforan 5 m o más con la RP sobre 60 bar: es un
+  régimen de perforación, no una anomalía. La meseta más alta es de 81 bar.
+
+**Aplicado:** PP 90–230 bar y RP 30–80 bar.
+
+## 3c. Limpieza vigente: equipo fuera del DI, roca dentro
+
+Criterio (decisión del autor, 2026-11-11): lo que responde al equipo sale
+también de la serie del DI; lo que puede responder a la roca se queda en el
+DI y solo sale del entrenamiento. Corrida completa:
+`memoria_final/barra/limpieza_vigente.py`.
+
+| | Registros | % del total |
+|---|---:|---:|
+| Total | 982.420 | 100 |
+| En la serie del DI | 864.589 | 88,0 |
+| Fuera de la serie del DI | 117.831 | 12,0 |
+| Entrenables | 835.885 | 85,1 |
+| No entrenables | 146.535 | 14,9 |
+
+| Filtro | Registros |
+|---|---:|
+| Emboquillado (corte mediano 1,50 m; 11 pozos con el corte de respaldo de 2 m) | 75.104 |
+| Cambio de barra con sus 2 registros siguientes (los no excluidos ya por otro filtro) | 19.424 |
+| Límites del equipo (los no excluidos ya por el emboquillado) | 46.806 |
+| Continuidad (los no excluidos ya por otro filtro) | 5.201 |
+
+Registros fuera de cada límite, contados sobre todo el registro (se
+superponen entre sí y con el emboquillado): PR 56.673, PP 19.181, RP 7.458,
+DP 3.665, FLP 3.568 y FP 584.
+
+Condiciones de equipo fuera del emboquillado, que salen de la serie del DI:
+PR = 0 en 17.074 registros (incluye los cambios de barra), PP bajo 90 bar en
+7.997, FP bajo 20 bar en 393 y PR sobre 10 m/min en 72.
+
+Entrenables por caserón y por litología:
+
+| Grupo | Total | Entrenables | % |
+|---|---:|---:|---:|
+| PCC_0042 | 479.316 | 415.452 | 86,7 |
+| PCC_1541 | 202.827 | 161.405 | 79,6 |
+| PCS_1043 | 157.195 | 135.635 | 86,3 |
+| PCS_1059 | 143.082 | 123.393 | 86,2 |
+| Kpcli | 558.344 | 486.601 | 87,2 |
+| Bht | 306.552 | 258.468 | 84,3 |
+| Kpcls | 96.865 | 71.888 | 74,2 |
+| Brecha_mixta | 20.659 | 18.928 | 91,6 |
+
+Con los topes nuevos el recorte queda parejo entre caserones (80–87%). La
+unidad que más pierde es Kpcls (74%).
+
 ## 4. Umbral de continuidad (2,95 cm)
 
 | | |

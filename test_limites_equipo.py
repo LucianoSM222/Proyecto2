@@ -1,11 +1,13 @@
 """Límites operacionales del equipo, margen del cambio de barra y limpieza sin
 regulación automática de la percusión (decisión del autor, 2026-11-11).
 
-1. Límites del equipo (solo entrenamiento): PR 0,1–1,5 m/min, PP 90–225 bar,
-   FP 20–150, DP 25–150, RP 30–60, FLP 2–10 bar. Un registro fuera de
+1. Límites del equipo (entrenamiento): PR 0,1–1,5 m/min, PP 90–230 bar,
+   FP 20–150, DP 25–150, RP 30–80, FLP 2–10 bar. Un registro fuera de
    cualquiera de ellos no entrena. PR = 0 queda fuera por construcción.
-2. Serie del DI: además del emboquillado y el cambio de barra, sale todo
-   registro con PR sobre el tope del DI (10 m/min, cavidades).
+   PP 230 y RP 80 salen de la meseta más alta sostenida 5 m (225,1 y 81 bar).
+2. Serie del DI: lo que es del EQUIPO sale desde el inicio —PR = 0, PP bajo el
+   mínimo, FP bajo el mínimo, PR sobre 10 m/min—; lo que puede ser ROCA se
+   queda aunque esté fuera de rango (PR alta, RP alta, DP, FLP).
 3. Cambio de barra con margen: `barra.margen_antes` registros antes y
    `barra.margen_despues` después de la detención salen junto con ella
    (0 y 2 en MPC: el transitorio aparece al reanudar, no al detenerse).
@@ -30,11 +32,11 @@ def _reset():
 
 def test_limites_del_equipo_solo_entrenamiento():
     _reset()
-    casos = [dict(), dict(vel=0.0), dict(vel=0.09), dict(vel=1.6), dict(pp=226.0),
+    casos = [dict(), dict(vel=0.0), dict(vel=0.09), dict(vel=1.6), dict(pp=230.5),
              dict(pp=89.0), dict(pa=19.0), dict(pa=151.0), dict(pd=24.0), dict(pd=151.0),
-             dict(pr=29.0), dict(pr=61.0), dict(pf=1.9), dict(pf=10.1),
+             dict(pr=29.0), dict(pr=81.0), dict(pf=1.9), dict(pf=10.1),
              dict(vel=0.1, pp=90.0, pa=20.0, pd=25.0, pr=30.0, pf=2.0),
-             dict(vel=1.5, pp=225.0, pa=150.0, pd=150.0, pr=60.0, pf=10.0)]
+             dict(vel=1.5, pp=230.0, pa=150.0, pd=150.0, pr=80.0, pf=10.0)]
     w = gw.Well(well_name="W", plan_id="CAS_PR01_TH_W", hole_id="W",
                 points=[_pt(5 + i * 0.02, **c) for i, c in enumerate(casos)])
     gw.wells["W"] = w
@@ -103,9 +105,17 @@ def test_limpieza_estandar_sin_regulacion_y_tope_pr_del_di():
         assert all(not p.entrenable for p in w.points if p.vel == 0 or p.vel > 1.5)
         gw.compute_di()
         assert w.points[400].di is None, "PR sobre 10 m/min sale de la serie del DI"
-        # un registro fuera de los límites de PRESIÓN conserva su DI (solo entrenamiento)
-        w.points[450].pr = 70.0
-        gw.compute_di()
-        assert w.points[450].di is not None
+        # ROCA: fuera de rango pero con DI (solo sale del entrenamiento)
+        w.points[450].pr = 95.0; w.points[452].vel = 6.0
+        w.points[461].pd = 200.0; w.points[463].pf = 14.0
+        # EQUIPO: sale de la serie del DI
+        w.points[470].vel = 0.0        # detención fuera de la grilla de barra
+        w.points[480].pp = 40.0        # sin percusión efectiva
+        w.points[490].pa = 5.0         # sin empuje
+        gw.recompute_filters(); gw.add_cambio_barra_filter(); gw.compute_di()
+        for i in (450, 452, 461, 463):
+            assert w.points[i].di is not None and not w.points[i].entrenable, i
+        for i in (470, 480, 490):
+            assert w.points[i].di is None and not w.points[i].entrenable, i
     finally:
         _reset()

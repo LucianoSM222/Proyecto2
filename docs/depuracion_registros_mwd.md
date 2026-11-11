@@ -82,28 +82,36 @@ de la serie del DI y del entrenamiento.
 
 ## 3. Límites operacionales del equipo
 
-Se excluyen del entrenamiento los registros con alguna variable fuera del
-rango de operación sana del equipo:
+Se definió, para cada variable, el rango de operación sana del equipo:
 
 | Variable | Mínimo | Máximo | Unidad |
 |---|---:|---:|---|
 | PR, velocidad de penetración | 0,1 | 1,5 | m/min |
-| PP, presión de percusión | 90 | 225 | bar |
+| PP, presión de percusión | 90 | 230 | bar |
 | FP, presión de avance | 20 | 150 | bar |
 | DP, presión del dámper | 25 | 150 | bar |
-| RP, presión de rotación | 30 | 60 | bar |
+| RP, presión de rotación | 30 | 80 | bar |
 | FLP, presión del flujo de barrido | 2 | 10 | bar |
 
-El límite inferior de la PR deja fuera, en particular, todo registro sin
-avance (PR = 0) que no corresponda a un cambio de barra. Un registro sin
-avance no está perforando roca: corresponde a detenciones propias del equipo,
-como el lavado del bit, y en él la presión específica de penetración
-(PEP = (PP + RP + FP) / PR) no está definida.
+Los topes de la PP y de la RP se verificaron sobre los registros: la meseta
+más alta que se mantiene estable durante al menos 5 m es de 225 bar en la PP y
+de 81 bar en la RP, de modo que 230 y 80 bar dejan dentro todo el régimen de
+perforación observado.
 
-Estos registros se mantienen en la serie del DI, por cuanto corresponden a una
-medición real de la perforación. La única excepción es la PR sobre 10 m/min,
-el máximo alcanzable al atravesar una cavidad: un valor superior no tiene
-sentido físico y el registro sale también de la serie del DI.
+Un registro fuera de estos rangos se trata de dos formas, según su origen:
+
+- **Condición del equipo.** Corresponde a registros en que el equipo no está
+  perforando: sin avance (PR = 0, como las detenciones para el lavado del bit),
+  sin percusión efectiva (PP bajo 90 bar) o sin empuje (FP bajo 20 bar). A
+  ellos se suma la PR sobre 10 m/min, que no tiene sentido físico. Estos
+  registros no describen la roca y se excluyen desde el inicio, tanto de la
+  serie del DI como del entrenamiento.
+- **Respuesta de la roca.** Una PR alta puede corresponder a una cavidad, y una
+  RP, DP o FLP fuera de rango, a roca que opone más o menos resistencia a la
+  rotación, al contacto o al barrido. Aunque escapan de lo esperado, estos
+  registros informan sobre el macizo: se mantienen en la serie del DI y solo
+  se excluyen del entrenamiento del modelo de resistencia. La salvedad es la
+  FLP alta, que también puede deberse a un bit tapado.
 
 ## 4. Continuidad del registro
 
@@ -118,22 +126,24 @@ Se considera salto toda separación superior a 2,95 cm, cerca de 1,5 veces el
 espaciamiento nominal de 2 cm. El umbral deja pasar completo el régimen
 nominal de muestreo y marca solo el 0,37% de las separaciones. Se excluyen
 del entrenamiento los registros cuya ventana de DI abarcaría uno de esos
-saltos. Al igual que el filtro anterior, estos registros se mantienen en la
-serie del DI.
+saltos. Estos registros se mantienen en la serie del DI.
 
 ## Síntesis
 
-El cambio de barra y el emboquillado se retiran de la serie antes de calcular
-la varianza móvil y la estandarización por pozo, de modo que el DI se calcula
-sobre una serie depurada. Por su parte, los límites operacionales del equipo y
-la continuidad del registro solo excluyen registros del entrenamiento del
-modelo de resistencia, salvo la PR sobre 10 m/min, que sale de ambos.
+El criterio que ordena los filtros es el origen del registro. Lo que responde
+al equipo o a la operación —el cambio de barra, el emboquillado y los
+registros en que el equipo no está perforando— se retira de la serie antes de
+calcular la varianza móvil y la estandarización por pozo, de modo que el DI se
+calcula sobre una serie depurada. Lo que puede responder a la roca se mantiene
+en la serie del DI, aunque quede fuera del rango esperado, y solo se excluye
+del entrenamiento del modelo de resistencia.
 
 | Orden | Filtro | Criterio | Serie del DI | Entrenamiento |
 |---|---|---|---|---|
 | 1 | Cambio de barra | PR = 0 sobre la grilla de 1,756 m del pozo (±6 cm, ≥ 3 uniones), más los 2 registros siguientes | Excluye | Excluye |
 | 2 | Emboquillado | Hasta que la PP se mantiene pareja 20 cm sobre el 70% de su nivel de régimen (sin meseta: 2 m) | Excluye | Excluye |
-| 3 | Límites del equipo | Alguna variable fuera de su rango sano (tabla anterior) | Mantiene, salvo PR > 10 m/min | Excluye |
+| 3a | Límites del equipo: no perfora | PR = 0, PP < 90 bar, FP < 20 bar o PR > 10 m/min | Excluye | Excluye |
+| 3b | Límites del equipo: respuesta de la roca | PR, RP, DP o FLP fuera de su rango sano (tabla anterior) | Mantiene | Excluye |
 | 4 | Continuidad del registro | Ventana del DI que cruza un salto > 2,95 cm | Mantiene | Excluye |
 
 > Las cantidades de registros de cada filtro se informan en Resultados, con las
