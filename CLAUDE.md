@@ -69,22 +69,25 @@ mina subterránea de cobre.
     PP y RP medidos: meseta más alta sostenida 5 m = 225,1 y 81 bar.
     CRITERIO EQUIPO / ROCA (decisión del autor, 2026-11-11): lo que es del
     EQUIPO sale también de la serie del DI —PR = 0, PP < mínimo, FP < mínimo,
-    PR > `limites.pr_max_di` (10 m/min)—; lo que puede ser ROCA —PR alta por
-    cavidades, RP, DP, FLP fuera de rango— se queda en el DI.
+    FLP > máximo (bit tapado), PR > `limites.pr_max_di` (10 m/min)—; lo que
+    puede ser ROCA —PR alta por cavidades, RP o DP fuera de rango— se queda
+    en el DI.
   · Continuidad del registro (salto > 2,95 cm ≈ 1,5 × el espaciamiento
-    nominal de 2 cm): solo entrenamiento.
+    nominal de 2 cm): la ventana que cruza un salto sale de la serie del DI y
+    del entrenamiento (antes, solo del entrenamiento).
   · La **regulación automática de la percusión** (`detectar_percusion_de_empate`,
     id `percusion_empate`) SALIÓ de la limpieza estándar (2026-11-11); sigue
     disponible como filtro opcional del Paso 2.
   Sobre los cuatro caserones (`memoria_final/barra/limpieza_vigente.py`):
   emboquillado 75.104 (corte mediano 1,50 m, 11 pozos sin meseta), cambio de
   barra 19.424, límites del equipo 46.806, continuidad 5.201; entrenables
-  835.885 (85,1%), en la serie del DI 864.589 (88,0%).
+  835.885 (85,1%), en la serie del DI 860.824 (87,6%).
 - El DI se calcula sobre la SERIE DEPURADA (`mascara_serie_di`,
   `di_profile_serie`): el emboquillado, el cambio de barra y los registros
-  en que el equipo no perfora (PR = 0, PP o FP bajo su mínimo, PR > 10 m/min)
+  en que el equipo no perfora (PR = 0, PP o FP bajo su mínimo, FLP sobre su
+  máximo, PR > 10 m/min) y las ventanas que cruzan un salto de continuidad
   salen de la serie antes de la varianza móvil y la estandarización por pozo,
-  y su DI queda en `None`. Los demás límites del equipo y la continuidad solo
+  y su DI queda en `None`. Los demás límites del equipo (PR, RP, DP) solo
   excluyen del entrenamiento del UCS. La calibración contra RQD usa la misma serie
   (`_z2_por_param`). Decisión del autor, 2026-10-22.
 

@@ -151,8 +151,8 @@ DI y solo sale del entrenamiento. Corrida completa:
 | | Registros | % del total |
 |---|---:|---:|
 | Total | 982.420 | 100 |
-| En la serie del DI | 864.589 | 88,0 |
-| Fuera de la serie del DI | 117.831 | 12,0 |
+| En la serie del DI | 860.824 | 87,6 |
+| Fuera de la serie del DI | 121.596 | 12,4 |
 | Entrenables | 835.885 | 85,1 |
 | No entrenables | 146.535 | 14,9 |
 
@@ -169,7 +169,10 @@ DP 3.665, FLP 3.568 y FP 584.
 
 Condiciones de equipo fuera del emboquillado, que salen de la serie del DI:
 PR = 0 en 17.074 registros (incluye los cambios de barra), PP bajo 90 bar en
-7.997, FP bajo 20 bar en 393 y PR sobre 10 m/min en 72.
+7.997, FP bajo 20 bar en 393 y PR sobre 10 m/min en 72. También salen la FLP
+sobre 10 bar (bit tapado) y las ventanas que cruzan un salto de continuidad:
+entre las dos retiran 3.765 registros más de la serie, que pasó de 864.589 a
+860.824.
 
 Entrenables por caserón y por litología:
 

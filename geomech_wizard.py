@@ -3788,8 +3788,13 @@ CONTINUIDAD_SALTO_MAX_M = 0.0295
 def puntos_tras_salto(well, salto_max_m: Optional[float] = None) -> List[int]:
     """Índices de `well.points` cuya ventana de DI abarcaría un salto de
     registro. No modifica nada: informa. Lo consume `add_continuidad_filter`."""
+    return _indices_tras_salto(well.points, salto_max_m)
+
+
+def _indices_tras_salto(pts, salto_max_m: Optional[float] = None) -> List[int]:
+    """Lo mismo que `puntos_tras_salto`, sobre una lista de puntos en el orden
+    del pozo."""
     salto_max_m = CONTINUIDAD_SALTO_MAX_M if salto_max_m is None else salto_max_m
-    pts = well.points
     n = len(pts)
     if n < 2:
         return []
@@ -3963,17 +3968,26 @@ def mascara_serie_di(points) -> np.ndarray:
         # Lo que es del EQUIPO sale desde el inicio (decisión del autor,
         # 2026-11-11): sin avance (PR = 0: detención, lavado del bit), sin
         # percusión efectiva (PP bajo el mínimo), sin empuje (FP bajo el
-        # mínimo) o con una PR que no es física. Lo que puede ser ROCA —PR
-        # alta por cavidades, RP, DP o FLP fuera de rango— se queda.
+        # mínimo), con el bit tapado (FLP sobre su máximo) o con una PR que no
+        # es física. Lo que puede ser ROCA —PR alta por cavidades, RP o DP
+        # fuera de rango— se queda.
         tope = float(get_param("limites.pr_max_di"))
         pp_min = float(get_param("pp.min_bar")); fp_min = float(get_param("limites.fp_min"))
+        flp_max = float(get_param("limites.flp_max"))
         def _equipo(p):
             v = p.vel
             if v is None or not np.isfinite(v) or v <= 0 or v > tope: return True
             if p.pp is None or not np.isfinite(p.pp) or p.pp < pp_min: return True
             if p.pa is None or not np.isfinite(p.pa) or p.pa < fp_min: return True
+            # FLP sobre su máximo: bit tapado, no roca.
+            if p.pf is not None and np.isfinite(p.pf) and p.pf > flp_max: return True
             return False
         ok &= np.array([not _equipo(p) for p in points], dtype=bool)
+    # Continuidad: una ventana que cruza un salto de registro compara roca que
+    # no es contigua; esos registros salen de la serie (decisión del autor,
+    # 2026-11-11; antes solo salían del entrenamiento).
+    if "continuidad" in metodos:
+        ok[_indices_tras_salto(points)] = False
     if metodos & {"percusion_empate", "cambio_barra"}:
         orden = sorted(range(n), key=lambda i: points[i].largo)
         ps = [points[i] for i in orden]

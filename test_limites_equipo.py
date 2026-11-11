@@ -107,7 +107,7 @@ def test_limpieza_estandar_sin_regulacion_y_tope_pr_del_di():
         assert w.points[400].di is None, "PR sobre 10 m/min sale de la serie del DI"
         # ROCA: fuera de rango pero con DI (solo sale del entrenamiento)
         w.points[450].pr = 95.0; w.points[452].vel = 6.0
-        w.points[461].pd = 200.0; w.points[463].pf = 14.0
+        w.points[461].pd = 200.0; w.points[463].pr = 100.0
         # EQUIPO: sale de la serie del DI
         w.points[470].vel = 0.0        # detención fuera de la grilla de barra
         w.points[480].pp = 40.0        # sin percusión efectiva
@@ -117,5 +117,28 @@ def test_limpieza_estandar_sin_regulacion_y_tope_pr_del_di():
             assert w.points[i].di is not None and not w.points[i].entrenable, i
         for i in (470, 480, 490):
             assert w.points[i].di is None and not w.points[i].entrenable, i
+    finally:
+        _reset()
+
+
+def test_flp_alta_y_salto_de_continuidad_salen_del_di():
+    """Decisión del autor, 2026-11-11: la FLP sobre su máximo (bit tapado) y las
+    ventanas que cruzan un salto de registro salen de la serie ANTES del DI."""
+    _reset()
+    rng = np.random.default_rng(9)
+    pts = [_pt(round(i * 0.02 + (0.50 if i >= 200 else 0.0), 3),          # salto de 52 cm en i = 200
+               pp=210 + rng.normal(0, 2), pd=100 + rng.normal(0, 3),
+               pr=45 + rng.normal(0, 1), pf=8 + rng.normal(0, .2)) for i in range(400)]
+    pts[300].pf = 14.0
+    w = gw.Well(well_name="C", plan_id="CAS_PR01_TH_C", hole_id="C", points=pts)
+    gw.wells["C"] = w
+    try:
+        gw.activar_di(gw.DI_VARIANTE_CONVENCION)
+        gw.apply_inicio_filter(0.0); gw.aplicar_limpieza_estandar(); gw.compute_di()
+        half = gw.di_config["window"] // 2
+        assert pts[300].di is None, "FLP sobre el máximo sale de la serie del DI"
+        for i in range(200 - half, 200 + half):
+            assert pts[i].di is None and not pts[i].entrenable, i
+        assert pts[200 - half - 2].di is not None and pts[200 + half + 2].di is not None
     finally:
         _reset()
