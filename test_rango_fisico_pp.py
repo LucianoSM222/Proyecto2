@@ -1,4 +1,4 @@
-"""Rango físico de PP (`pp.min_bar`–`pp.max_bar`) como filtro de limpieza.
+"""Rango físico de PP (hoy parte de los límites del equipo) (`pp.min_bar`–`pp.max_bar`) como filtro de limpieza.
 
 En MPC entraban al entrenamiento ~13.000 registros con PP de 0 a 10 bar y ROP
 de 3 a 10 m/min: la sarta avanzando sin percutir. El rango estaba declarado en
@@ -14,7 +14,7 @@ def _pt(largo, pp):
 
 def test_rango_fisico_pp():
     gw.wells.clear(); gw.clean_filters.clear(); gw.seed_param_registry()
-    pps = [5.0, 89.9, 90.0, 150.0, 230.0, 230.1]
+    pps = [5.0, 89.9, 90.0, 150.0, 225.0, 225.1]   # tope 225 bar desde 2026-11-11
     w = gw.Well(well_name="W", plan_id="CAS_PR01_TH_W", hole_id="W",
                 points=[_pt(5 + i * 0.02, v) for i, v in enumerate(pps)])
     gw.wells["W"] = w

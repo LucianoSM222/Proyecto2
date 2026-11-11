@@ -3634,17 +3634,22 @@ def detectar_cambio_de_barra(pts_ordenados) -> List[int]:
         if en.sum() > mejor and len({int(round((xi - x[en][0]) / L)) for xi in x[en]}) >= BARRA_UNIONES_MIN:
             mejor, fase = int(en.sum()), phi
     if fase is None: return []
-    out = []
+    # Margen: el transitorio de presiones al REANUDAR sale con la detención
+    # (`barra.margen_despues`); antes de detenerse no hay transitorio medible
+    # (`barra.margen_antes` = 0 en MPC).
+    ma = int(get_param("barra.margen_antes")) if "barra.margen_antes" in param_registry else 0
+    md = int(get_param("barra.margen_despues")) if "barra.margen_despues" in param_registry else 0
+    out = set()
     for (i, j, c) in rachas:
         if abs(((c - fase + L / 2) % L) - L / 2) <= BARRA_TOL_M:
-            out.extend(range(i, j + 1))
-    return out
+            out.update(range(max(0, i - ma), min(n, j + md + 1)))
+    return sorted(out)
 
 
 def inicio_meseta_pp(pts_ordenados, excluir=()) -> Optional[float]:
     """Largo donde empieza la meseta de PP de un pozo (YA ordenado por
     `largo`), o None si no la alcanza. `excluir` son los índices de cambio de
-    barra y de regulación, que salen antes para no cortar la estabilidad.
+    barra, que salen antes para no cortar la estabilidad.
     Meseta: los EMB_TRAMO_ESTABLE_M siguientes tienen EMB_FRACCION_DENTRO de
     sus registros a ±EMB_BANDA_BAR de su mediana, y esa mediana es al menos
     EMB_FRACCION_REGIMEN de la PP más frecuente del pozo."""
@@ -3681,9 +3686,10 @@ def apply_inicio_meseta():
     inicio_por_pozo.clear()
     for wn, well in wells.items():
         pts = sorted(well.points, key=lambda p: p.largo)
-        excl = set(detectar_cambio_de_barra(pts)) | set(
-            detectar_percusion_de_empate(pts, PP_PERCUSION_EMPATE_CAIDA_REL))
-        c = inicio_meseta_pp(pts, excl)
+        # Solo el cambio de barra sale antes de buscar la meseta: la regulación
+        # automática de la percusión dejó de ser parte de la limpieza
+        # (decisión del autor, 2026-11-11).
+        c = inicio_meseta_pp(pts, detectar_cambio_de_barra(pts))
         inicio_por_pozo[wn] = (c, "meseta") if c is not None else (float(inicio_cut_m), "respaldo")
         corte = inicio_por_pozo[wn][0]
         for p in well.points:
@@ -3820,26 +3826,51 @@ def add_continuidad_filter(salto_max_m: Optional[float] = None) -> Dict:
     return filt
 
 
-def add_rango_fisico_pp_filter():
-    """Excluye del entrenamiento los registros con PP fuera del rango
-    operacional del perfil (`pp.min_bar`–`pp.max_bar`, 90–230 bar en MPC).
-    Es un LÍMITE FÍSICO declarado, no un percentil. Sin él entraban ~13.000
-    registros con PP de 0 a 10 bar y PR de 3 a 10 m/min: la sarta avanzando
-    sin percutir (maniobra, no perforación). Explicaban 7.035 de los 7.168
-    registros con PR > 3 m/min y encabezaban el ranking por mínima PEP."""
-    lo, hi = float(get_param("pp.min_bar")), float(get_param("pp.max_bar"))
+def limites_equipo() -> Dict[str, Tuple[str, float, float]]:
+    """Rango sano de cada variable del equipo, leído del perfil:
+    sigla -> (atributo del punto, mínimo, máximo)."""
+    g = lambda k: float(get_param(k))
+    return {"PR": ("vel", g("limites.pr_min"), g("limites.pr_max")),
+            "PP": ("pp", g("pp.min_bar"), g("pp.max_bar")),
+            "FP": ("pa", g("limites.fp_min"), g("limites.fp_max")),
+            "DP": ("pd", g("limites.dp_min"), g("limites.dp_max")),
+            "RP": ("pr", g("limites.rp_min"), g("limites.rp_max")),
+            "FLP": ("pf", g("limites.flp_min"), g("limites.flp_max"))}
+
+
+def add_limites_equipo_filter():
+    """Excluye del ENTRENAMIENTO todo registro con alguna variable fuera del
+    rango sano del equipo (`limites_equipo`, decisión del autor 2026-11-11):
+    PR 0,1-1,5 m/min, PP 90-225, FP 20-150, DP 25-150, RP 30-60 y FLP 2-10 bar.
+    Son LÍMITES FÍSICOS declarados en el perfil, no percentiles. PR = 0 queda
+    fuera por construcción: un registro sin avance no perfora roca y su PEP
+    es infinita. La serie del DI no se toca (salvo PR > `limites.pr_max_di`,
+    en `mascara_serie_di`). Reemplaza al rango de PP solo, cuyo nombre interno
+    (`rango_fisico`) conserva para los proyectos guardados."""
+    lim = limites_equipo()
     all_pts = list(all_points())
     before = sum(1 for p in all_pts if p.entrenable)
+    por_var = {s: 0 for s in lim}
     for p in all_pts:
-        if p.pp is None or not np.isfinite(p.pp) or p.pp < lo or p.pp > hi:
+        fuera = False
+        for s, (a, lo, hi) in lim.items():
+            v = getattr(p, a, None)
+            if v is None or not np.isfinite(v) or v < lo or v > hi:
+                por_var[s] += 1; fuera = True
+        if fuera:
             p.entrenable = False; p.norm_excluded = True
     after = sum(1 for p in all_pts if p.entrenable)
     filt = {"varName": "pp", "method": "rango_fisico",
-            "label": f"Rango físico de PP {lo:g}-{hi:g} bar",
-            "lo": lo, "hi": hi, "removed": before - after, "after": after,
-            "total": len(all_pts)}
+            "label": "Límites del equipo (" + ", ".join(
+                f"{s} {lo:g}-{hi:g}" for s, (_, lo, hi) in lim.items()) + ")",
+            "lo": lim["PP"][1], "hi": lim["PP"][2], "por_variable": por_var,
+            "removed": before - after, "after": after, "total": len(all_pts)}
     clean_filters.append(filt)
     return filt
+
+
+# Nombre histórico: el filtro nació como rango de PP solo.
+add_rango_fisico_pp_filter = add_limites_equipo_filter
 
 def add_norm_filter(var_name, method):
     # Alias hacia atrás: los proyectos guardados antes del renombre traen
@@ -3927,6 +3958,10 @@ def mascara_serie_di(points) -> np.ndarray:
     if inicio_aplicado:
         ok &= np.array([not p.emboquillado for p in points], dtype=bool)
     metodos = {f.get("method") for f in clean_filters}
+    if "rango_fisico" in metodos and "limites.pr_max_di" in param_registry:
+        tope = float(get_param("limites.pr_max_di"))
+        ok &= np.array([not (p.vel is not None and np.isfinite(p.vel) and p.vel > tope)
+                        for p in points], dtype=bool)
     if metodos & {"percusion_empate", "cambio_barra"}:
         orden = sorted(range(n), key=lambda i: points[i].largo)
         ps = [points[i] for i in orden]
@@ -4245,8 +4280,8 @@ MENUS_PERFIL = {
     # que el autor pidió sacar — diferenciar las dos Lavas es conocimiento de
     # quien configura, y se aplica a mano por capa en el vocabulario, no por
     # un umbral de cota en el perfil.
-    "Roca": ["UCS", "Etiqueta de UCS", "Límites físicos", "Percusión (PP)",
-             "Presión de percusión"],
+    "Roca": ["UCS", "Etiqueta de UCS", "Límites físicos", "Límites del equipo",
+             "Percusión (PP)", "Presión de percusión"],
     # "DI" salió: sus seis parámetros ya no viven en el perfil —se escribían
     # acá y no los usaba nadie— y el menú los muestra en vivo, solo lectura.
     "Fracturamiento": ["RQD", "Calibración DI↔RQD", "Discriminador"],
@@ -4552,8 +4587,37 @@ def seed_param_registry(force: bool = False):
                "para MPC. PP es la ÚNICA variable que manipula el operador.",
                0.0, 500.0, "PP_MIN_OPERACIONAL"),
         _param("pp.max_bar", "Presión de percusión", "PP máxima operacional",
-               230.0, "float", "bar", "Rango operacional declarado en CLAUDE.md "
-               "para MPC.", 0.0, 500.0, "PP_MAX_OPERACIONAL"),
+               225.0, "float", "bar", "Límite sano del equipo (decisión del "
+               "autor, 2026-11-11; antes 230).", 0.0, 500.0, "PP_MAX_OPERACIONAL"),
+        # ── Límites operacionales del equipo (decisión del autor, 2026-11-11) ─
+        # Rango sano de cada variable para el Simba E70S. Excluyen del
+        # ENTRENAMIENTO; la serie del DI solo pierde PR sobre `limites.pr_max_di`.
+        _param("limites.pr_min", "Límites del equipo", "PR mínima para entrenar",
+               0.1, "float", "m/min", "Bajo esto el equipo no está perforando "
+               "roca (PR = 0: detención, lavado del bit) y la PEP se dispara.",
+               0.0, 5.0),
+        _param("limites.pr_max", "Límites del equipo", "PR máxima para entrenar",
+               1.5, "float", "m/min", "Límite sano del equipo.", 0.1, 20.0),
+        _param("limites.pr_max_di", "Límites del equipo", "PR máxima en la serie del DI",
+               10.0, "float", "m/min", "Lo máximo alcanzable atravesando una "
+               "cavidad; sobre esto el registro no es físico y sale de la serie "
+               "del DI.", 1.0, 1000.0),
+        _param("limites.fp_min", "Límites del equipo", "FP mínima", 20.0, "float", "bar",
+               "Presión de avance: límite sano del equipo.", 0.0, 500.0),
+        _param("limites.fp_max", "Límites del equipo", "FP máxima", 150.0, "float", "bar",
+               "Presión de avance: límite sano del equipo.", 0.0, 500.0),
+        _param("limites.dp_min", "Límites del equipo", "DP mínima", 25.0, "float", "bar",
+               "Presión del dámper: límite sano del equipo.", 0.0, 500.0),
+        _param("limites.dp_max", "Límites del equipo", "DP máxima", 150.0, "float", "bar",
+               "Presión del dámper: límite sano del equipo.", 0.0, 500.0),
+        _param("limites.rp_min", "Límites del equipo", "RP mínima", 30.0, "float", "bar",
+               "Presión de rotación: límite sano del equipo.", 0.0, 500.0),
+        _param("limites.rp_max", "Límites del equipo", "RP máxima", 60.0, "float", "bar",
+               "Presión de rotación: límite sano del equipo.", 0.0, 500.0),
+        _param("limites.flp_min", "Límites del equipo", "FLP mínima", 2.0, "float", "bar",
+               "Presión del flujo de barrido: límite sano del equipo.", 0.0, 100.0),
+        _param("limites.flp_max", "Límites del equipo", "FLP máxima", 10.0, "float", "bar",
+               "Presión del flujo de barrido: límite sano del equipo.", 0.0, 100.0),
         _param("pp.paso_bar", "Presión de percusión", "Paso de los bins de PP",
                10.0, "float", "bar", "Resolución de las curvas de respuesta.",
                1.0, 50.0, "PP_PASO_BAR"),
@@ -4643,6 +4707,17 @@ def seed_param_registry(force: bool = False):
                "Largo de la barra del equipo (Simba E70S en MPC). Define la "
                "grilla sobre la que se buscan las detenciones (PR = 0) del "
                "cambio de barra en cada pozo.", 0.5, 6.0, "LARGO_BARRA_M"),
+        _param("barra.margen_antes", "Percusión (PP)",
+               "Margen del cambio de barra, antes de la detención", 0, "int",
+               "registros", "Antes de detenerse las presiones no muestran "
+               "transitorio: PR, PP, RP y FLP en 0,98-1,01 de su nivel en las "
+               "4 muestras previas (validacion_barra.py, 2026-11-11).", 0, 10),
+        _param("barra.margen_despues", "Percusión (PP)",
+               "Margen del cambio de barra, después de la detención", 2, "int",
+               "registros", "Al reanudar, la 1ª muestra trae PR al 62% y PP al "
+               "76% de su nivel, y la 2ª PR al 84%; desde la 3ª PR y PP están "
+               "a ±3% (validacion_barra.py, 10.972 cambios de barra, "
+               "2026-11-11).", 0, 10),
         _param("emboquillado.tramo_estable_m", "Percusión (PP)",
                "Tramo de estabilidad de la meseta", 0.20, "float", "m",
                "Largo durante el cual la PP debe mantenerse pareja para "
@@ -10074,8 +10149,10 @@ def recompute_filters(cut_m=None):
 
 def aplicar_limpieza_estandar() -> Dict:
     """La limpieza que declara la memoria, en un solo paso y en el orden de la
-    herramienta: corte de emboquillado vigente, rango físico de PP, percusión
-    de empate con el umbral del perfil y, si está activo, el filtro de continuidad. Es lo que
+    herramienta: emboquillado por meseta de PP, límites del equipo, cambio de
+    barra (con su margen) y, si está activo, el filtro de continuidad. La
+    regulación automática de la percusión salió (decisión del autor,
+    2026-11-11). Es lo que
     deben llamar los scripts antes de entrenar: armar la limpieza a mano en
     cada uno fue lo que dejó afuera el emboquillado en la ronda 2026-10."""
     global emboquillado_modo
@@ -10089,7 +10166,8 @@ def aplicar_limpieza_estandar() -> Dict:
     recompute_filters()
     rf_pp = next(f for f in clean_filters if f.get("method") == "rango_fisico")
     cb = add_cambio_barra_filter()
-    pe = add_percusion_empate_filter()
+    # La regulación automática de la percusión ya no corre aquí (decisión del
+    # autor, 2026-11-11); sigue disponible como filtro del Paso 2.
     co = (next((f for f in clean_filters if f.get("method") == "continuidad"), None)
           if CONTINUIDAD_ACTIVA else None)
     pts = list(all_points())
@@ -10099,9 +10177,9 @@ def aplicar_limpieza_estandar() -> Dict:
             "emboquillado_corte_mediano_m": (round(float(np.median(cortes)), 3) if cortes else None),
             "pozos_sin_meseta": sorted(w for w, (c, m) in inicio_por_pozo.items() if m == "respaldo"),
             "emboquillado_marcados": sum(1 for p in pts if p.emboquillado),
-            "rango_fisico_pp": rf_pp.get("removed"),
+            "limites_equipo": rf_pp.get("removed"),
+            "limites_por_variable": rf_pp.get("por_variable"),
             "cambio_barra": cb.get("removed"),
-            "percusion_empate": pe.get("removed"),
             "continuidad": (co or {}).get("removed"),
             "no_entrenables": sum(1 for p in pts if not p.entrenable)}
 

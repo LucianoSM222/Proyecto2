@@ -1,8 +1,10 @@
 """El DI se calcula sobre la serie DEPURADA (decisión del autor, 2026-10-22).
 
-Las muestras del emboquillado y las de percusión de empate SALEN de la serie
-antes de la varianza móvil y de la estandarización por pozo: no son roca, y
-dentro de la ventana inflaban la varianza de la PP. Su DI queda en None.
+Las muestras del emboquillado SALEN de la serie antes de la varianza móvil y
+de la estandarización por pozo: no son roca, y dentro de la ventana inflaban la
+varianza de la PP. Su DI queda en None. La regulación automática de la
+percusión dejó de ser parte de la limpieza (2026-11-11): sus caídas QUEDAN en
+la serie.
 El rango de PP y la continuidad siguen siendo solo filtros del entrenamiento.
 """
 import numpy as np
@@ -33,9 +35,9 @@ def test_di_sobre_serie_depurada():
         emb = [p for p in w.points if p.emboquillado]
         assert gw.inicio_por_pozo["W"][1] == "meseta", "el emboquillado sale de la meseta de PP"
         assert emb and all(p.di is None for p in emb), "el emboquillado no tiene DI"
-        assert w.points[150].di is None and w.points[238].di is None, "el empate no tiene DI"
-        serie = [p for i, p in enumerate(w.points)
-                 if not p.emboquillado and i not in (150, 238)]
+        assert w.points[150].di is not None and w.points[238].di is not None, \
+            "la regulación ya no sale de la serie del DI"
+        serie = [p for p in w.points if not p.emboquillado]
         esperado = gw.di_profile(serie, gw.di_config["window"], gw.di_config["params"],
                                  gw.di_config["weights"])
         obtenido = np.array([p.di for p in serie])
@@ -43,7 +45,7 @@ def test_di_sobre_serie_depurada():
         # la calibración usa el mismo z²: misma serie, mismos índices
         z2 = gw._z2_por_param(w.points, gw.di_config["window"], gw.di_config["params"])
         di_z2 = gw._di_desde_z2(z2, gw.di_config["weights"])
-        assert np.isnan(di_z2[150]) and np.isnan(di_z2[0])
+        assert np.isnan(di_z2[0]) and not np.isnan(di_z2[150])
         assert np.allclose(di_z2[[i for i, p in enumerate(w.points) if p.di is not None]], obtenido)
     finally:
         gw.wells.clear(); gw.clean_filters.clear()

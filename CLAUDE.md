@@ -39,33 +39,44 @@ mina subterránea de cobre.
   constantes del equipo, normalización de Schunnesson 1998); decisión del
   autor: la PEP se MANTIENE tal como está, sin cambios en código ni figuras.
 - UCS: límites físicos 0 a 450 MPa. Sin truncamiento silencioso jamás.
-- PP: 90 a 230 bar. Es la ÚNICA variable manipulada por el operador.
+- PP: 90 a 225 bar (antes 230; decisión del autor 2026-11-11). Es la ÚNICA
+  variable manipulada por el operador.
 - Validación: GroupKFold por pozo y LOOCV-Caserón (un caserón fuera). El
   bosque se evalúa y predice con la MEDIANA de sus 200 árboles. La
   LOOCV-Litología se retiró de la memoria (decisión del autor, 2026-10-22);
   `leave_one_lithology_out` sigue en la herramienta como vara de la relación
   directa del Paso 4.
-- Limpieza (`aplicar_limpieza_estandar`, decisión del autor 2026-11-10):
+- Limpieza (`aplicar_limpieza_estandar`, decisiones del autor 2026-11-10 y
+  2026-11-11):
   · **Cambio de barra** (`detectar_cambio_de_barra`): PR = 0 sobre la grilla
-    φ + k·1,756 m del pozo (±6 cm, ≥ 3 uniones). Va PRIMERO.
-  · **Regulación automática de la percusión** (`detectar_percusion_de_empate`,
-    id interno `percusion_empate`): caída de PP ≥ 0,25 que se recupera. Es el
-    equipo ajustando la PP cuando otras presiones salen de rango, no roca.
+    φ + k·1,756 m del pozo (±6 cm, ≥ 3 uniones), más `barra.margen_despues`
+    = 2 registros tras la detención (`barra.margen_antes` = 0). Va PRIMERO.
+    Largo VALIDADO con los datos (`memoria_final/barra/validacion_barra.py`):
+    1,7549 m por pozo, sd 1,2 mm en 795 pozos; el transitorio está solo al
+    reanudar (PR 62% y PP 76% en la 1ª muestra, PR 84% en la 2ª).
   · **Emboquillado por meseta de PP** (`inicio_meseta_pp`, modo "meseta"): sin
-    cambio de barra ni regulación, termina donde la PP se mantiene pareja
-    20 cm (90% a ±15 bar de su mediana) sobre el 70% de la PP más frecuente del
+    cambio de barra ni PR = 0, termina donde la PP se mantiene pareja 20 cm
+    (90% a ±15 bar de su mediana) sobre el 70% de la PP más frecuente del
     pozo. Sin meseta → corte fijo de respaldo (2 m), declarado en
     `inicio_por_pozo`. Parámetros en el perfil (`barra.largo_m`,
     `emboquillado.*`), ajustados a seis pozos marcados por el autor. El corte
     fijo (`apply_inicio_filter`, modo "fijo") sigue disponible en el Paso 2.
-  · PP fuera de 90-230 bar y continuidad del registro: solo entrenamiento.
-  Sobre los cuatro caserones: emboquillado 72.752 registros (corte mediano
-  1,45 m, 9 pozos sin meseta), cambio de barra 10.037, regulación 5.789 (los
-  no excluidos ya por otro filtro), no entrenables 100.884.
+  · **Límites del equipo** (`add_limites_equipo_filter`, id interno
+    `rango_fisico`, alias `add_rango_fisico_pp_filter`): PR 0,1-1,5 m/min,
+    PP 90-225, FP 20-150, DP 25-150, RP 30-60, FLP 2-10 bar. Solo
+    entrenamiento; la serie del DI pierde solo PR > `limites.pr_max_di`
+    (10 m/min, cavidades). Parámetros `limites.*` y `pp.min_bar/max_bar`.
+  · Continuidad del registro (salto > 2,95 cm ≈ 1,5 × el espaciamiento
+    nominal de 2 cm): solo entrenamiento.
+  · La **regulación automática de la percusión** (`detectar_percusion_de_empate`,
+    id `percusion_empate`) SALIÓ de la limpieza estándar (2026-11-11); sigue
+    disponible como filtro opcional del Paso 2.
+  Las cifras de registros de la limpieza anterior (emboquillado 72.752, etc.)
+  quedaron obsoletas: se rehacen en la próxima corrida de `final_calc.py`.
 - El DI se calcula sobre la SERIE DEPURADA (`mascara_serie_di`,
-  `di_profile_serie`): el emboquillado, el cambio de barra y la regulación
-  salen de la serie antes de la varianza móvil y la estandarización por pozo,
-  y su DI queda en `None`. El rango de PP y la continuidad solo excluyen del
+  `di_profile_serie`): el emboquillado, el cambio de barra y la PR sobre
+  10 m/min salen de la serie antes de la varianza móvil y la estandarización por pozo,
+  y su DI queda en `None`. Los límites del equipo y la continuidad solo excluyen del
   entrenamiento del UCS. La calibración contra RQD usa la misma serie
   (`_z2_por_param`). Decisión del autor, 2026-10-22.
 
@@ -239,6 +250,7 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | E1 | Siglas del XML (PR, FP = avance, FLP = barrido) en todo | — | ✅ |
 | E2 | Emboquillado por meseta de PP · cambio de barra · regulación automática | — | ✅ — falta recorrer `final_calc.py` y regenerar figuras |
 | E3 | DI en dos clases: continua (≤ 1) / discontinua (> 1) | — | ✅ — figuras sin regenerar |
+| E4 | Barra validada (1,755 m) · margen tras la detención · límites del equipo · sin regulación | — | ✅ — falta correr `final_calc.py` |
 
 Hallazgos que condicionan la interpretación, no defectos pendientes:
 
