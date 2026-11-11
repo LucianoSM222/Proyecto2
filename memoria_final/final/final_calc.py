@@ -14,7 +14,7 @@ import cargar_caserones as cc
 
 OUT = sys.argv[1]
 T0 = time.time()
-R = {"fecha": "2026-10-22"}
+R = {"fecha": "2026-11-11"}
 
 
 def log(m):

@@ -77,40 +77,63 @@ def col(j): return get_column_letter(j)
 
 # ── Configuración ──────────────────────────────────────────────────────────
 DI = R["di_vigente"]; L = R["limpieza"]; RF = R["train_rf"]
-ws = hoja("Configuración"); titulo(ws, "Configuración de la corrida final (2026-10-22)")
+ws = hoja("Configuración"); titulo(ws, f"Configuración de la corrida final ({R.get('fecha', '')})")
 tabla(ws, ["Elemento", "Valor"], [
     ["Registros MWD / pozos", f"{R['tabla_6_1']['n_total']} / 928"],
-    ["Serie del DI", "depurada: emboquillado y percusión de empate fuera antes de la varianza móvil"],
+    ["Serie del DI", "depurada: emboquillado, cambio de barra, equipo sin perforar y saltos de continuidad fuera antes de la varianza móvil"],
     ["Ventana del DI [muestras]", DI["window"]], ["Umbral del DI", DI["umbral"]],
     *[[f"Peso {SIG[k]} (calibrado a 5 m)", round(v, 4)] for k, v in DI["pesos"].items()],
     ["ρ ajuste calibración", DI["rho_ajuste"]], ["ρ validación (un sondaje fuera)", DI["rho_validacion"]],
     ["Pares / sondajes de la calibración", f"{DI['n_pares']} / {DI['n_sondajes']}"],
-    ["Emboquillado [m]", L["emboquillado_m"]], ["Umbral de percusión de empate", L["umbral_empate"]],
+    ["Emboquillado", f"meseta de PP por pozo (corte mediano {L['emboquillado_corte_mediano_m']} m; respaldo {L['emboquillado_m']} m en {len(L['pozos_sin_meseta'])} pozos)"],
+    ["Cambio de barra", "PR = 0 sobre la grilla de 1,756 m (±6 cm, ≥ 3 uniones) + 2 registros siguientes"],
+    ["Límites del equipo", "PR 0,1–1,5 m/min · PP 90–230 · FP 20–150 · DP 25–150 · RP 30–80 · FLP 2–10 bar"],
     ["Largo de barra [m]", R["tabla_6_1"]["largo_barra_m"]],
     ["Random Forest", "200 árboles · profundidad 8 · min_samples_split 6 · min_samples_leaf 3 · max_features √p · semilla 42"],
     ["Agregación del bosque", "mediana de los 200 árboles"],
     ["Siglas", "FLP = flujo · FP = avance · PEP = (PP + RP + FP) / PR [bar·min/m]"],
 ], fmt=[None, None])
 
-# ── Tabla 6.1 ──────────────────────────────────────────────────────────────
-T = R["tabla_6_1"]; ws = hoja("T6.1 Empate")
-titulo(ws, "Tabla 6.1 · Sensibilidad del umbral de caída en percusión de empate")
-ws.cell(ws._fila, 1, "Total de registros"); ws.cell(ws._fila, 2, T["n_total"]).number_format = "#,##0"
-celda_total = f"$B${ws._fila}"; ws._fila += 2
-r0 = ws._fila
-tabla(ws, ["Umbral de caída", "Muestras marcadas", "% del total"],
-      [[f["umbral"], f["n"], f"=B{r0 + i}/{celda_total}"] for i, f in enumerate(T["filas"], 1)],
-      fmt=["0.00", "#,##0", "0.00%"])
-nota(ws, f"Empates esperados por largo de barra ({T['largo_barra_m']} m, paso 2 cm): {T['teorico_largo_barra']:,}".replace(",", "."))
-
 # ── Limpieza y embudo ──────────────────────────────────────────────────────
-ws = hoja("Limpieza"); titulo(ws, "Registros excluidos por filtro")
-tabla(ws, ["Filtro", "Registros", "Excluye del DI", "Excluye del entrenamiento"], [
-    [f"Emboquillado (< {L['emboquillado_m']} m)", L["emboquillado_marcados"], "sí", "sí"],
-    [f"Percusión de empate (caída ≥ {L['umbral_empate']}, fuera del emboquillado)", L["percusion_empate"], "sí", "sí"],
-    ["PP fuera de 90–230 bar", L["rango_fisico_pp"], "no", "sí"],
-    ["Continuidad del registro", L["continuidad"], "no", "sí"],
-    ["Total no entrenable por limpieza", L["no_entrenables"], "", ""]], fmt=[None, "#,##0", None, None])
+ws = hoja("Limpieza"); titulo(ws, "Tabla 5.1 · Resumen de filtros y registros por etapa")
+_pb = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(SRC))), "barra")
+RFIL = json.load(open(os.path.join(_pb, "resumen_filtros.json"), encoding="utf-8"))
+_C = RFIL["conteo"]; _n_ent = R["entrenamiento"]["n"]
+_et = [("Carga", "Registros MWD de 928 pozos", None),
+       ("Antes del DI", "Emboquillado (meseta de PP)", _C["emboquillado"]),
+       ("Antes del DI", "Cambio de barra (detención y 2 registros siguientes)", _C["barra_detencion"] + _C["barra_margen"]),
+       ("Antes del DI", "Equipo sin perforar (PR = 0, PP < 90, FP < 20, FLP > 10, PR > 10)", _C["equipo"]),
+       ("Antes del DI", "Continuidad del registro (salto > 2,95 cm)", _C["continuidad"]),
+       ("Antes del DI", "Registros sin DI calculable", _C.get("sin_di", 0)),
+       ("Solo entrenamiento", "PR, RP, DP o PP fuera del rango del equipo", _C["roca"])]
+_r0 = ws._fila + 1
+_fil = [[e, f_, 0 if n_ is None else n_, RFIL["total"] if k == 0 else f"=D{_r0 + k - 1}-C{_r0 + k}"] for k, (e, f_, n_) in enumerate(_et)]
+_fil.append(["Discontinuidad", "DI > 1 y registros sin etiqueta de UCS", f"=D{_r0 + len(_et) - 1}-D{_r0 + len(_et)}", _n_ent])
+tabla(ws, ["Etapa", "Filtro", "Registros excluidos", "Registros restantes"], _fil, fmt=[None, None, "#,##0", "#,##0"])
+titulo(ws, "Registros fuera de los límites del equipo, según su tratamiento")
+tabla(ws, ["Tratamiento", "Condición", "Registros"],
+      [["Sale del DI y del entrenamiento", k, v] for k, v in RFIL["equipo_detalle"].items()] +
+      [["Solo sale del entrenamiento", k, v] for k, v in RFIL["roca_detalle"].items()], fmt=[None, None, "#,##0"])
+titulo(ws, "Emboquillado por meseta de PP: largo del corte por pozo")
+tabla(ws, ["Corte [m]", "Pozos"], [[k, v] for k, v in RFIL["emboquillado"]["histograma_m"].items()], fmt=[None, "#,##0"])
+VB = json.load(open(os.path.join(_pb, "validacion_barra.json"), encoding="utf-8"))
+ws = hoja("Barra"); titulo(ws, "Validación del largo de barra con los registros")
+_dd = VB["diferencias_entre_detenciones"]; _bl = VB["barrido_L"]; _lp = VB["L_por_pozo"]
+tabla(ws, ["Prueba", "Resultado"], [
+    ["Distancia más frecuente entre detenciones del mismo pozo [m]", _dd["mejor_pico_1_2_a_2_4_m"]["media_fina_m"]],
+    ["Segundo pico [m]", _dd["segundo_armonico"]["media_fina_m"]],
+    ["Detenciones fuera del emboquillado", _bl["detenciones_fuera_emboquillado"]],
+    ["Detenciones alineadas con la grilla de 1,756 m", _bl["alineadas_en_1_756"]],
+    ["Detenciones alineadas al azar (media)", _bl["azar_media"]],
+    ["Largo por pozo, mediana [m]", _lp["mediana_m"]], ["Desviación estándar entre pozos [m]", _lp["sd_m"]],
+    ["Pozos con ≥ 4 uniones", _lp["n_pozos"]]], fmt=[None, "General"])
+titulo(ws, "Barrido del largo de barra")
+tabla(ws, ["Largo probado [m]", "Detenciones alineadas"], [[a, b] for a, b in zip(_bl["L_m"], _bl["alineadas"])], fmt=["0.000", "#,##0"])
+titulo(ws, "Transitorio alrededor del cambio de barra (mediana del valor relativo al nivel del pozo)")
+_T = VB["transitorio"]["barra"]; _of = [f"-{o}" for o in range(8, 0, -1)] + [f"+{o}" for o in range(1, 9)]
+tabla(ws, ["Variable"] + _of, [[v] + [_T[v][k]["mediana"] for k in _of] for v in ("PR", "PP", "FP", "DP", "RP", "FLP")],
+      fmt=[None] + ["0.00"] * len(_of))
+ws = wb["Limpieza"]
 titulo(ws, "Embudo del conjunto de entrenamiento")
 tabla(ws, ["Etapa", "Quedan", "Perdidos"], [[e["label"], e["quedan"], e["perdidos"]] for e in R["embudo"]],
       fmt=[None, "#,##0", "#,##0"])
@@ -166,7 +189,7 @@ if os.path.exists(FV):
               [[d[str(v)]["ventana"], d[str(v)]["ventana_cm"], d[str(v)]["pozos"], d[str(v)]["pozos_sin_di"],
                 d[str(v)]["registros_con_di"], d[str(v)]["picos"], d[str(v)]["picos_por_100m"],
                 d[str(v)]["pct_sobre_umbral"] / 100] for v in DV["ventanas"]], fmt=FMT_DV)
-    nota(ws, f"Umbral DI {DV['umbral']}; pesos calibrados a 5 m; serie depurada (emboquillado y percusión de empate fuera). "
+    nota(ws, f"Umbral DI {DV['umbral']}; pesos calibrados a 5 m; serie depurada. "
              f"Picos: eventos sobre el umbral agrupados si están a menos de {DV['gap_m']} m.")
 
 # ── DI medio vs RQD de sondaje ─────────────────────────────────────────────

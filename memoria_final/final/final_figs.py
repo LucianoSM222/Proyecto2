@@ -80,35 +80,150 @@ def guardar(fig, nombre):
     plt.close(fig); hechas.append(nombre); print("OK", nombre, flush=True)
 
 
-def tabla_png(nombre, titulo, cab, filas, anchos=None, nota=None, fs=9, ancho_fig=None):
+def tabla_png(nombre, titulo, cab, filas, anchos=None, nota=None, fs=9, ancho_fig=None, primera_azul=True, alinear_izq=None, alto_fila=0.32):
     with open(f"{OUT}/{nombre}.csv", "w", newline="", encoding="utf-8-sig") as fh:
         wr = csv.writer(fh, delimiter=";"); wr.writerow(cab); wr.writerows(filas)
-    h = 0.32 * (len(filas) + 1) + 0.35
+    h = alto_fila * (len(filas) + 1) + 0.35
     fig, ax = plt.subplots(figsize=(ancho_fig or max(7, 1.25 * len(cab)), h)); ax.axis("off")
     t = ax.table(cellText=filas, colLabels=cab, cellLoc="center", colWidths=anchos,
                  bbox=[0, 0, 1, 1])
     t.auto_set_font_size(False); t.set_fontsize(fs + 1)
-    # Estilo de tabla de Excel: encabezado azul con texto blanco, filas bandeadas
+    # Formato de las tablas de la memoria: encabezado y primera columna en azul
+    # con texto blanco, cuerpo en dos tonos de celeste y bordes negros.
     for (i, j), c in t.get_celld().items():
-        c.set_edgecolor("#FFFFFF"); c.set_linewidth(0.8)
+        c.set_edgecolor("#000000"); c.set_linewidth(0.6)
         if i == 0:
-            c.set_facecolor("#4472C4"); c.set_text_props(weight="bold", color="white")
+            c.set_facecolor("#4472C4"); c.set_edgecolor("#4472C4"); c.set_text_props(weight="bold", color="white")
+        elif j == 0 and primera_azul:
+            c.set_facecolor("#4472C4"); c.set_edgecolor("#4472C4"); c.set_text_props(color="white")
         else:
-            c.set_facecolor("#D9E1F2" if i % 2 else "#FFFFFF")
+            c.set_facecolor("#B4C6E7" if i % 2 else "#D9E1F2")
+        if alinear_izq and j in alinear_izq and i > 0:
+            c.set_text_props(ha="left"); c._loc = "left"; c.PAD = 0.03
     ax.set_title(titulo, fontsize=13, pad=6, loc="center", color="#404040")
     guardar(fig, nombre + ".png")
 
 
-PIE_CFG = (f"DI calibrado a 5 m ({pesos_txt()}; ventana {DI['window']} muestras ≈ 28 cm; umbral {dec(UMB, 1)}). "
-           f"Emboquillado 2 m · percusión de empate {dec(R['limpieza']['umbral_empate'], 2)} · continuidad activa.")
+PIE_CFG = ""
+BARRA = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(SRC))), "barra")
 
-# ── Tabla 6.1 ───────────────────────────────────────────────────────────────
-t = R["tabla_6_1"]
-tabla_png("T6_01_sensibilidad_percusion_empate", "Sensibilidad del umbral de caída en percusión de empate",
-          ["Umbral de caída", "Muestras marcadas", "% del total"],
-          [[dec(f["umbral"], 2), mil(f["n"]), dec(f["pct"], 2)] for f in t["filas"]],
-          nota=(f"Sobre los {mil(t['n_total'])} registros. Empates esperados por largo de barra "
-                f"({dec(t['largo_barra_m'], 3)} m, paso 2 cm): {mil(t['teorico_largo_barra'])}. Umbral adoptado: 0,25."))
+
+def _jb(nombre):
+    p = os.path.join(BARRA, nombre)
+    return json.load(open(p, encoding="utf-8")) if os.path.exists(p) else None
+
+
+# ── Tabla 5.1: resumen de filtros y registros por etapa ─────────────────────
+RFIL = _jb("resumen_filtros.json")
+if RFIL:
+    C = RFIL["conteo"]; tot = RFIL["total"]; em = RFIL["emboquillado"]
+    r1 = tot - C["emboquillado"]; r2 = r1 - C["barra_detencion"] - C["barra_margen"]
+    r3 = r2 - C["equipo"]; r4 = r3 - C["continuidad"]; r5 = r4 - C.get("sin_di", 0)
+    ent = r5 - C["roca"]; emb_f = R["embudo"]
+    n_ent = R["entrenamiento"]["n"]
+    filas = [["Carga", f"Registros MWD de {len(R.get('pozos', [])) or 928} pozos", "—", mil(tot)],
+             ["Antes del DI", "Emboquillado (meseta de PP)", mil(C["emboquillado"]), mil(r1)],
+             ["", "Cambio de barra (detención y 2 registros siguientes)", mil(C["barra_detencion"] + C["barra_margen"]), mil(r2)],
+             ["", "Equipo sin perforar (PR = 0, PP < 90, FP < 20, FLP > 10, PR > 10)", mil(C["equipo"]), mil(r3)],
+             ["", "Continuidad del registro (salto > 2,95 cm)", mil(C["continuidad"]), mil(r4)],
+             ["", "Registros sin DI calculable", mil(C.get("sin_di", 0)), f"{mil(r5)} (serie depurada)"],
+             ["Solo entrenamiento", "PR, RP, DP o PP fuera del rango del equipo", mil(C["roca"]), f"{mil(ent)} (entrenables)"],
+             ["Discontinuidad", f"DI > {dec(UMB, 1)} y registros sin etiqueta de UCS", mil(ent - n_ent), f"{mil(n_ent)} (entrenamiento)"]]
+    tabla_png("T5_01_resumen_filtros", "Resumen de filtros y registros por etapa",
+              ["Etapa", "Filtro", "Registros excluidos", "Registros restantes"], filas,
+              anchos=[0.16, 0.46, 0.16, 0.22], ancho_fig=11, alinear_izq=(1,))
+    eq = RFIL["equipo_detalle"]; ro = RFIL["roca_detalle"]
+    tabla_png("T5_01b_detalle_equipo_roca", "Registros fuera de los límites del equipo, según su tratamiento",
+              ["Tratamiento", "Condición", "Registros"],
+              [["Sale del DI y del entrenamiento", "PR = 0 fuera de la grilla de barra", mil(eq.get("PR = 0", 0))],
+               ["", "PP < 90 bar", mil(eq.get("PP < 90", 0))], ["", "FP < 20 bar", mil(eq.get("FP < 20", 0))],
+               ["", "FLP > 10 bar", mil(eq.get("FLP > 10", 0))], ["", "PR > 10 m/min", mil(eq.get("PR > 10", 0))],
+               ["Solo sale del entrenamiento", "PR < 0,1 m/min", mil(ro.get("PR bajo", 0))],
+               ["", "PR > 1,5 m/min", mil(ro.get("PR sobre", 0))], ["", "RP < 30 bar", mil(ro.get("RP bajo", 0))],
+               ["", "RP > 80 bar", mil(ro.get("RP sobre", 0))], ["", "DP < 25 bar", mil(ro.get("DP bajo", 0))],
+               ["", "DP > 150 bar", mil(ro.get("DP sobre", 0))], ["", "PP > 230 bar", mil(ro.get("PP sobre", 0))]],
+              anchos=[0.42, 0.38, 0.20], ancho_fig=8.5, alinear_izq=(1,))
+
+# ── Tabla 5.2 (reemplazo): límites operacionales del equipo ─────────────────
+tabla_png("T5_02_limites_equipo", "Límites operacionales del equipo",
+          ["Variable", "Mínimo", "Máximo", "Unidad", "Fuera del rango"],
+          [["PR, velocidad de penetración", "0,1", "1,5", "m/min", "PR = 0 y PR > 10: sale de todo; resto: solo entrenamiento"],
+           ["PP, presión de percusión", "90", "230", "bar", "PP < 90: sale de todo"],
+           ["FP, presión de avance", "20", "150", "bar", "FP < 20: sale de todo"],
+           ["DP, presión del dámper", "25", "150", "bar", "Solo entrenamiento"],
+           ["RP, presión de rotación", "30", "80", "bar", "Solo entrenamiento"],
+           ["FLP, presión del flujo de barrido", "2", "10", "bar", "FLP > 10: sale de todo"]],
+          anchos=[0.27, 0.09, 0.09, 0.09, 0.46], ancho_fig=12, alinear_izq=(4,))
+
+VB = _jb("validacion_barra.json")
+if VB:
+    dd = VB["diferencias_entre_detenciones"]; bl = VB["barrido_L"]; lp = VB["L_por_pozo"]
+    tabla_png("T5_02b_validacion_largo_barra", "Validación del largo de barra con los registros",
+              ["Prueba", "Resultado"],
+              [[f"Distancia más frecuente entre detenciones del mismo pozo ({mil(dd['n_parejas'])} parejas)", f"{dec(dd['mejor_pico_1_2_a_2_4_m']['media_fina_m'], 3)} m"],
+               ["Segundo pico (el doble del largo)", f"{dec(dd['segundo_armonico']['media_fina_m'], 3)} m"],
+               [f"Detenciones alineadas con la grilla de 1,756 m (de {mil(bl['detenciones_fuera_emboquillado'])})", mil(bl["alineadas_en_1_756"])],
+               ["Detenciones alineadas si se ubican al azar", mil(round(bl["azar_media"]))],
+               [f"Largo por pozo, mediana ({lp['n_pozos']} pozos con ≥ 4 uniones)", f"{dec(lp['mediana_m'], 4)} m"],
+               ["Desviación estándar del largo entre pozos", f"{dec(1000 * lp['sd_m'], 1)} mm"]],
+              anchos=[0.74, 0.26], ancho_fig=9.5, primera_azul=False, alinear_izq=(0,))
+
+    # ── Figura: periodicidad del cambio de barra ────────────────────────────
+    hh = dd["histograma_1_5_a_2_1_m"]; xs = np.array([float(k) for k in hh]); ys = np.array(list(hh.values()))
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 4.6))
+    a1.bar(xs + 0.005, ys, width=0.0095, color=AZUL)
+    a1.axvline(1.756, color=ROJO, ls="--", lw=1.2, label="Largo de barra 1,756 m")
+    a1.set_xlabel("Distancia entre detenciones (PR = 0) del mismo pozo [m]"); a1.set_ylabel("N° de parejas")
+    a1.legend(loc="upper left", fontsize=9)
+    Lb = np.array(bl["L_m"]); Ab = np.array(bl["alineadas"])
+    a2.plot(Lb, Ab, "-", color=AZUL, lw=1.4, label="Detenciones alineadas con la grilla")
+    a2.axhline(bl["azar_media"], color=GRIS, ls=":", lw=1.4, label=f"Mismas detenciones al azar ({mil(round(bl['azar_media']))})")
+    a2.axvline(1.756, color=ROJO, ls="--", lw=1.2, label=f"1,756 m: {mil(bl['alineadas_en_1_756'])} de {mil(bl['detenciones_fuera_emboquillado'])}")
+    a2.set_xlabel("Largo de barra probado [m]"); a2.set_ylabel("N° de detenciones alineadas (±6 cm)")
+    a2.set_ylim(0, Ab.max() * 1.25); a2.legend(loc="upper left", fontsize=9)
+    guardar(fig, "F5_02b_periodicidad_cambio_barra.png")
+
+    # ── Figura: transitorio alrededor del cambio de barra ───────────────────
+    T = VB["transitorio"]["barra"]; offs = [f"-{o}" for o in range(8, 0, -1)] + [f"+{o}" for o in range(1, 9)]
+    xo = [-o for o in range(8, 0, -1)] + list(range(1, 9))
+    fig, ax = plt.subplots(figsize=(10, 4.6))
+    for s_, c_, mk in (("PR", ROJO, "o"), ("PP", AZUL, "s"), ("FP", NARANJA, "^"), ("DP", VERDE, "D"), ("RP", MORADO, "v"), ("FLP", GRIS, "x")):
+        ax.plot(xo, [T[s_][k]["mediana"] for k in offs], "-", marker=mk, ms=4.5, color=c_, lw=1.3, label=s_)
+    ax.axvspan(-0.5, 0.5, color="#D9D9D9", alpha=0.7, lw=0); ax.text(0, 0.56, "detención\n(PR = 0)", ha="center", va="bottom", fontsize=8.5, color="#595959")
+    ax.axvspan(0.5, 2.5, color=ROJO, alpha=0.08, lw=0); ax.text(1.5, 1.16, "margen\nexcluido", ha="center", va="top", fontsize=8.5, color=ROJO)
+    ax.axhline(1.0, color="#7F7F7F", lw=0.8)
+    ax.set_xticks(xo); ax.set_xticklabels([f"{o:+d}" for o in xo]); ax.set_ylim(0.55, 1.18)
+    ax.set_xlabel("Posición del registro respecto de la detención [muestras de 2 cm]")
+    ax.set_ylabel("Valor relativo al nivel del pozo (mediana)"); ax.legend(loc="lower right", ncol=3, fontsize=9)
+    guardar(fig, "F5_02c_transitorio_cambio_barra.png")
+
+# ── Figura 5.2 (reemplazo): antes y después de la depuración, P20_H12 ───────
+LE = _jb("limpieza_ejemplo.json")
+if LE:
+    wn = "PCC_0042_PR01_TH_P20_H12"; E = LE[wn]
+    L = np.array(E["largo"]); PP = np.array(E["pp"], float); mot = np.array(E["motivo"], dtype=object)
+    corte = E["corte_emboquillado"][0]
+    MOT = [("emboquillado", "Emboquillado (meseta de PP)", GRIS), ("barra", "Cambio de barra (PR = 0)", ROJO),
+           ("margen", "Margen tras el cambio de barra", NARANJA), ("equipo", "Equipo sin perforar", MORADO),
+           ("continuidad", "Continuidad del registro", "#000000"), ("roca", "Fuera de rango, solo entrenamiento", VERDE)]
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=(14, 6.8), sharex=True)
+    a1.plot(L, PP, "-", color=AZUL, lw=0.8)
+    for k, et, c_ in MOT:
+        m = mot == k
+        if m.any():
+            a1.plot(L[m], PP[m], "o", color=c_, ms=4.2, mec="white", mew=0.4, zorder=5, label=f"{et} ({int(m.sum())})")
+    a1.set_ylabel("PP [bar]"); a1.legend(loc="lower right", fontsize=9, ncol=3)
+    a1.set_title("Antes de la depuración", loc="left", fontsize=10)
+    serie = (mot == "") | (mot == "roca")
+    Ls = L.copy().astype(float); PPs = PP.copy(); PPs[~serie] = np.nan
+    a2.plot(Ls, PPs, "-", color=VERDE, lw=0.8, label=f"Serie depurada para el DI ({mil(int(serie.sum()))} registros)")
+    a2.axvspan(0, corte, color=GRIS, alpha=0.30, lw=0, zorder=0, label=f"Emboquillado (< {dec(corte, 2)} m)")
+    for x_ in L[mot == "barra"]:
+        a2.axvline(x_, color=ROJO, ls=":", lw=0.8, alpha=0.6, zorder=0)
+    a2.set_ylabel("PP [bar]"); a2.set_xlabel("Profundidad a lo largo del pozo [m]")
+    a2.set_title("Después de la depuración (líneas punteadas: cambios de barra)", loc="left", fontsize=10)
+    a2.legend(loc="lower right", fontsize=9, ncol=2)
+    guardar(fig, "F5_02_antes_despues_depuracion.png")
 
 # ── 6.1 Pearson ─────────────────────────────────────────────────────────────
 pe = R["pearson"]; V = siglas_xml(pe["variables"])
@@ -133,52 +248,27 @@ fig.suptitle("Correlación de Pearson entre las cinco presiones MWD")
 pie(fig, f"n = {mil(pe['n'])} registros, 4 caserones. PP percusión · RP rotación · DP dámper · FLP flujo · FP avance.", y=-0.02)
 guardar(fig, "F6_01_correlacion_pearson.png")
 
-# ── 6.2 percusión de empate, P20_H12 ────────────────────────────────────────
 P = R["pozo_P20_H12"]; L = np.array(P["largo"]); PP = np.array(P["pp"], float)
-ix = np.array(P["empate_idx"], int)
-fig, (a1, a2) = plt.subplots(2, 1, figsize=(14, 6.8), sharex=True)
-a1.plot(L, PP, "-", color=AZUL, lw=0.8)
-a1.plot(L[ix], PP[ix], "o", color=ROJO, ms=5.5, mec="white", mew=0.6, zorder=5, label=f"Percusión de empate ({len(ix)})")
-a1.set_ylabel("PP [bar]"); a1.grid(alpha=0.3); a1.legend(loc="lower right", fontsize=9)
-a1.set_title("Antes del filtro", loc="left", fontsize=10)
-keep = np.ones(L.size, bool); keep[ix] = False
-a2.plot(L[keep], PP[keep], "-", color=VERDE, lw=0.8)
-a2.set_ylabel("PP [bar]"); a2.set_xlabel("Profundidad a lo largo del pozo [m]"); a2.grid(alpha=0.3)
-a2.set_title("Después del filtro", loc="left", fontsize=10)
-fig.suptitle(f"Filtro de percusión de empate — PCC_0042_PR01_TH_P20_H12 (umbral de caída {dec(R['limpieza']['umbral_empate'], 2)})")
-pie(fig, f"Largo {dec(L[-1], 1)} m · {mil(L.size)} registros. Una muestra se marca si cae ≥ 25% bajo el promedio de sus dos vecinas y estas difieren entre sí menos de 12,5%.", y=-0.01); guardar(fig, "F6_02_percusion_empate.png")
 
-# ── localización de los registros filtrados, P20_H12 ───────────────────────
-# Cada registro excluido se asigna a UN motivo, en el orden en que se aplican
-# los filtros: emboquillado, percusión de empate, rango de PP, continuidad.
-EMB = R["limpieza"]["emboquillado_m"]; ENT = np.array(P["entrenable"], bool)
-motivo = np.full(L.size, "", dtype=object)
-motivo[L < EMB] = "emb"
-emp = np.zeros(L.size, bool); emp[ix] = True
-motivo[(motivo == "") & emp] = "emp"
-motivo[(motivo == "") & ~ENT & ((PP < 90) | (PP > 230))] = "rango"
-motivo[(motivo == "") & ~ENT] = "cont"
-MOT = [("emb", f"Emboquillado (< {dec(EMB, 0)} m)", GRIS), ("emp", "Percusión de empate", ROJO),
-       ("rango", "PP fuera de 90–230 bar", NARANJA), ("cont", "Continuidad del registro", MORADO)]
-fig, (a1, a2) = plt.subplots(2, 1, figsize=(14, 6.8), sharex=True)
-a1.plot(L, PP, "-", color=AZUL, lw=0.8)
-for k, et, c in MOT:
-    m = motivo == k
-    if m.any():
-        a1.plot(L[m], PP[m], "o", color=c, ms=4.5, mec="white", mew=0.5, zorder=5, label=f"{et} ({int(m.sum())})")
-a1.set_ylabel("PP [bar]"); a1.legend(loc="lower right", fontsize=9, ncol=2)
-a1.set_title("Antes del filtro", loc="left", fontsize=10)
-queda = motivo == ""
-a2.plot(L[queda], PP[queda], "-", color=VERDE, lw=0.8, label=f"Registros que quedan ({int(queda.sum())})")
-a2.axvspan(0, EMB, color=GRIS, alpha=0.25, lw=0, zorder=0, label=f"Emboquillado (< {dec(EMB, 0)} m)")
-for k, et, c in MOT[1:]:
-    for x_ in L[motivo == k]:
-        a2.axvline(x_, color=c, ls=":", lw=0.8, alpha=0.6, zorder=0)
-a2.set_ylabel("PP [bar]"); a2.set_xlabel("Profundidad a lo largo del pozo [m]")
-a2.set_title("Después del filtro (líneas punteadas: posición de cada registro excluido)", loc="left", fontsize=10)
-a2.legend(loc="lower right", fontsize=9, ncol=2)
-fig.suptitle(f"Localización de los registros filtrados — PCC_0042_PR01_TH_P20_H12 ({int((~queda).sum())} de {mil(L.size)} registros)")
-guardar(fig, "F6_02c_localizacion_registros_filtrados.png")
+# ── Figura 5.1 (formato de la memoria): Pearson de las 7 variables ─────────
+_p7 = os.path.join(os.path.dirname(SRC), "pearson7.json")
+if os.path.exists(_p7):
+    P7 = json.load(open(_p7, encoding="utf-8")); V7 = P7["variables"]; M7 = np.array(P7["r"])
+    fig, ax = plt.subplots(figsize=(8.2, 6.6))
+    im = ax.imshow(M7, cmap="RdBu_r", vmin=-1, vmax=1)
+    ax.set_xticks(range(len(V7))); ax.set_xticklabels(V7); ax.set_yticks(range(len(V7))); ax.set_yticklabels(V7)
+    pres = [i for i, v in enumerate(V7) if v in ("PP", "FP", "DP", "RP", "FLP")]
+    mx = max(((abs(M7[i, j]), i, j) for i in pres for j in pres if i < j))
+    for i in range(len(V7)):
+        for j in range(len(V7)):
+            dest = {i, j} == {mx[1], mx[2]}
+            ax.text(j, i, dec(M7[i, j], 2), ha="center", va="center", fontsize=9, weight="bold" if dest else "normal",
+                    color="white" if abs(M7[i, j]) > 0.5 else "#222222")
+    from matplotlib.patches import Rectangle
+    for (i, j) in ((mx[1], mx[2]), (mx[2], mx[1])):
+        ax.add_patch(Rectangle((j - 0.5, i - 0.5), 1, 1, fill=False, ec="black", lw=2))
+    fig.colorbar(im, ax=ax, shrink=0.85, label="Correlación de Pearson")
+    guardar(fig, "F5_01_correlacion_pearson_7_variables.png")
 
 # ── Tabla 6.2 ───────────────────────────────────────────────────────────────
 filas = []
@@ -495,6 +585,29 @@ ax.set_ylabel("R²"); ax.legend(fontsize=9); ax.grid(axis="y", alpha=0.3)
 fig.suptitle("Comparación de algoritmos — GroupKFold por pozo")
 pie(fig, f"Mismos {mil(C.get('n_samples', 0))} registros para los cinco modelos (submuestreo por pozo completo, semilla 42), {C.get('n_grupos')} pozos. "
          "Random Forest evaluado con la mediana de sus árboles. Prueba = media de los pliegues.", y=-0.04); guardar(fig, "F6_08_comparacion_algoritmos.png")
+
+# ── Comparación de algoritmos: media de 6 sorteos de pozos ──────────────────
+_cs = os.path.join(os.path.dirname(SRC), "comparacion_sorteos.json")
+if os.path.exists(_cs):
+    CS = json.load(open(_cs, encoding="utf-8")); mods = list(CS["resumen"]); nS = len(CS["corridas"])
+    tr = np.array([[c["filas"][i]["r2_train_mean"] for c in CS["corridas"]] for i in range(len(mods))])
+    te = np.array([[c["filas"][i]["r2_mean"] for c in CS["corridas"]] for i in range(len(mods))])
+    fig, ax = plt.subplots(figsize=(12, 5.6)); xx = np.arange(len(mods)); wd = 0.38
+    b1 = ax.bar(xx - wd / 2, tr.mean(1), wd, color="#9DB6D3", label="Entrenamiento")
+    b2 = ax.bar(xx + wd / 2, te.mean(1), wd, color=AZUL, yerr=te.std(1), capsize=4,
+                error_kw=dict(ecolor="#404040", lw=1), label="Prueba (pozos no vistos), media ± desv. est.")
+    for b_, v in zip(b1, tr.mean(1)):
+        ax.annotate(("+" if v >= 0 else "") + dec(v, 3), (b_.get_x() + b_.get_width() / 2, v), xytext=(0, 4), textcoords="offset points", ha="center", fontsize=9)
+    for b_, v, e in zip(b2, te.mean(1), te.std(1)):
+        ax.annotate(("+" if v >= 0 else "") + dec(v, 3), (b_.get_x() + b_.get_width() / 2, v + e if v >= 0 else v - e),
+                    xytext=(0, 5 if v >= 0 else -14), textcoords="offset points", ha="center", fontsize=9)
+    ax.axhline(0, color="#333", lw=0.8); ax.set_xticks(xx); ax.set_xticklabels(mods); ax.set_ylabel("R²")
+    ax.legend(loc="upper right", fontsize=9)
+    guardar(fig, "F5_08_comparacion_algoritmos_6_sorteos.png")
+    tabla_png("T5_08_comparacion_algoritmos_por_sorteo", "R² de prueba por algoritmo y sorteo de pozos",
+              ["Algoritmo"] + [f"Sorteo {i + 1}" for i in range(nS)] + ["Media", "Desv. est."],
+              [[m] + [("+" if v >= 0 else "") + dec(v, 3) for v in te[i]] + [("+" if te[i].mean() >= 0 else "") + dec(te[i].mean(), 3), dec(te[i].std(), 3)]
+               for i, m in enumerate(mods)], ancho_fig=12)
 
 # ── 6.9 desfases y concordancia en PCC_1541 ─────────────────────────────────
 CO = R["concordancia_1541"]; dl = np.array(CO["desfases"]); PRr = CO["pr"]
@@ -844,6 +957,7 @@ if os.path.exists(FRP):
     FRC = os.path.join(os.path.dirname(SRC), "rop_presiones_clases.json")
     RC = json.load(open(FRC, encoding="utf-8")) if os.path.exists(FRC) else {"continua": {"n": G0["n"], "n_pozos": G0["n_pozos"],
          "rho": {p: G0["presiones"][p]["rho_simple"] for p in PS}}}
+    PS = list(RC["continua"]["rho"])     # siglas del JSON de clases (XML si se recalculó)
     fig, a1 = plt.subplots(figsize=(9.5, 5))
     xx = np.arange(len(PS)); clases = ["continua"]; wd = 0.55
     for k, (cl, col_) in enumerate(zip(clases, (AZUL, "#A5A5A5"))):

@@ -49,3 +49,50 @@ def test_di_sobre_serie_depurada():
         assert np.allclose(di_z2[[i for i, p in enumerate(w.points) if p.di is not None]], obtenido)
     finally:
         gw.wells.clear(); gw.clean_filters.clear()
+
+
+def test_varianza_movil_con_serie_del_largo_de_la_ventana():
+    """Una serie de exactamente `window` registros (14) es más corta que la
+    ventana centrada (15): la varianza móvil debe conservar el largo de la
+    serie. Antes devolvía 15 valores y `_z2_por_param` reventaba."""
+    for n in (14, 15, 16, 40):
+        x = np.arange(n, dtype=float) ** 1.5
+        mv = gw._moving_variance(x, 7)
+        assert mv.shape == (n,), (n, mv.shape)
+        for i in (0, n // 2, n - 1):
+            seg = x[max(0, i - 7): i + 8]
+            assert abs(mv[i] - seg.var()) < 1e-6 * max(1.0, seg.var()), (n, i)
+
+
+def test_compute_di_no_deja_di_viejo_en_pozos_sin_serie():
+    """Un pozo cuya serie depurada queda más corta que la ventana no tiene DI:
+    `compute_di` debe dejarlo en None, no conservar el de una pasada anterior."""
+    gw.wells.clear(); gw.clean_filters.clear(); gw.seed_param_registry()
+    w = _pozo(); gw.wells["W"] = w
+    try:
+        gw.activar_di(gw.DI_VARIANTE_CONVENCION)
+        gw.apply_inicio_filter(0.0); gw.compute_di()
+        assert all(p.di is not None for p in w.points)
+        gw.apply_inicio_filter(100.0); gw.compute_di()      # todo el pozo es emboquillado
+        assert all(p.di is None for p in w.points), "quedó DI de la pasada anterior"
+    finally:
+        gw.wells.clear(); gw.clean_filters.clear()
+
+
+def test_guardar_y_cargar_conserva_la_serie_depurada(tmp_path):
+    """Tras guardar y cargar, `mascara_serie_di` debe dar la misma serie: la
+    marca de emboquillado aplicado viaja en el .gwz."""
+    gw.wells.clear(); gw.clean_filters.clear(); gw.seed_param_registry()
+    w = _pozo(); gw.wells["W"] = w
+    try:
+        gw.activar_di(gw.DI_VARIANTE_CONVENCION)
+        gw.aplicar_limpieza_estandar(); gw.compute_di()
+        antes = gw.mascara_serie_di(gw.wells["W"].points).copy()
+        assert not antes.all()
+        ruta = str(tmp_path / "p.gwz"); gw.save_project(ruta)
+        gw.inicio_aplicado = False
+        gw.load_project(ruta)
+        assert gw.inicio_aplicado
+        assert (gw.mascara_serie_di(gw.wells["W"].points) == antes).all()
+    finally:
+        gw.wells.clear(); gw.clean_filters.clear()

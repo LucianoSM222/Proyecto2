@@ -3916,10 +3916,13 @@ def add_norm_filter(var_name, method):
     return filt
 
 def _moving_variance(arr, half):
+    # mode="full" recortado, no "same": con una serie más corta que la ventana
+    # centrada (n < 2·half+1) "same" devuelve el largo de la ventana, no el de
+    # la serie.
     n = len(arr); kernel = np.ones(2*half+1)
-    counts = np.convolve(np.ones(n), kernel, mode="same")
-    sums = np.convolve(arr, kernel, mode="same")
-    sums2 = np.convolve(arr**2, kernel, mode="same")
+    counts = np.convolve(np.ones(n), kernel, mode="full")[half:half+n]
+    sums = np.convolve(arr, kernel, mode="full")[half:half+n]
+    sums2 = np.convolve(arr**2, kernel, mode="full")[half:half+n]
     mean = sums/counts
     return np.maximum(sums2/counts - mean**2, 0.0)
 
@@ -4997,12 +5000,18 @@ def compute_di():
     cfg = di_config
     for wn, well in wells.items():
         pts = well.points; n = len(pts)
+        # Un pozo sin serie suficiente NO tiene DI: se limpia el de cualquier
+        # pasada anterior (antes se conservaba, y un pozo entero de
+        # emboquillado seguía mostrando el DI calculado sin limpieza).
         if n < cfg["window"]:
+            for p in pts: p.di = None
             log_warn(f'DI "{wn}": {n} pts, mín={cfg["window"]}.'); continue
         try:
-            # Serie depurada: emboquillado y percusión de empate fuera (DI = None).
+            # Serie depurada: lo que es del equipo sale antes (DI = None).
             di = di_profile_serie(pts, cfg["window"], cfg["params"], cfg["weights"])
-            if di is None: continue
+            if di is None:
+                for p in pts: p.di = None
+                continue
             for i, p in enumerate(pts):
                 p.di = float(di[i]) if np.isfinite(di[i]) else None
         except Exception as e:
@@ -10780,6 +10789,7 @@ def save_project(path):
         "clean_filters": clean_filters,
         "inicio_cut_m": inicio_cut_m,
         "emboquillado_modo": emboquillado_modo,
+        "inicio_aplicado": inicio_aplicado,
         "inicio_por_pozo": {k: list(v) for k, v in inicio_por_pozo.items()},
         "di_config": di_config,
         "di_threshold": di_threshold,
@@ -10816,7 +10826,7 @@ def load_project(path):
     """
     # di_threshold ya no se escribe acá: lo fija activar_di(), que es la única
     # puerta por la que se cambia el DI vigente.
-    global group_interval_m, global_center, inicio_cut_m, emboquillado_modo
+    global group_interval_m, global_center, inicio_cut_m, emboquillado_modo, inicio_aplicado
     with _zipfile.ZipFile(path, "r") as zf:
         proj = json.loads(zf.read("project.json"))
         npz_data = np.load(_io.BytesIO(zf.read("triangles.npz")), allow_pickle=False)
@@ -10857,6 +10867,11 @@ def load_project(path):
     clean_filters.extend(proj.get("clean_filters", []))
     inicio_cut_m = proj.get("inicio_cut_m", inicio_cut_m)
     emboquillado_modo = proj.get("emboquillado_modo", "fijo")
+    # Sin esta marca la serie del DI recalculada tras cargar volvía a incluir
+    # el emboquillado. Los proyectos anteriores no la traen: se deduce de si
+    # algún punto quedó marcado.
+    inicio_aplicado = bool(proj["inicio_aplicado"]) if "inicio_aplicado" in proj else any(
+        p.emboquillado for p in all_points())
     inicio_por_pozo.clear()
     inicio_por_pozo.update({k: tuple(v) for k, v in (proj.get("inicio_por_pozo") or {}).items()})
     # Variantes del DI y cuál corría. Se restauran ANTES de fijar el vigente:

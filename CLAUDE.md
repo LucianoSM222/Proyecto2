@@ -79,9 +79,13 @@ mina subterránea de cobre.
     id `percusion_empate`) SALIÓ de la limpieza estándar (2026-11-11); sigue
     disponible como filtro opcional del Paso 2.
   Sobre los cuatro caserones (`memoria_final/barra/limpieza_vigente.py`):
-  emboquillado 75.104 (corte mediano 1,50 m, 11 pozos sin meseta), cambio de
-  barra 19.424, límites del equipo 46.806, continuidad 5.201; entrenables
-  835.885 (85,1%), en la serie del DI 860.824 (87,6%).
+  conteo exclusivo (`memoria_final/barra/resumen_filtros.py`): emboquillado
+  75.104 (corte mediano 1,50 m, 11 pozos sin meseta), cambio de barra 31.255
+  (11.070 detenciones + 20.185 de margen), equipo sin perforar 14.114,
+  continuidad 1.123; serie del DI 860.821; solo entrenamiento 24.939;
+  entrenables 835.882; entrenamiento (DI ≤ 1) 690.420. DI calibrado a 5 m en
+  la corrida del 2026-11-11: PP 0,22 · RP 0,21 · DP 0,02 · FLP 0,55, ρ de
+  ajuste +0,261 y de validación −0,009.
 - El DI se calcula sobre la SERIE DEPURADA (`mascara_serie_di`,
   `di_profile_serie`): el emboquillado, el cambio de barra y los registros
   en que el equipo no perfora (PR = 0, PP o FP bajo su mínimo, FLP sobre su
@@ -261,7 +265,8 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | E1 | Siglas del XML (PR, FP = avance, FLP = barrido) en todo | — | ✅ |
 | E2 | Emboquillado por meseta de PP · cambio de barra · regulación automática | — | ✅ — falta recorrer `final_calc.py` y regenerar figuras |
 | E3 | DI en dos clases: continua (≤ 1) / discontinua (> 1) | — | ✅ — figuras sin regenerar |
-| E4 | Barra validada (1,755 m) · margen tras la detención · límites del equipo (equipo sale del DI, roca se queda) · sin regulación | — | ✅ — falta correr `final_calc.py` |
+| E4 | Barra validada (1,755 m) · margen tras la detención · límites del equipo (equipo sale del DI, roca se queda) · sin regulación | — | ✅ |
+| E5 | Corrida final con la limpieza nueva · figuras y tablas de reemplazo de la memoria · `docs/cambios_tesis_2026-11-11.md` | — | ✅ `figuras/tesis_2026-11-11/reemplazo/` |
 
 Hallazgos que condicionan la interpretación, no defectos pendientes:
 

@@ -8,29 +8,29 @@
  "pliegues": [
   {
    "caseron": "PCC_0042",
-   "n_prueba": 365416,
+   "n_prueba": 354435,
    "n_etiquetas": 2,
    "curva": {
     "forma": "lineal",
     "coef": [
-     0.307511,
-     6.872392
+     0.296982,
+     10.075134
     ],
     "pares": [
      [
-      330.9,
+      333.8,
       128.1
      ],
      [
-      453.3,
+      455.4,
       111.5
      ],
      [
-      386.7,
+      386.3,
       180.0
      ],
      [
-      299.3,
+      303.7,
       60.0
      ]
     ]
@@ -38,7 +38,7 @@
    "extrapolacion": [],
    "metricas": {
     "linea_base": {
-     "n": 365416,
+     "n": 354435,
      "rmse": 53.64,
      "mae": 49.34,
      "pearson": null,
@@ -46,52 +46,52 @@
      "motivo_correlacion": "predicción constante"
     },
     "relacion": {
-     "n": 365416,
-     "rmse": 57.71,
-     "mae": 54.61,
+     "n": 354435,
+     "rmse": 58.29,
+     "mae": 55.28,
      "pearson": 1.0,
      "spearman": 1.0,
      "motivo_correlacion": null
     },
     "banda": {
-     "n": 365416,
-     "rmse": 73.13,
-     "mae": 64.33,
-     "pearson": -0.002,
-     "spearman": 0.054,
+     "n": 354435,
+     "rmse": 69.48,
+     "mae": 63.11,
+     "pearson": 0.007,
+     "spearman": 0.06,
      "motivo_correlacion": null
     },
     "ml": {
-     "n": 365416,
-     "rmse": 44.86,
-     "mae": 40.31,
-     "pearson": 0.25,
-     "spearman": 0.237,
+     "n": 354435,
+     "rmse": 44.91,
+     "mae": 40.24,
+     "pearson": 0.259,
+     "spearman": 0.249,
      "motivo_correlacion": null
     }
    }
   },
   {
    "caseron": "PCC_1541",
-   "n_prueba": 131053,
+   "n_prueba": 118760,
    "n_etiquetas": 2,
    "curva": {
     "forma": "lineal",
     "coef": [
-     -0.342994,
-     272.55008
+     -0.332872,
+     268.697554
     ],
     "pares": [
      [
-      344.1,
+      343.0,
       128.1
      ],
      [
-      453.3,
+      455.4,
       111.5
      ],
      [
-      363.1,
+      362.7,
       180.0
      ]
     ]
@@ -99,77 +99,77 @@
    "extrapolacion": [
     {
      "litologia": "Bht",
-     "pep_mediana": 310.0,
+     "pep_mediana": 315.8,
      "rango_ajuste": [
-      344.1,
-      453.3
+      343.0,
+      455.4
      ]
     },
     {
      "litologia": "Kpcls",
-     "pep_mediana": 299.3,
+     "pep_mediana": 303.7,
      "rango_ajuste": [
-      344.1,
-      453.3
+      343.0,
+      455.4
      ]
     }
    ],
    "metricas": {
     "linea_base": {
-     "n": 131053,
-     "rmse": 51.87,
-     "mae": 39.62,
+     "n": 118760,
+     "rmse": 52.13,
+     "mae": 39.92,
      "pearson": null,
      "spearman": null,
      "motivo_correlacion": "predicción constante"
     },
     "relacion": {
-     "n": 131053,
-     "rmse": 76.15,
-     "mae": 67.48,
+     "n": 118760,
+     "rmse": 74.33,
+     "mae": 65.29,
      "pearson": -1.0,
      "spearman": -1.0,
      "motivo_correlacion": null
     },
     "banda": {
-     "n": 131053,
-     "rmse": 105.05,
-     "mae": 88.4,
-     "pearson": 0.009,
-     "spearman": -0.04,
+     "n": 118760,
+     "rmse": 97.55,
+     "mae": 83.88,
+     "pearson": 0.022,
+     "spearman": -0.051,
      "motivo_correlacion": null
     },
     "ml": {
-     "n": 131053,
-     "rmse": 75.86,
-     "mae": 67.26,
-     "pearson": 0.04,
-     "spearman": 0.047,
+     "n": 118760,
+     "rmse": 76.63,
+     "mae": 68.06,
+     "pearson": 0.043,
+     "spearman": 0.043,
      "motivo_correlacion": null
     }
    }
   },
   {
    "caseron": "PCS_1043",
-   "n_prueba": 122026,
+   "n_prueba": 115872,
    "n_etiquetas": 3,
    "curva": {
     "forma": "lineal",
     "coef": [
-     1.948147,
-     -514.036745
+     2.111361,
+     -571.434635
     ],
     "pares": [
      [
-      322.1,
+      324.0,
       128.1
      ],
      [
-      359.1,
+      358.6,
       180.0
      ],
      [
-      299.3,
+      303.7,
       60.0
      ]
     ]
@@ -177,73 +177,73 @@
    "extrapolacion": [
     {
      "litologia": "Brecha_mixta",
-     "pep_mediana": 453.3,
+     "pep_mediana": 455.4,
      "rango_ajuste": [
-      299.3,
-      359.1
+      303.7,
+      358.6
      ]
     },
     {
      "litologia": "Kpcli",
-     "pep_mediana": 431.0,
+     "pep_mediana": 435.8,
      "rango_ajuste": [
-      299.3,
-      359.1
+      303.7,
+      358.6
      ]
     }
    ],
    "metricas": {
     "linea_base": {
-     "n": 122026,
-     "rmse": 29.99,
-     "mae": 19.87,
+     "n": 115872,
+     "rmse": 29.84,
+     "mae": 19.73,
      "pearson": null,
      "spearman": null,
      "motivo_correlacion": "predicción constante"
     },
     "relacion": {
-     "n": 122026,
-     "rmse": 126.86,
-     "mae": 102.28,
-     "pearson": 0.42,
-     "spearman": 0.066,
+     "n": 115872,
+     "rmse": 139.85,
+     "mae": 111.61,
+     "pearson": 0.44,
+     "spearman": 0.063,
      "motivo_correlacion": null
     },
     "banda": {
-     "n": 122026,
-     "rmse": 145.25,
-     "mae": 119.6,
-     "pearson": 0.323,
-     "spearman": 0.057,
+     "n": 115872,
+     "rmse": 155.02,
+     "mae": 126.98,
+     "pearson": 0.363,
+     "spearman": 0.071,
      "motivo_correlacion": null
     },
     "ml": {
-     "n": 122026,
-     "rmse": 31.59,
+     "n": 115872,
+     "rmse": 31.74,
      "mae": 25.51,
-     "pearson": 0.169,
-     "spearman": 0.048,
+     "pearson": 0.188,
+     "spearman": 0.053,
      "motivo_correlacion": null
     }
    }
   },
   {
    "caseron": "PCS_1059",
-   "n_prueba": 105108,
+   "n_prueba": 101353,
    "n_etiquetas": 1,
    "curva": {
     "forma": "lineal",
     "coef": [
-     0.198439,
-     48.2299
+     0.180642,
+     54.312502
     ],
     "pares": [
      [
-      332.4,
+      333.5,
       128.1
      ],
      [
-      453.3,
+      455.4,
       111.5
      ],
      [
@@ -251,7 +251,7 @@
       180.0
      ],
      [
-      299.3,
+      303.7,
       60.0
      ]
     ]
@@ -259,7 +259,7 @@
    "extrapolacion": [],
    "metricas": {
     "linea_base": {
-     "n": 105108,
+     "n": 101353,
      "rmse": 60.1,
      "mae": 60.1,
      "pearson": null,
@@ -267,25 +267,25 @@
      "motivo_correlacion": "una sola etiqueta en la prueba"
     },
     "relacion": {
-     "n": 105108,
-     "rmse": 57.4,
-     "mae": 57.4,
+     "n": 101353,
+     "rmse": 58.26,
+     "mae": 58.26,
      "pearson": null,
      "spearman": null,
      "motivo_correlacion": "una sola etiqueta en la prueba"
     },
     "banda": {
-     "n": 105108,
-     "rmse": 62.64,
-     "mae": 56.95,
+     "n": 101353,
+     "rmse": 59.55,
+     "mae": 56.26,
      "pearson": null,
      "spearman": null,
      "motivo_correlacion": "una sola etiqueta en la prueba"
     },
     "ml": {
-     "n": 105108,
-     "rmse": 49.96,
-     "mae": 48.19,
+     "n": 101353,
+     "rmse": 49.87,
+     "mae": 47.93,
      "pearson": null,
      "spearman": null,
      "motivo_correlacion": "una sola etiqueta en la prueba"
@@ -295,28 +295,28 @@
  ],
  "medias": {
   "linea_base": {
-   "rmse": 48.9,
-   "mae": 42.233,
+   "rmse": 48.928,
+   "mae": 42.273,
    "pearson": null,
    "spearman": null
   },
   "banda": {
-   "rmse": 96.517,
-   "mae": 82.32,
-   "pearson": 0.11,
-   "spearman": 0.024
+   "rmse": 95.4,
+   "mae": 82.558,
+   "pearson": 0.131,
+   "spearman": 0.027
   },
   "relacion": {
-   "rmse": 79.53,
-   "mae": 70.442,
-   "pearson": 0.14,
-   "spearman": 0.022
+   "rmse": 82.683,
+   "mae": 72.61,
+   "pearson": 0.147,
+   "spearman": 0.021
   },
   "ml": {
-   "rmse": 50.568,
-   "mae": 45.318,
-   "pearson": 0.153,
-   "spearman": 0.111
+   "rmse": 50.788,
+   "mae": 45.435,
+   "pearson": 0.163,
+   "spearman": 0.115
   }
  }
 }
