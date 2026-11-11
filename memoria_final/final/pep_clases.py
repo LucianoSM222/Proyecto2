@@ -1,4 +1,4 @@
-"""PEP contra UCS referencial y PR en roca intacta (DI ≤ 1) y fracturada
+"""PEP contra UCS referencial y PR en roca continua (DI ≤ 1) y discontinua
 (DI > 1), sobre la POBLACIÓN completa (sin muestreo): ρ de Spearman y R² de
 los ajustes lineal y parabólico. Configuración final (limpieza estándar, serie
 depurada, pesos calibrados a 5 m de final.json). Mismo filtro que la figura

@@ -349,7 +349,7 @@ if bm.get("status") == "ok":
     R["bloques"]["resumen"].pop("modelo_ucs", None)
 
     def cdi(d):
-        return None if d is None else ("sana (DI ≤ 1)" if d <= 1.0 else "transición (1 < DI ≤ 1,5)" if d <= 1.5 else "fracturada (DI > 1,5)")
+        return None if d is None else ("roca continua (DI ≤ 1)" if d <= 1.0 else "roca discontinua (DI > 1)")
     tab = Counter((cdi(b.get("di")), b.get("banda")) for b in bl)
     R["bloques"]["tabla"] = [{"di": a, "banda": b, "n": n} for (a, b), n in tab.items()]
     N0 = 6958905.0

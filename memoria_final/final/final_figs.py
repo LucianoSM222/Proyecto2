@@ -348,7 +348,7 @@ if os.path.exists(FL):
 # ── 6.6 PEP vs UCS predicha ─────────────────────────────────────────────────
 S6 = R["pep_vs_ucs"]
 fig, axs = plt.subplots(1, 2, figsize=(13, 5.2), sharey=True)
-for ax, k, tit in ((axs[0], "intacta", f"Roca intacta (DI ≤ {dec(UMB, 1)})"), (axs[1], "fracturada", f"Roca fracturada (DI > {dec(UMB, 1)})")):
+for ax, k, tit in ((axs[0], "intacta", f"Roca continua (DI ≤ {dec(UMB, 1)})"), (axs[1], "fracturada", f"Roca discontinua (DI > {dec(UMB, 1)})")):
     d = S6[k]; pep = np.array(d["pep"]); u = np.array(d["ucs_ml"])
     for lito, c in COL_LITO.items():
         m = np.array([l == lito for l in d["lito"]])
@@ -368,8 +368,8 @@ fig, ax = plt.subplots(figsize=(10, 6.2))
 # Las dos muestras son de 25.000; la fracturada se submuestrea a la proporción
 # real de las clases para que la nube no exagere su peso.
 _prop = S6["fracturada"]["n"] / S6["intacta"]["n"]
-for k, mk, c, et in (("intacta", "o", AZUL, f"DI ≤ {dec(UMB, 0)}, roca intacta — dominio de entrenamiento"),
-                     ("fracturada", "x", ROJO, f"DI > {dec(UMB, 0)}, fracturada — EXTRAPOLACIÓN")):
+for k, mk, c, et in (("intacta", "o", AZUL, f"DI ≤ {dec(UMB, 0)}, roca continua — dominio de entrenamiento"),
+                     ("fracturada", "x", ROJO, f"DI > {dec(UMB, 0)}, roca discontinua — EXTRAPOLACIÓN")):
     d = S6[k]; pep = np.array(d["pep"]); u = np.array(d["ucs_ml"])
     m = pep <= 1000
     if k == "fracturada":
@@ -386,8 +386,8 @@ lg = ax.legend(h[::-1], l[::-1], loc="upper right", fontsize=9, markerscale=2.5,
 for hnd in lg.legend_handles: hnd.set_alpha(1)
 guardar(fig, "F6_06b_PEP_vs_UCS_extrapolacion.png")
 
-# ── 6.6c PEP vs UCS predicha: ajuste SOLO sobre roca intacta ───────────────
-# La fracturada se dibuja en un solo color y no participa de ningún ajuste: el
+# ── 6.6c PEP vs UCS predicha: ajuste SOLO sobre roca continua ───────────────
+# La discontinua se dibuja en un solo color y no participa de ningún ajuste: el
 # modelo no se entrena con ella y su UCS predicha es extrapolación.
 from scipy.optimize import curve_fit
 
@@ -440,10 +440,10 @@ keep = np.zeros(pep_f.size, bool)
 keep[np.random.default_rng(42).choice(pep_f.size, int(round(pep_f.size * df_["n"] / di_["n"])), replace=False)] = True
 mf = keep & (pep_f <= 1000)
 ax.scatter(pep_f[mf], u_f[mf], s=8, marker="x", lw=0.6, alpha=0.45, color="#7F7F7F", rasterized=True,
-           label=f"DI > {dec(UMB, 0)}, fracturada — EXTRAPOLACIÓN, fuera del ajuste (n = {mil(df_['n'])})")
+           label=f"DI > {dec(UMB, 0)}, roca discontinua — EXTRAPOLACIÓN, fuera del ajuste (n = {mil(df_['n'])})")
 xx = np.linspace(100, 600, 400)
 ax.plot(xx, AJ[mejor][1](xx), "-", color="#1a1a1a", lw=2,
-        label=f"Ajuste {mejor} (solo intacta, PEP 100–600): {_ecuacion(mejor, AJ[mejor][2])} · R² = {dec(AJ[mejor][0], 3)}")
+        label=f"Ajuste {mejor} (solo roca continua, PEP 100–600): {_ecuacion(mejor, AJ[mejor][2])} · R² = {dec(AJ[mejor][0], 3)}")
 ax.set_xlim(-40, 1040)
 ax.set_xlabel("PEP = (PP + RP + FP) / PR [bar·min/m]  (PEP ≤ 1.000)"); ax.set_ylabel("UCS predicha por ML [MPa]")
 ax.grid(True, axis="both")
@@ -640,10 +640,10 @@ if B.get("status") == "ok" and B.get("seccion", {}).get("x"):
 
     # ── 6.12 clasificación DI × UCS de bloques ──────────────────────────────
     BJ = json.load(open(os.path.join(os.path.dirname(SRC), "bloques.json")))
-    cdi = ["sana (DI ≤ 1)", "transición (1 < DI ≤ 1,5)", "fracturada (DI > 1,5)"]
+    cdi = ["roca continua (DI ≤ 1)", "roca discontinua (DI > 1)"]
     CORTES = [(0, 125, "< 125 MPa"), (125, 150, "125–150 MPa"), (150, 175, "150–175 MPa"), (175, 451, "≥ 175 MPa")]
-    def _ci(d): return 0 if d <= 1.0 else (1 if d <= 1.5 else 2)
-    M = np.zeros((3, len(CORTES)))
+    def _ci(d): return 0 if d <= 1.0 else 1
+    M = np.zeros((len(cdi), len(CORTES)))
     for d, u in zip(BJ["di"], BJ["ucs"]):
         if d is None or u is None: continue
         j = next(k for k, (lo_, hi_, _) in enumerate(CORTES) if lo_ <= u < hi_)
@@ -653,8 +653,8 @@ if B.get("status") == "ok" and B.get("seccion", {}).get("x"):
     im = ax.imshow(M / N * 100, cmap="Blues", aspect="auto")
     ax.set_xticks(range(len(CORTES))); ax.set_xticklabels([c[2] for c in CORTES])
     ax.set_xlabel("UCS de matriz predicha del bloque")
-    ax.set_yticks(range(3)); ax.set_yticklabels(cdi)
-    for i in range(3):
+    ax.set_yticks(range(len(cdi))); ax.set_yticklabels(cdi)
+    for i in range(len(cdi)):
         for j in range(len(CORTES)):
             ax.text(j, i, f"{mil(M[i, j])} bloque{'' if M[i, j] == 1 else 's'}\n{mil(round(M[i, j] * B['bloque_m'] ** 3))} m³\n{dec(100 * M[i, j] / N, 1)}%", ha="center", va="center", fontsize=9,
                     color="white" if M[i, j] / N > 0.35 else "#222")
@@ -693,7 +693,7 @@ for lito in sorted({e["lito"] for e in E}, key=lambda l: next(e["ucs_lab"] for e
 a1.set_xlabel("PP [bar] (estratos de 10 bar)"); a1.set_ylabel("PEP mediana [bar·min/m]"); a1.grid(alpha=0.3); a1.legend(fontsize=8)
 a2.set_xlabel("PP [bar] (estratos de 10 bar)"); a2.set_ylabel("PR mediana [m/min]"); a2.grid(alpha=0.3)
 fig.suptitle("PEP y PR según la UCS de laboratorio y la presión de percusión")
-pie(fig, "Registros entrenables de roca intacta, PR ≥ 0,2 m/min; estratos con ≥ 20 registros. " + PIE_CFG, y=-0.04); guardar(fig, "F6_13_PEP_UCS_ROP_PP_continua.png") if not os.path.exists(os.path.join(os.path.dirname(SRC), "pep_estratos_clases.json")) else plt.close(fig)
+pie(fig, "Registros entrenables de roca continua (DI ≤ 1), PR ≥ 0,2 m/min; estratos con ≥ 20 registros. " + PIE_CFG, y=-0.04); guardar(fig, "F6_13_PEP_UCS_ROP_PP_continua.png") if not os.path.exists(os.path.join(os.path.dirname(SRC), "pep_estratos_clases.json")) else plt.close(fig)
 
 # ── 6.13b PEP por registro: UCS referencial, PR y PP (pep_muestra.py) ─────
 FM = os.path.join(os.path.dirname(SRC), "pep_muestra.json")
@@ -717,7 +717,7 @@ if os.path.exists(FM):
         ax.set_xlabel(et); ax.set_title(f"PEP vs. {et.split(' ')[0]} (color = PP) · ρ = {dec(rho[k], 3)}", fontsize=10.5)
     fig.colorbar(sc_, ax=list(axs[1:]), shrink=0.85, label="PP [bar]")
     axs[0].set_ylim(0, S["pep_max"])
-    fig.suptitle(f"PEP = (PP + RP + FP) / PR — {mil(len(pep))} de {mil(S['n'])} registros entrenables de roca intacta "
+    fig.suptitle(f"PEP = (PP + RP + FP) / PR — {mil(len(pep))} de {mil(S['n'])} registros entrenables de roca continua "
                  f"(PEP ≤ {mil(S['pep_max'])})")
     guardar(fig, "F6_13b_PEP_UCS_ROP_PP_registros.png")
 
@@ -767,12 +767,12 @@ if os.path.exists(FA):
     fig.suptitle(f"Ajuste parabólico UCS–PEP por litología y caserón (ρ = {('+' if G['spearman'] >= 0 else '') + dec(G['spearman'], 3)}, n = {G['n_puntos']} grupos)")
     guardar(fig, "F6_13c_ajuste_PEP_UCS_litologia_caseron.png")
 
-# ── PEP, PR y UCS modelada por intervalo de PP: continua vs fracturada ─────
+# ── PEP, PR y UCS modelada por intervalo de PP: continua vs discontinua ───
 FE = os.path.join(os.path.dirname(SRC), "pep_estratos_clases.json")
 if os.path.exists(FE):
     EC = json.load(open(FE, encoding="utf-8")); FL_ = EC["filas"]
     LITS = sorted(EC["anclas"], key=lambda l: EC["anclas"][l])
-    ETC = {"continua": f"Roca continua (DI ≤ {dec(UMB, 0)})", "fracturada": f"Roca fracturada (DI > {dec(UMB, 0)})"}
+    ETC = {"continua": f"Roca continua (DI ≤ {dec(UMB, 0)})", "fracturada": f"Roca discontinua (DI > {dec(UMB, 0)})"}
 
     NMAX = max(f["n"] for f in FL_)
 
@@ -848,7 +848,7 @@ if os.path.exists(FRP):
     xx = np.arange(len(PS)); clases = ["continua"]; wd = 0.55
     for k, (cl, col_) in enumerate(zip(clases, (AZUL, "#A5A5A5"))):
         v = [RC[cl]["rho"][p] for p in PS]
-        et = (f"Roca continua (DI ≤ {dec(UMB, 0)})" if cl == "continua" else f"Roca fracturada (DI > {dec(UMB, 0)})") + \
+        et = (f"Roca continua (DI ≤ {dec(UMB, 0)})" if cl == "continua" else f"Roca discontinua (DI > {dec(UMB, 0)})") + \
              f" — {mil(RC[cl]['n'])} registros"
         bb = a1.bar(xx + (k - (len(clases) - 1) / 2) * wd, v, wd, color=col_, label=et)
         for b_, x in zip(bb, v):

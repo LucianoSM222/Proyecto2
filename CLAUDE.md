@@ -20,6 +20,11 @@ mina subterránea de cobre.
 - Ejes DXF: X = Este, Y = Norte, Z = Cota.
 - Ray casting VERTICAL (0,0,1). El grid XY de aceleración solo vale con rayo
   vertical. Cambiarlo sin rehacer el grid llevó la exactitud de 82,4% a 7,1%.
+- Clases del DI (decisión del autor, 2026-11-11): DI ≤ 1 = **roca continua**,
+  DI > 1 = **roca discontinua**. Dos clases, también en el modelo de bloques
+  (antes sana/transición/fracturada). Las claves internas de los JSON
+  (`intacta`, `fracturada`, `roca_intacta`) no cambian; solo el rótulo. «Roca
+  intacta» queda reservado para la UCS de laboratorio (Karzulovic, ISRM).
 - DI: ventana 14 (≈28 cm), umbral 1,0, cuatro presiones (PP, RP, DP, FLP; el
   avance queda fuera). Convención de partida PP=0,35 DP=0,25 FLP=0,20 RP=0,20;
   la memoria usa la variante CALIBRADA contra RQD a 5 m (ver
@@ -229,6 +234,7 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | D9 | Reportes dibujados (no JSON crudo) y descarga en PNG | — | ✅ |
 | E1 | Siglas del XML (PR, FP = avance, FLP = barrido) en todo | — | ✅ |
 | E2 | Emboquillado por meseta de PP · cambio de barra · regulación automática | — | ✅ — falta recorrer `final_calc.py` y regenerar figuras |
+| E3 | DI en dos clases: continua (≤ 1) / discontinua (> 1) | — | ✅ — figuras sin regenerar |
 
 Hallazgos que condicionan la interpretación, no defectos pendientes:
 

@@ -1,5 +1,5 @@
 """ρ de Spearman simple entre la PR y PP, FP, RP y DP en roca continua
-(DI ≤ 1) y fracturada (DI > 1). Mismo filtro que rop_presiones.py, salvo el DI.
+(DI ≤ 1) y discontinua (DI > 1). Mismo filtro que rop_presiones.py, salvo el DI.
 Uso: python3 rop_presiones_clases.py final.json rop_presiones_clases.json
 """
 import sys, json

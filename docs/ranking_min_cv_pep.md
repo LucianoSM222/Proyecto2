@@ -15,7 +15,7 @@ cumplen todas estas condiciones a la vez:
 |---|---|---|
 | Mismo grupo de dominio geomecánico | el dominio evaluado (G2) | no se mezclan rocas distintas |
 | Registro entrenable | pasa la limpieza estándar | sin emboquillado, empate, PP fuera de 90–230 bar ni saltos de registro |
-| Roca continua | DI ≤ 1,0 | la recomendación se basa en roca sana |
+| Roca continua | DI ≤ 1,0 | la recomendación se basa en roca continua; DI > 1 es roca discontinua |
 | PEP válida | finita y < 800 bar·min/m | descarta ROP ≈ 0 (lavado del bit) |
 | ROP válida | finita | — |
 | Largo mínimo del tramo | ≥ 5 registros consecutivos (≈ 10 cm) | fijo en el código (`min_len=5`) |

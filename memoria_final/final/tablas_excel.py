@@ -268,7 +268,7 @@ nota(ws, f"Mismos {C['n_samples']:,} registros para los cinco modelos, {C['n_gru
 
 # ── UCS por litología, P10–P90 ─────────────────────────────────────────────
 U = R["ucs_por_litologia"]; ws = hoja("UCS por litología")
-titulo(ws, "UCS de laboratorio (referencial) y UCS predicha, roca intacta entrenable")
+titulo(ws, "UCS de laboratorio (referencial) y UCS predicha, roca continua entrenable (DI ≤ 1)")
 _, a, b = tabla(ws, ["Litología", "Registros", "UCS referencial [MPa]", "P10 ML", "P50 ML", "P90 ML", "P50 − referencial"],
                 [[NOM_LITO.get(k, k), v["n"], v["ancla"], v["p10"], v["p50"], v["p90"], None]
                  for k, v in sorted(U.items(), key=lambda kv: kv[1]["ancla"])],
@@ -277,11 +277,11 @@ for i in range(a, b + 1):
     ws.cell(i, 7, f"=E{i}-C{i}").number_format = "+0.0;-0.0"; ws.cell(i, 7).alignment = Alignment(horizontal="center")
 titulo(ws, "Ancho de la banda P10–P90 de la predicción")
 tabla(ws, ["Roca", "Registros", "Media [MPa]", "Mediana [MPa]"],
-      [["intacta (DI ≤ 1)" if k == "intacta" else "fracturada (DI > 1)", v["n"], v["media"], v["mediana"]] for k, v in R["p10_p90"].items()],
+      [["roca continua (DI ≤ 1)" if k == "intacta" else "roca discontinua (DI > 1)", v["n"], v["media"], v["mediana"]] for k, v in R["p10_p90"].items()],
       fmt=[None, "#,##0", "0.0", "0.0"])
 
 # ── PEP ────────────────────────────────────────────────────────────────────
-ws = hoja("PEP estratos"); titulo(ws, "PEP y PR medianas por litología y estrato de PP (roca intacta entrenable)")
+ws = hoja("PEP estratos"); titulo(ws, "PEP y PR medianas por litología y estrato de PP (roca continua entrenable, DI ≤ 1)")
 tabla(ws, ["Litología", "UCS referencial [MPa]", "Estrato PP [bar]", "Registros", "PEP mediana [bar·min/m]", "CV PEP", "PR mediana [m/min]"],
       [[NOM_LITO.get(e["lito"], e["lito"]), e["ucs_lab"], f"{e['pp_bin']}–{e['pp_bin'] + 10}", e["n"], e["pep_mediana"], e["pep_cv"], e["rop_mediana"]]
        for e in R["pep_estratos"]], fmt=[None, "0.0", None, "#,##0", "0.0", "0.000", "0.000"])
@@ -290,7 +290,7 @@ if S:
     tabla(ws, ["Variable", "ρ de Spearman con la PEP"],
           [["UCS referencial", S["spearman_pep"]["ucs_ref"]], ["PR", S["spearman_pep"]["rop"]], ["PP", S["spearman_pep"]["pp"]]],
           fmt=[None, "+0.000;-0.000"])
-    nota(ws, f"{S['n']:,} registros entrenables de roca intacta con PEP ≤ {S['pep_max']:.0f} y PR ≥ {S['rop_min']} m/min; "
+    nota(ws, f"{S['n']:,} registros entrenables de roca continua con PEP ≤ {S['pep_max']:.0f} y PR ≥ {S['rop_min']} m/min; "
              f"{S['fuera_pep_max']:,} excluidos por PEP > {S['pep_max']:.0f} (PR ≈ 0).".replace(",", "."))
 
 # ── Ajustes UCS referencial ~ PEP ──────────────────────────────────────────
@@ -303,14 +303,14 @@ if os.path.exists(FA):
     FORMAS = ["lineal", "parabolico", "potencial", "exponencial", "logaritmico"]
     tabla(ws, ["Conjunto", "Agregación", "Puntos", "Registros", "ρ de Spearman", "r de Pearson",
                "R² lineal", "R² parabólico", "R² potencial", "R² exponencial", "R² logarítmico"],
-          [["Solo roca intacta (DI ≤ 1)" if c == "intacta" else "Todo (intacta + fracturada)", NOM_AG[g], d["n_puntos"], d["n_registros"],
+          [["Solo roca continua (DI ≤ 1)" if c == "intacta" else "Todo (continua + discontinua)", NOM_AG[g], d["n_puntos"], d["n_registros"],
             d["spearman"], d["pearson"]] + [d["ajustes"].get(f, {}).get("r2") for f in FORMAS]
            for c in ("intacta", "todo") for g, d in PA["conjuntos"][c].items() if g != "muestra"],
           fmt=[None, None, "#,##0", "#,##0", "+0.000;-0.000", "+0.000;-0.000"] + ["0.000"] * 5)
     nota(ws, "R² medido en MPa para todas las formas. Con 4 grupos la parábola tiene un solo grado de libertad: su R² no es comparable con el de 55 o 717.526 puntos.")
     titulo(ws, "Ecuaciones del ajuste parabólico")
     tabla(ws, ["Conjunto", "Agregación", "Ecuación", "R²"],
-          [["Solo roca intacta" if c == "intacta" else "Todo", NOM_AG[g], d["ajustes"]["parabolico"]["ecuacion"], d["ajustes"]["parabolico"]["r2"]]
+          [["Solo roca continua" if c == "intacta" else "Todo", NOM_AG[g], d["ajustes"]["parabolico"]["ecuacion"], d["ajustes"]["parabolico"]["r2"]]
            for c in ("intacta", "todo") for g, d in PA["conjuntos"][c].items() if g != "muestra"], fmt=[None, None, None, "0.000"])
     titulo(ws, "Grupos litología × caserón (conjunto todo)")
     tabla(ws, ["Grupo", "PEP mediana [bar·min/m]", "UCS referencial [MPa]"],
@@ -388,18 +388,18 @@ _, a, b = tabla(ws, ["Caserón", "Bloques", "Registros MWD", "Cobertura"],
 ws.cell(b + 1, 1, "Total").font = Font(name=FUENTE, bold=True)
 ws.cell(b + 1, 2, f"=SUM(B{a}:B{b})").number_format = "#,##0"; ws.cell(b + 1, 3, f"=SUM(C{a}:C{b})").number_format = "#,##0"
 ws._fila = b + 3
-_, a, b = tabla(ws, ["Estadístico", "Valor"], [["Volumen [m³]", BR["volumen_m3"]], ["% de bloques con DI > 1", BR["pct_fracturado"] / 100],
+_, a, b = tabla(ws, ["Estadístico", "Valor"], [["Volumen [m³]", BR["volumen_m3"]], ["% de bloques de roca discontinua (DI > 1)", BR["pct_fracturado"] / 100],
                                      ["DI mediana", BR["di_mediana"]], ["UCS mediana [MPa]", BR["ucs_mediana"]],
                                      ["UCS P10 [MPa]", BR["ucs_p10"]], ["UCS P90 [MPa]", BR["ucs_p90"]]],
       fmt=[None, "#,##0.0"])
 ws.cell(a + 1, 2).number_format = "0.0%"
 BJ = json.load(open(os.path.join(os.path.dirname(SRC), "bloques.json")))
 CORTES = [(0, 125, "< 125 MPa"), (125, 150, "125–150 MPa"), (150, 175, "150–175 MPa"), (175, 451, "≥ 175 MPa")]
-CDI = ["sana (DI ≤ 1)", "transición (1 < DI ≤ 1,5)", "fracturada (DI > 1,5)"]
+CDI = ["roca continua (DI ≤ 1)", "roca discontinua (DI > 1)"]
 MM = [[0] * len(CORTES) for _ in CDI]
 for d_, u_ in zip(BJ["di"], BJ["ucs"]):
     if d_ is None or u_ is None: continue
-    MM[0 if d_ <= 1.0 else 1 if d_ <= 1.5 else 2][next(k for k, (lo_, hi_, _) in enumerate(CORTES) if lo_ <= u_ < hi_)] += 1
+    MM[0 if d_ <= 1.0 else 1][next(k for k, (lo_, hi_, _) in enumerate(CORTES) if lo_ <= u_ < hi_)] += 1
 VOL = B["bloque_m"] ** 3
 for et_, fac, fmt_ in (("bloques", 1, "#,##0"), ("volumen [m³]", VOL, "#,##0")):
     titulo(ws, f"Clasificación DI × UCS de matriz — {et_}")

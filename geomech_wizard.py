@@ -5339,7 +5339,7 @@ def _training_funnel(ucs_min, ucs_max, solo_conteos: bool = False):
         "banda_ucs": "Dominio con banda de UCS asignada",
         "no_excluido": "Atributo no excluido explícitamente (T1.5)",
         "rango_ucs": f"Etiqueta de UCS dentro de [{ucs_min:g}, {ucs_max:g}] MPa",
-        "roca_intacta": f"DI ≤ umbral ({di_threshold:g}) — roca intacta",
+        "roca_intacta": f"DI ≤ umbral ({di_threshold:g}) — roca continua",
     }
     X, y, groups = [], [], []
     n = {k: 0 for k in TRAINING_FUNNEL_STAGES}
@@ -13183,7 +13183,7 @@ def _tronadura_cifras_body():
         dbc.Row([
             tarjeta("Volumen modelado", f"{r['volumen_m3']:,.0f} m³".replace(",", "."),
                     f"{r['n_bloques']:,} bloques de {r['lado_m']:g} m".replace(",", ".")),
-            tarjeta("Fracturado", f"{r['pct_fracturado']:.1f} %",
+            tarjeta("Roca discontinua", f"{r['pct_fracturado']:.1f} %",
                     f"DI sobre {r['umbral_di']:g}"),
             tarjeta("UCS mediana", f"{r['ucs_mediana']:.0f} MPa",
                     f"p10 {r['ucs_p10']:.0f} · p90 {r['ucs_p90']:.0f}"),

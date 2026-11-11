@@ -1,6 +1,6 @@
 """PEP, PR y UCS modelada (Random Forest, mediana de los árboles) por
 litología e intervalo de PP de 10 bar, separando roca continua (DI ≤ 1) y
-fracturada (DI > 1). Configuración final: limpieza estándar, serie depurada,
+discontinua (DI > 1). Configuración final: limpieza estándar, serie depurada,
 pesos calibrados a 5 m de final.json, modelo de producción reentrenado igual
 que en final_calc.py. Registros entrenables (limpieza) con litología con UCS
 referencial, PR ≥ mínimo físico y PEP finita; intervalos con ≥ pp.min_puntos_bin.

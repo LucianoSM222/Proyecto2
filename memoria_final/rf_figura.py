@@ -82,7 +82,7 @@ ET = [("total", "Total de registros MWD"),
       ("sin_ambiguedad", "Sin ambigüedad de traslape"),
       ("banda_ucs", "Dominio con banda de UCS"),
       ("rango_ucs", "Etiqueta en el rango físico 0-450 MPa"),
-      ("roca_intacta", f"DI ≤ {dec(C['di_threshold'],0)} — roca intacta")]
+      ("roca_intacta", f"DI ≤ {dec(C['di_threshold'],0)} — roca continua")]
 for i, (k, lab) in enumerate(ET):
     e = emb.get(k, {"quedan": 0, "perdidos": 0})
     yy = 91.8 - i * 3.15
@@ -214,8 +214,8 @@ caja(3.3, 8.0, 45.5, 3.4, "Se predice sobre TODOS los registros\n"
      f"incluidos los {mil(ip['roca_fracturada']['n'])} fracturados (DI > "
      f"{dec(C['di_threshold'],0)}) que NO entrenaron", "salida", fs=6.9)
 caja(51.0, 8.0, 46.0, 3.4, "Banda P10-P90 por punto\n"
-     f"roca intacta: {dec(ip['roca_intacta']['ancho_medio_MPa'],1)} MPa de ancho medio\n"
-     f"roca fracturada: {dec(ip['roca_fracturada']['ancho_medio_MPa'],1)} MPa", "salida", fs=6.9)
+     f"roca continua: {dec(ip['roca_intacta']['ancho_medio_MPa'],1)} MPa de ancho medio\n"
+     f"roca discontinua: {dec(ip['roca_fracturada']['ancho_medio_MPa'],1)} MPa", "salida", fs=6.9)
 bc = D.get("banda_check", {})
 caja(3.3, 4.3, 93.7, 3.1, "Por cada punto:  UCS_ml  ·  banda P10-P90  ·  UCS_matriz (arrastra el "
      f"último valor estable donde DI > {dec(C['di_threshold'],0)})",

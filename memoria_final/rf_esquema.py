@@ -76,7 +76,7 @@ ax.text(79.5, 90.7, f"{mil(emb['total'])} registros\n{len(D['config']['ml_labels
         "1 objetivo: UCS", ha="left", va="center", fontsize=11, zorder=6)
 
 flecha_gruesa(50.0, 84.6, 80.4)
-caja(23, 75.0, 73, 5.0, f"Limpieza + roca intacta (DI calibrado ≤ 1)  ·  {mil(emb['roca_intacta'])} muestras", ROSA)
+caja(23, 75.0, 73, 5.0, f"Limpieza + roca continua (DI calibrado ≤ 1)  ·  {mil(emb['roca_intacta'])} muestras", ROSA)
 ax.text(21.5, 77.5, "Filtro\ngeomecánico", ha="right", va="center", fontsize=11.5, zorder=5)
 
 caja(23, 68.5, 36.5, 5.6, f"{len(D['config']['ml_labels'])} variables MWD\n" +
