@@ -35,6 +35,14 @@ for k, (son, ts) in enumerate(sorted(Z.items(), key=lambda kv: min(t["largo_pozo
     ha = "right" if xc > L.max() * 0.8 else "left"
     ax.text(a - 0.3 if ha == "right" else b + 0.3, ytop * 0.97, txt, ha=ha, va="top", fontsize=9,
             color=VERDE_T, linespacing=1.35, zorder=6)
+# Tramo de RQD bajo (< 50 %, «malo» según Deere): su franja propia, sobre la
+# zona del sondaje, centrada en el punto del pozo más cercano a ese tramo.
+for t in P["tramos_rqd"]:
+    if t["rqd"] < 50:
+        a_, b_ = t["largo_pozo_m"] - t["largo_tramo_m"] / 2, t["largo_pozo_m"] + t["largo_tramo_m"] / 2
+        ax.axvspan(a_, b_, color="#E69F00", alpha=0.45, lw=0, zorder=1)
+        ax.text(a_ - 0.25, ytop * 0.60, f"RQD {dec(t['rqd'], 0)} %\ntramo {dec(t['desde'], 0)}–{dec(t['hasta'], 0)} m\ndel sondaje ({dec(t['largo_tramo_m'], 0)} m)",
+                ha="right", va="center", fontsize=9, color="#9C5A00", linespacing=1.3, zorder=6)
 ax.plot(L, D, "-", color=AZUL, lw=1.1, zorder=3)
 ax.fill_between(L, U, D, where=np.isfinite(D) & (D > U), color=ROJO, alpha=0.25, lw=0, zorder=2, interpolate=True)
 ax.axhline(U, color=ROJO, ls="--", lw=1.1, zorder=4, label=f"Umbral DI = {dec(U, 0)} (roca discontinua sobre esta línea)")
