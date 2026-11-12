@@ -156,11 +156,13 @@ cálculo del DI» se sustituye por la validación del cambio de barra:
   barra, antes de la detención no hay transitorio; al reanudar, la primera
   muestra trae la PR al 62% y la PP al 76% de su nivel, y la segunda la PR
   al 84%. Por eso se excluyen los 2 registros siguientes.
-- `Figura_5.2_antes_despues_depuracion`: el mismo pozo de la figura actual
-  (PCC_0042_PR01_TH_P20_H12) con cada registro excluido según su motivo:
-  13 de emboquillado, 20 de cambio de barra, 40 de margen, 20 de equipo sin
-  perforar y 10 fuera de rango que solo salen del entrenamiento. Quedan
-  1.678 registros en la serie del DI.
+- `Figura_5.2_antes_despues_depuracion`: cambia de pozo, a
+  PCS_1059_PR01_P202_H11, donde la periodicidad y el emboquillado se ven
+  mejor. Registros excluidos: 72 de emboquillado (corte a 1,55 m, donde la PP
+  pasa de unos 130 a 225 bar), 17 de cambio de barra (17 uniones, ninguna
+  detención fuera de la grilla), 32 de margen y 5 fuera de rango que solo
+  salen del entrenamiento. Quedan 1.376 registros en la serie del DI. La
+  versión con PR (`Figura_5.2_OBSERVACION_con_PR`) es solo para observar.
 
 **Tabla 5.3** → `Tabla_5.3_sensibilidad_radio_RQD`.
 
