@@ -334,7 +334,7 @@ if os.path.exists(FV):
         d = np.array([np.nan if x is None else x for x in PZ[str(v)]["di"]])
         f = next(r for r in PZ["filas"] if r["ventana"] == v)
         ax.plot(Lv, d, "-", color=CV.get(v, GRIS), lw=0.9 if v != 14 else 1.2, alpha=0.9,
-                label=f"Ventana {v} ({dec(v * DV['paso_m'] * 100, 0)} cm): {f['picos']} picos · {dec(f['pct_sobre_umbral'], 1)}% sobre el umbral")
+                label=f"Ventana {v} ({dec(v * DV['paso_m'] * 100, 0)} cm): {f['picos']} zonas discontinuas · {dec(f['pct_sobre_umbral'], 1)}% sobre el umbral")
     ax.axhline(DV["umbral"], color=ROJO, ls="--", lw=1.2, label=f"Umbral DI = {dec(DV['umbral'], 1)}")
     ax.set_xlabel("Profundidad a lo largo del barreno [m]"); ax.set_ylabel("DI"); ax.legend(fontsize=9, loc="upper right")
     fig.suptitle("Sensibilidad del DI al tamaño de ventana — PCC_0042_PR01_TH_P20_H12")
@@ -625,12 +625,12 @@ a1.hist(dl, bins=np.arange(-30, 30.5, 1.0), color=AZUL, alpha=0.85, edgecolor="w
 a1.axvline(0, color="#333", lw=0.9)
 a1.axvline(dl.mean(), color=ROJO, ls="--", lw=1.4, label=f"Media {dec(dl.mean(), 2)} m")
 a1.axvline(np.median(dl), color=VERDE, ls="--", lw=1.4, label=f"Mediana {dec(np.median(dl), 2)} m")
-a1.set_xlim(-25, 25); a1.set_xlabel("Pico de DI − cruce de malla más cercano [m]"); a1.set_ylabel("N° de picos")
+a1.set_xlim(-25, 25); a1.set_xlabel("Zona de roca discontinua − cruce de malla más cercano [m]"); a1.set_ylabel("N° de zonas de roca discontinua")
 a1.legend(fontsize=8.5); a1.grid(alpha=0.25)
-a1.text(0.02, 0.97, f"σ = {dec(dl.std(), 2)} m\nn = {mil(dl.size)} picos", transform=a1.transAxes, va="top", fontsize=8.5)
+a1.text(0.02, 0.97, f"σ = {dec(dl.std(), 2)} m\nn = {mil(dl.size)} zonas de roca discontinua", transform=a1.transAxes, va="top", fontsize=8.5)
 uu = [f["u"] for f in PRr]
-a2.plot(uu, [100 * f["P"] for f in PRr], "o-", color=AZUL, label="Precisión: picos a ≤ 3 m de un cruce")
-a2.plot(uu, [100 * f["R"] for f in PRr], "s-", color=ROJO, label="Recall: cruces con un pico a ≤ 3 m")
+a2.plot(uu, [100 * f["P"] for f in PRr], "o-", color=AZUL, label="Precisión: zonas de roca discontinua a ≤ 3 m de un cruce")
+a2.plot(uu, [100 * f["R"] for f in PRr], "s-", color=ROJO, label="Recall: cruces con una zona de roca discontinua a ≤ 3 m")
 a2.plot(uu, [100 * f["azar"] for f in PRr], ":", color=GRIS, lw=2, label="Precisión esperada al azar")
 a2.axvline(UMB, color="#333", ls="--", lw=0.9)
 f1 = next(f for f in PRr if abs(f["u"] - UMB) < 1e-9)
@@ -653,13 +653,13 @@ if os.path.exists(FCC):
         a1.axvline(0, color="#333", lw=0.9)
         a1.axvline(dl.mean(), color=ROJO, ls="--", lw=1.4, label=f"Media {dec(dl.mean(), 2)} m")
         a1.axvline(np.median(dl), color=VERDE, ls="--", lw=1.4, label=f"Mediana {dec(np.median(dl), 2)} m")
-        a1.set_xlim(-25, 25); a1.set_ylabel("N° de picos"); a1.legend(fontsize=8.5, loc="upper right")
-        a1.text(0.02, 0.97, f"σ = {dec(dl.std(), 2)} m\nn = {mil(dl.size)} picos\n{C['n_pozos_con_cruces']} barrenos con cruces",
+        a1.set_xlim(-25, 25); a1.set_ylabel("N° de zonas de roca discontinua"); a1.legend(fontsize=8.5, loc="upper right")
+        a1.text(0.02, 0.97, f"σ = {dec(dl.std(), 2)} m\nn = {mil(dl.size)} zonas de roca discontinua\n{C['n_pozos_con_cruces']} barrenos con cruces",
                 transform=a1.transAxes, va="top", fontsize=8.5)
         a1.set_title(f"{ET[nom]} — desfase pico–cruce", fontsize=10.5)
         uu = [f["u"] for f in PRr]
-        a2.plot(uu, [100 * f["P"] for f in PRr], "o-", color=AZUL, label="Precisión: picos a ≤ 3 m de un cruce")
-        a2.plot(uu, [100 * f["R"] for f in PRr], "s-", color=ROJO, label="Recall: cruces con un pico a ≤ 3 m")
+        a2.plot(uu, [100 * f["P"] for f in PRr], "o-", color=AZUL, label="Precisión: zonas de roca discontinua a ≤ 3 m de un cruce")
+        a2.plot(uu, [100 * f["R"] for f in PRr], "s-", color=ROJO, label="Recall: cruces con una zona de roca discontinua a ≤ 3 m")
         a2.plot(uu, [100 * f["azar"] for f in PRr], ":", color=GRIS, lw=2, label="Precisión esperada al azar")
         a2.axvline(UMB, color="#333", ls="--", lw=0.9)
         f1 = next(f for f in PRr if abs(f["u"] - UMB) < 1e-9)
@@ -667,7 +667,7 @@ if os.path.exists(FCC):
                     (UMB, 100 * f1["P"]), xytext=(10, 18), textcoords="offset points", fontsize=8.5,
                     arrowprops=dict(arrowstyle="-", color="#555"))
         a2.set_ylabel("%"); a2.set_ylim(0, 100); a2.set_title(f"{ET[nom]} — sensibilidad al umbral", fontsize=10.5)
-    axs[-1][0].set_xlabel("Pico de DI − cruce de malla más cercano [m]"); axs[-1][1].set_xlabel("Umbral de DI")
+    axs[-1][0].set_xlabel("Zona de roca discontinua − cruce de malla más cercano [m]"); axs[-1][1].set_xlabel("Umbral de DI")
     h_, l_ = axs[0][1].get_legend_handles_labels()
     fig.legend(h_, l_, fontsize=9.5, ncol=3, loc="outside lower center")
     fig.suptitle("Picos de DI y cruces de malla (litología y estructura) por conjunto de caserones")
@@ -680,23 +680,23 @@ if os.path.exists(FCC):
         a1.axvline(0, color="#333", lw=0.9)
         a1.axvline(dl.mean(), color=ROJO, ls="--", lw=1.4, label=f"Media {dec(dl.mean(), 2)} m")
         a1.axvline(np.median(dl), color=VERDE, ls="--", lw=1.4, label=f"Mediana {dec(np.median(dl), 2)} m")
-        a1.set_xlim(-25, 25); a1.set_ylabel("N° de picos"); a1.set_xlabel("Pico de DI − cruce de malla más cercano [m]")
+        a1.set_xlim(-25, 25); a1.set_ylabel("N° de zonas de roca discontinua"); a1.set_xlabel("Zona de roca discontinua − cruce de malla más cercano [m]")
         a1.legend(fontsize=9, loc="upper right")
-        a1.text(0.02, 0.97, f"σ = {dec(dl.std(), 2)} m\nn = {mil(dl.size)} picos\n{C['n_pozos_con_cruces']} barrenos con cruces",
+        a1.text(0.02, 0.97, f"σ = {dec(dl.std(), 2)} m\nn = {mil(dl.size)} zonas de roca discontinua\n{C['n_pozos_con_cruces']} barrenos con cruces",
                 transform=a1.transAxes, va="top", fontsize=9)
         fig.suptitle(f"Desfase pico de DI – cruce de malla — {ET[nom]}")
         guardar(fig, f"F6_09b_desfase_{SUF[nom]}.png")
         fig, a2 = plt.subplots(figsize=(8, 4.8)); uu = [f["u"] for f in PRr]
-        a2.plot(uu, [100 * f["P"] for f in PRr], "o-", color=AZUL, label="Precisión: picos a ≤ 3 m de un cruce")
-        a2.plot(uu, [100 * f["R"] for f in PRr], "s-", color=ROJO, label="Recall: cruces con un pico a ≤ 3 m")
+        a2.plot(uu, [100 * f["P"] for f in PRr], "o-", color=AZUL, label="Precisión: zonas de roca discontinua a ≤ 3 m de un cruce")
+        a2.plot(uu, [100 * f["R"] for f in PRr], "s-", color=ROJO, label="Recall: cruces con una zona de roca discontinua a ≤ 3 m")
         a2.plot(uu, [100 * f["azar"] for f in PRr], ":", color=GRIS, lw=2, label="Precisión esperada al azar")
         a2.axvline(UMB, color="#333", ls="--", lw=0.9)
         f1 = next(f for f in PRr if abs(f["u"] - UMB) < 1e-9)
         a2.annotate(f"umbral {dec(UMB, 1)}: precisión {dec(100 * f1['P'], 1)}% · azar {dec(100 * f1['azar'], 1)}%",
-                    (UMB, 100 * f1["P"]), xytext=(10, -28), textcoords="offset points", fontsize=8.5,
+                    (UMB, 100 * f1["P"]), xytext=(UMB + 0.3, 14), textcoords="data", fontsize=8.5,
                     arrowprops=dict(arrowstyle="-", color="#555"))
         a2.set_ylim(0, 100); a2.set_ylabel("%"); a2.set_xlabel("Umbral de DI")
-        fig.legend(*a2.get_legend_handles_labels(), fontsize=8.5, ncol=3, loc="outside lower center")
+        fig.legend(*a2.get_legend_handles_labels(), fontsize=8.5, ncol=2, loc="outside lower center")
         fig.suptitle(f"Sensibilidad al umbral de DI — {ET[nom]}")
         guardar(fig, f"F6_09b_umbral_{SUF[nom]}.png")
 
