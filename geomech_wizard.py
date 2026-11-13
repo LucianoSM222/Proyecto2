@@ -2202,7 +2202,7 @@ def desurvey_min_curvature(collar_ENZ, surveys):
     """
     surveys: lista ordenada de (depth, azimuth, dip). dip negativo hacia
     abajo. Devuelve lista de (depth, Este, Norte, Cota). Curvatura mínima,
-    validada contra los 11 pozos MPC.
+    validada contra los 11 barrenos MPC.
     """
     E, N, Z = collar_ENZ
     pts = [(0.0, E, N, Z)]
@@ -2228,7 +2228,7 @@ def desurvey_min_curvature(collar_ENZ, surveys):
 
 def desurvey_hole(dh: DrillHole) -> List[Tuple[float, float, float, float]]:
     """
-    Desurveya un DrillHole. Criterio de aceptación: los 11 pozos MPC deben
+    Desurveya un DrillHole. Criterio de aceptación: los 11 barrenos MPC deben
     desurveyarse SIN EXCEPCIÓN.
 
     Casos declarados (nunca silenciosos):
@@ -2300,11 +2300,11 @@ def sample_trace(trace, step: float = None):
 def compute_spatial_bands() -> Dict[str, Dict]:
     """
     Divide el eje northing en tres tercios IGUALES EN RANGO (no en cantidad
-    de pozos) sobre la nube COMPLETA de puntos desurveyados de todos los
-    sondajes — no solo los collares, para que un pozo inclinado no quede mal
-    encasillado por un límite calculado únicamente con bocas de pozo.
+    de barrenos) sobre la nube COMPLETA de puntos desurveyados de todos los
+    sondajes — no solo los collares, para que un barreno inclinado no quede mal
+    encasillado por un límite calculado únicamente con bocas de barreno.
 
-    Cada pozo se etiqueta por la northing de SU PROPIO collar contra esos dos
+    Cada barreno se etiqueta por la northing de SU PROPIO collar contra esos dos
     límites. Devuelve {"Sur"/"Centro"/"Norte": {n_pozos, m_litologia,
     n_estructuras, cota_min, cota_max, holeids}}.
     """
@@ -2507,9 +2507,9 @@ def compute_drillhole_metrics_basic():
 def compute_drillhole_rqd_rmr_medians(kinds=("litologia",)):
     """
     RQD/RMR medianos SOLO del tramo que efectivamente intersecta una malla
-    relevante. Si el pozo no intersecta nada (o no hay geomecánica logueada),
+    relevante. Si el barreno no intersecta nada (o no hay geomecánica logueada),
     quedan en None: no hay 'tramo intersectado' del que promediar, y forzar
-    el global del pozo sería un default silencioso.
+    el global del barreno sería un default silencioso.
     """
     relevant = [lay for lay in layers.values() if lay.kind in kinds]
     for dh in drillholes.values():
@@ -2656,7 +2656,7 @@ def run_ml_task(ucs_min, ucs_max, modelo: str = "banda"):
         if stats.get("sin_banda_aviso"):
             task_log(f"⚠ {stats['sin_banda_aviso']}")
 
-        task_log("Generando predicciones UCS para todos los pozos...", "Prediciendo UCS", 90)
+        task_log("Generando predicciones UCS para todos los barrenos...", "Prediciendo UCS", 90)
         predict_all_wells()
         wz_state['step4']['model_trained'] = True
         task_log(f"✅ Listo. R²={stats['r2_train']} RMSE={stats['rmse_train']} MPa N={stats['n_train']}", "Completado", 100)
@@ -2726,13 +2726,13 @@ def match_and_place_wells(dq_results, mw_by_hole,
     """
     Matching MW↔DQ con multi-DQ hermanos + colocación espacial.
 
-    Para cada pozo MWD elige el DQ×hole cuyo collar/final CUMPLE la coherencia
+    Para cada barreno MWD elige el DQ×hole cuyo collar/final CUMPLE la coherencia
     de largo (|largo_max − dist(collar,final)|/largo_max < COHERENCE_TOL),
     probando candidatos en orden: match exacto de plan_id primero, luego DQ
     hermanos ordenados por similitud de prefijo de plan_id.
 
-    UN POZO SIN POSICIÓN NO ES UN POZO. Antes, los que no encontraban DQ
-    coherente se colocaban en el centro global, y ahí quedaban los 16 pozos
+    UN BARRENO SIN POSICIÓN NO ES UN BARRENO. Antes, los que no encontraban DQ
+    coherente se colocaban en el centro global, y ahí quedaban los 16 barrenos
     apilados sobre la misma vertical que se veían como traslape en la vista 3D.
     Ahora se DESCARTAN y se declaran uno por uno.
 
@@ -2742,9 +2742,9 @@ def match_and_place_wells(dq_results, mw_by_hole,
     candidato de MENOR error entre los que caen dentro de ella.
 
     COLOCACIÓN: cada punto va a su profundidad REALMENTE medida sobre la
-    dirección del tiro, no estirado sobre el largo del tiro por un parámetro
-    normalizado. Cuando el MWD deja de registrar antes del fondo —20 pozos de
-    los datos reales, hasta 1,65 m sobre tiros de 35 m— estirar desplaza cada
+    dirección del barreno, no estirado sobre el largo del barreno por un parámetro
+    normalizado. Cuando el MWD deja de registrar antes del fondo —20 barrenos de
+    los datos reales, hasta 1,65 m sobre barrenos de 35 m— estirar desplaza cada
     punto casi un bloque entero.
 
     Devuelve los contadores, incluida la lista `descartados` con su motivo.
@@ -2793,7 +2793,7 @@ def match_and_place_wells(dq_results, mw_by_hole,
             counts["descartados"].append({
                 "pozo": key, "motivo": (
                     f"Registro de {largo_max:.2f} m, bajo el mínimo de "
-                    f"{largo_min:g} m del perfil de faena. Un pozo con este "
+                    f"{largo_min:g} m del perfil de faena. Un barreno con este "
                     "registro se dibuja como el collar y una medición suelta, y "
                     "no aporta metraje al modelo.")})
             log_warn(f'MW "{key}": {largo_max:.2f} m de registro, bajo el mínimo '
@@ -2854,16 +2854,16 @@ def match_and_place_wells(dq_results, mw_by_hole,
                        if asignar_por_tolerancia else "")
                     + f". Candidatos: {det}.")})
             log_warn(f'MW "{key}" plan="{pid}" hole={hid}: sin DQ coherente. '
-                     f'Descartados: {det}. Pozo NO cargado.')
+                     f'Descartados: {det}. Barreno NO cargado.')
             continue
         else:
             counts["no_dq"] += 1
             counts["descartados_sin_posicion"] += 1
             counts["descartados"].append({
-                "pozo": key, "motivo": ("Sin ningún DQ que le dé collar. Un pozo "
+                "pozo": key, "motivo": ("Sin ningún DQ que le dé collar. Un barreno "
                                         "sin posición no se puede cruzar contra "
                                         "ninguna malla ni interpolar a bloques.")})
-            log_warn(f'MW "{key}": sin DQ. Pozo NO cargado.')
+            log_warn(f'MW "{key}": sin DQ. Barreno NO cargado.')
             continue
 
         pts = best["puntos"]
@@ -2872,10 +2872,10 @@ def match_and_place_wells(dq_results, mw_by_hole,
         # el centro global y su distancia no informa nada sobre su procedencia.
         if collar:
             verdict = site_guard(este=collar["este"], norte=collar["norte"],
-                                 etiqueta=key, tipo="collar de pozo", token=f"pozo:{key}")
+                                 etiqueta=key, tipo="collar de barreno", token=f"barreno:{key}")
             if not verdict["ok"]:
                 counts["fuera_sitio"] = counts.get("fuera_sitio", 0) + 1
-                log_warn(verdict["mensaje"] + " Pozo NO cargado.")
+                log_warn(verdict["mensaje"] + " Barreno NO cargado.")
                 continue
         if global_center is None:
             set_center(collar["norte"], collar["este"], collar["cota"])
@@ -2890,8 +2890,8 @@ def match_and_place_wells(dq_results, mw_by_hole,
             counts["descartados_sin_posicion"] += 1
             counts["descartados"].append({
                 "pozo": key, "motivo": ("El DQ da collar y fondo en el mismo punto: "
-                                        "el tiro no tiene dirección.")})
-            log_warn(f'MW "{key}": collar y fondo coinciden en el DQ. Pozo NO cargado.')
+                                        "el barreno no tiene dirección.")})
+            log_warn(f'MW "{key}": collar y fondo coinciden en el DQ. Barreno NO cargado.')
             continue
         ux, uy, uz = vx / L, vy / L, vz / L
         for p in pts:
@@ -3061,7 +3061,7 @@ def parse_dq(path, fname):
                     raise RuntimeError(
                         f"TMatrix incompleta en {fname}: falta el componente "
                         f"'{ax}' de la columna {i}. Sin la matriz de transformación "
-                        "el pozo no tiene posición en UTM.")
+                        "el barreno no tiene posición en UTM.")
                 try:
                     tmat[j,i] = float(n.text)
                 except ValueError:
@@ -3086,7 +3086,7 @@ def parse_dq(path, fname):
     hq_list = root.findall(f".//{DR}HoleQualityData")
     for h, hq in enumerate(hq_list):
         if h % 256 == 0 and time.time() - t0 > PARSE_BUDGET_S:
-            log_warn(f'DQ "{fname}": timeout, omitidos {len(hq_list)-h} tiros.'); break
+            log_warn(f'DQ "{fname}": timeout, omitidos {len(hq_list)-h} barrenos.'); break
         try:
             hole = hq.find(f"{DR}Hole")
             if hole is None: skipped += 1; continue
@@ -3098,7 +3098,7 @@ def parse_dq(path, fname):
             if any(v is None or not np.isfinite(v) for v in coords): skipped+=1; continue
             tiros[hid] = {"collar":lu(*coords[:3]), "final_pt":lu(*coords[3:])}
         except: skipped += 1
-    if skipped: log_warn(f'DQ "{fname}": {skipped} tiros omitidos.')
+    if skipped: log_warn(f'DQ "{fname}": {skipped} barrenos omitidos.')
     return {"plan_id": plan_id, "tiros": tiros, "fecha": fecha, "fname": fname}
 
 
@@ -3112,16 +3112,16 @@ DQ_MERGE_WARN_M = 5.0
 def merge_dq_siblings(dq_list: List[Dict]) -> Tuple[Dict[str, Dict], Dict]:
     """
     Fusiona los DQ que comparten plan_id (revisiones sucesivas del mismo
-    abanico) en un solo plan por id, uniendo sus tiros.
+    abanico) en un solo plan por id, uniendo sus barrenos.
 
     Un abanico real se re-releva varias veces y cada revisión trae un
-    subconjunto distinto de tiros: PCS_1043 llega con 56 archivos DQ para 34
-    planes, y el plan P107 tiene cuatro revisiones con 23, 14, 13 y 13 tiros.
-    Quedarse con UNA sola —la primera o la última en llegar— pierde los tiros
+    subconjunto distinto de barrenos: PCS_1043 llega con 56 archivos DQ para 34
+    planes, y el plan P107 tiene cuatro revisiones con 23, 14, 13 y 13 barrenos.
+    Quedarse con UNA sola —la primera o la última en llegar— pierde los barrenos
     que solo aparecen en las otras, y con ellos todo el MWD que los
-    referencia (sin fusionar: 345 de 468 pozos ambiguos; fusionando: 9).
+    referencia (sin fusionar: 345 de 468 barrenos ambiguos; fusionando: 9).
 
-    Cuando dos revisiones dan coordenadas DISTINTAS para el mismo tiro gana
+    Cuando dos revisiones dan coordenadas DISTINTAS para el mismo barreno gana
     la más reciente por `fecha`, pero el desacuerdo NUNCA se resuelve en
     silencio: se devuelve en el reporte con su magnitud, y los que superan
     DQ_MERGE_WARN_M quedan además como advertencia visible. Un collar que se
@@ -3187,17 +3187,17 @@ def merge_dq_siblings(dq_list: List[Dict]) -> Tuple[Dict[str, Dict], Dict]:
     for c in grandes[:20]:
         cuanto = ("NO SE PUDO MEDIR (" + c.get("motivo", "collar ilegible") + ")"
                   if c["dist_m"] is None else f'{c["dist_m"]:g} m')
-        log_warn(f'DQ "{c["plan_id"]}" tiro {c["hole_id"]}: el collar se desplaza '
+        log_warn(f'DQ "{c["plan_id"]}" barreno {c["hole_id"]}: el collar se desplaza '
                  f'{cuanto} entre revisiones. Se usa {c["gana"]}, se descarta '
-                 f'{c["pierde"]}. Verifica cuál corresponde al pozo perforado.')
+                 f'{c["pierde"]}. Verifica cuál corresponde al barreno perforado.')
     if len(grandes) > 20:
         log_warn(f'DQ: {len(grandes)-20} desplazamiento(s) grande(s) más, no listados.')
     if conflictos:
-        log_warn(f'DQ: {len(conflictos)} tiro(s) con coordenadas distintas entre '
+        log_warn(f'DQ: {len(conflictos)} barreno(s) con coordenadas distintas entre '
                  f'revisiones del mismo plan ({len(grandes)} sobre {DQ_MERGE_WARN_M:g} m). '
                  f'Gana siempre la revisión más reciente.')
     if n_descartados:
-        log_warn(f'DQ: {n_descartados} archivo(s) sin plan_id o sin tiros, descartados.')
+        log_warn(f'DQ: {n_descartados} archivo(s) sin plan_id o sin barrenos, descartados.')
     reporte = {
         "n_archivos": len(dq_list), "n_planes": len(merged),
         "n_tiros": sum(len(v["tiros"]) for v in merged.values()),
@@ -3208,7 +3208,7 @@ def merge_dq_siblings(dq_list: List[Dict]) -> Tuple[Dict[str, Dict], Dict]:
 
 def _collar_dist(a: Dict, b: Dict) -> Optional[float]:
     """
-    Distancia entre los collares de dos versiones del mismo tiro, o None si no
+    Distancia entre los collares de dos versiones del mismo barreno, o None si no
     se puede calcular.
 
     Devolvía 0,0 ante cualquier excepción, que es EXACTAMENTE la respuesta
@@ -3228,7 +3228,7 @@ def parse_mw(path, fname):
     Val = LT | PR | PP | FP (avance) | DP | RP | FLP (barrido). Simba COPROD.
 
     (E.3 — Escala) Streaming con ET.iterparse en vez de ET.parse().getroot():
-    con ~150 pozos por caserón, materializar los 150 árboles DOM completos en
+    con ~150 barrenos por caserón, materializar los 150 árboles DOM completos en
     memoria a la vez no es viable en Colab. Cada <Sample> se procesa y se
     libera (elem.clear()) apenas se extrae su <Val>, en vez de acumular el
     documento entero antes de empezar. PlanIdRef/MWDholeId/MWDparams
@@ -3538,7 +3538,7 @@ def classify_all_wells():
                 if lh and ah: overlap_stats["n_compuestos"] += 1
                 if p.dominio is None: overlap_stats["n_sin_clasificar"] += 1
         except Exception as e:
-            log_warn(f'Clasificación pozo "{wn}": {e}')
+            log_warn(f'Clasificación barreno "{wn}": {e}')
 
 def parse_dominio(d: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """(litologia, alteracion, estructura) a partir de la clave de dominio."""
@@ -3595,7 +3595,7 @@ def build_domain_index():
 def apply_inicio_filter(cut_m):
     """(P3-3.8) Recuerda el corte vigente en `inicio_cut_m`, para que
     recompute_filters() pueda reaplicarlo sin caer a un default hardcodeado.
-    Corte FIJO, igual en todos los pozos (modo "fijo")."""
+    Corte FIJO, igual en todos los barrenos (modo "fijo")."""
     global inicio_cut_m, inicio_aplicado, emboquillado_modo
     inicio_cut_m = float(cut_m)
     inicio_aplicado = True
@@ -3609,12 +3609,12 @@ def apply_inicio_filter(cut_m):
 
 
 def detectar_cambio_de_barra(pts_ordenados) -> List[int]:
-    """Índices de `pts_ordenados` (un pozo, YA ordenado por `largo`) que son
+    """Índices de `pts_ordenados` (un barreno, YA ordenado por `largo`) que son
     cambio de barra: registros con PR = 0 en rachas cuyo centro cae a
-    ±BARRA_TOL_M de la grilla φ + k·LARGO_BARRA_M del pozo. La grilla se ajusta
+    ±BARRA_TOL_M de la grilla φ + k·LARGO_BARRA_M del barreno. La grilla se ajusta
     con las detenciones a partir de `inicio_cut_m` —en el emboquillado el
     equipo se detiene por otras razones— y solo vale si se repite en al menos
-    BARRA_UNIONES_MIN uniones; sin grilla, el pozo no tiene cambios de barra
+    BARRA_UNIONES_MIN uniones; sin grilla, el barreno no tiene cambios de barra
     identificables y no se marca nada."""
     L = float(LARGO_BARRA_M)
     v = np.array([p.vel if p.vel is not None else np.nan for p in pts_ordenados], float)
@@ -3647,12 +3647,12 @@ def detectar_cambio_de_barra(pts_ordenados) -> List[int]:
 
 
 def inicio_meseta_pp(pts_ordenados, excluir=()) -> Optional[float]:
-    """Largo donde empieza la meseta de PP de un pozo (YA ordenado por
+    """Largo donde empieza la meseta de PP de un barreno (YA ordenado por
     `largo`), o None si no la alcanza. `excluir` son los índices de cambio de
     barra, que salen antes para no cortar la estabilidad.
     Meseta: los EMB_TRAMO_ESTABLE_M siguientes tienen EMB_FRACCION_DENTRO de
     sus registros a ±EMB_BANDA_BAR de su mediana, y esa mediana es al menos
-    EMB_FRACCION_REGIMEN de la PP más frecuente del pozo."""
+    EMB_FRACCION_REGIMEN de la PP más frecuente del barreno."""
     fuera = set(excluir)
     sel = [k for k, p in enumerate(pts_ordenados)
            if k not in fuera and p.pp is not None and np.isfinite(p.pp)
@@ -3677,7 +3677,7 @@ def inicio_meseta_pp(pts_ordenados, excluir=()) -> Optional[float]:
 
 
 def apply_inicio_meseta():
-    """Emboquillado POR POZO desde la meseta de PP (modo "meseta"). Un pozo sin
+    """Emboquillado POR BARRENO desde la meseta de PP (modo "meseta"). Un barreno sin
     meseta usa el corte fijo `inicio_cut_m` como respaldo y queda declarado
     en `inicio_por_pozo` con modo "respaldo", nunca en silencio."""
     global inicio_aplicado, emboquillado_modo
@@ -3700,7 +3700,7 @@ def apply_inicio_meseta():
 
 def add_cambio_barra_filter():
     """Filtro de limpieza del cambio de barra: marca no entrenable cada
-    registro con PR = 0 sobre la grilla de barra del pozo
+    registro con PR = 0 sobre la grilla de barra del barreno
     (`detectar_cambio_de_barra`). Sale también de la serie del DI."""
     before = sum(1 for p in all_points() if p.entrenable)
     total = sum(len(w.points) for w in wells.values())
@@ -3718,7 +3718,7 @@ def add_cambio_barra_filter():
     return filt
 
 def detectar_percusion_de_empate(pts_ordenados, caida_rel):
-    """Índices de `pts_ordenados` (un pozo, YA ordenado por `largo`) que son
+    """Índices de `pts_ordenados` (un barreno, YA ordenado por `largo`) que son
     percusión de empate: una muestra hundida frente al promedio de sus dos
     vecinas, con esas dos vecinas parecidas ENTRE SÍ (la firma de "cae y se
     recupera"). Una caída sostenida de varias muestras —o una vecina que no
@@ -3739,7 +3739,7 @@ def detectar_percusion_de_empate(pts_ordenados, caida_rel):
     return idxs
 
 def add_percusion_empate_filter():
-    """Filtro de limpieza para la percusión de empate (P7): recorre cada pozo
+    """Filtro de limpieza para la percusión de empate (P7): recorre cada barreno
     ordenado por profundidad y marca no-entrenable la muestra única que cae y
     se recupera, con `detectar_percusion_de_empate`. Se registra en
     `clean_filters` como cualquier otro filtro —mismo listado, mismo botón de
@@ -3793,7 +3793,7 @@ def puntos_tras_salto(well, salto_max_m: Optional[float] = None) -> List[int]:
 
 def _indices_tras_salto(pts, salto_max_m: Optional[float] = None) -> List[int]:
     """Lo mismo que `puntos_tras_salto`, sobre una lista de puntos en el orden
-    del pozo."""
+    del barreno."""
     salto_max_m = CONTINUIDAD_SALTO_MAX_M if salto_max_m is None else salto_max_m
     n = len(pts)
     if n < 2:
@@ -3956,12 +3956,12 @@ def di_profile(points, window, params=None, weights=None):
     return np.sqrt(total)
 
 def mascara_serie_di(points) -> np.ndarray:
-    """Qué muestras de un pozo ENTRAN a la serie del DI (decisión del autor,
+    """Qué muestras de un barreno ENTRAN a la serie del DI (decisión del autor,
     2026-10-22). Salen el emboquillado —si el corte se aplicó— y la percusión
     de empate —si su filtro está vigente—: no son roca, y dentro de la ventana
     inflaban la varianza de la PP. El rango de PP y la continuidad NO tocan la
     serie: siguen siendo solo filtros del entrenamiento del modelo de UCS.
-    `points` en el orden del pozo; la máscara viene en ese mismo orden."""
+    `points` en el orden del barreno; la máscara viene en ese mismo orden."""
     n = len(points)
     ok = np.ones(n, dtype=bool)
     if inicio_aplicado:
@@ -4004,8 +4004,8 @@ def mascara_serie_di(points) -> np.ndarray:
 
 
 def di_profile_serie(points, window, params=None, weights=None):
-    """DI sobre la serie depurada (`mascara_serie_di`), devuelto en el largo
-    del pozo con NaN en las muestras que no entran. None si la serie queda
+    """DI sobre la serie filtrada (`mascara_serie_di`), devuelto en el largo
+    del barreno con NaN en las muestras que no entran. None si la serie queda
     más corta que la ventana."""
     m = mascara_serie_di(points)
     if int(m.sum()) < window:
@@ -4247,7 +4247,7 @@ def delete_di_variant(nombre: str) -> None:
 
 def compute_di_variant(nombre: str) -> Dict:
     """
-    Calcula el perfil de la variante en todos los pozos y lo guarda en
+    Calcula el perfil de la variante en todos los barrenos y lo guarda en
     `well.di_variantes[nombre]`. NO toca `p.di`.
     """
     v = di_variantes.get(nombre)
@@ -4267,7 +4267,7 @@ def compute_di_variant(nombre: str) -> Dict:
 
 
 def di_variant_values(well, nombre: str) -> Optional[np.ndarray]:
-    """Perfil de la variante en un pozo, o None si no se calculó para ese pozo."""
+    """Perfil de la variante en un barreno, o None si no se calculó para ese barreno."""
     if nombre not in di_variantes:
         raise KeyError(f'No existe una variante de DI llamada "{nombre}".')
     return well.di_variantes.get(nombre)
@@ -4303,7 +4303,7 @@ class ParametroProtegido(Exception):
 # parámetros de 18 secciones de una sola vez: lento de renderizar e imposible
 # de recorrer para decidir algo.
 MENUS_PERFIL = {
-    "Datos": ["Repositorio", "Carga de datos", "Carga de pozos", "Sondajes"],
+    "Datos": ["Repositorio", "Carga de datos", "Carga de barrenos", "Sondajes"],
     "Geometría": ["Validación de mallas", "Plano del abanico", "Modelo de bloques"],
     # "Litología" salió: sus dos cotas de las Lavas eran una regla automática
     # que el autor pidió sacar — diferenciar las dos Lavas es conocimiento de
@@ -4391,26 +4391,26 @@ def seed_param_registry(force: bool = False):
                "Guardar a disco esquiva la descarga del navegador, que falla "
                "sin avisar con proyectos de decenas de MB."),
         # ── Carga de pozos ───────────────────────────────────────────────────
-        _param("carga.largo_min_m", "Carga de pozos",
-               "Registro mínimo para cargar un pozo", 1.0, "float", "m",
-               "Bajo esto el pozo se dibuja como el collar y una medición "
-               "suelta y no aporta metraje. Medido en MPC: cuatro pozos con "
+        _param("carga.largo_min_m", "Carga de barrenos",
+               "Registro mínimo para cargar un barreno", 1.0, "float", "m",
+               "Bajo esto el barreno se dibuja como el collar y una medición "
+               "suelta y no aporta metraje. Medido en MPC: cuatro barrenos con "
                "menos de 1,5 m, uno con 3 muestras y 7 cm.",
                0.0, 100.0),
-        _param("carga.asignar_por_tolerancia", "Carga de pozos",
+        _param("carga.asignar_por_tolerancia", "Carga de barrenos",
                "Asignar collar aproximado cuando no hay match exacto", 0, "int",
-               "0/1", "Decisión que se toma UNA vez al cargar. Con 1, los pozos "
+               "0/1", "Decisión que se toma UNA vez al cargar. Con 1, los barrenos "
                "sin DQ coherente reciben el candidato de menor error que caiga "
                "dentro de la tolerancia; con 0 se descartan.", 0, 1),
-        _param("carga.tolerancia_err_pct", "Carga de pozos",
+        _param("carga.tolerancia_err_pct", "Carga de barrenos",
                "Tolerancia de error para el collar aproximado", 15.0, "float",
                "%", "Error de coherencia de largo máximo admitido al asignar un "
                "collar aproximado. La asignación va de menor a mayor error.",
                0.0, 100.0),
         # ── Carga de datos ───────────────────────────────────────────────────
         _param("carga.aviso_desplazamiento_dq", "Carga de datos",
-               "Aviso por desplazamiento entre DQ del mismo tiro", 5.0, "float",
-               "m", "Dos DQ del mismo tiro con collares a más de esta distancia "
+               "Aviso por desplazamiento entre DQ del mismo barreno", 5.0, "float",
+               "m", "Dos DQ del mismo barreno con collares a más de esta distancia "
                "no son la misma perforación replanificada. En PCS_1043 la "
                "mediana de los que difieren es 1,3 m, con 34 casos sobre 20 m. "
                "Otra faena replanifica con otra holgura.", 0.1, 100.0,
@@ -4443,8 +4443,8 @@ def seed_param_registry(force: bool = False):
                "de DI y el cruce de malla ya no son el mismo evento.", 0.5,
                100.0, "VAL_MAX_OFFSET_M"),
         _param("mallas.pozos_minimos", "Validación de mallas",
-               "Pozos mínimos para validar una malla", 3, "int", "pozos",
-               "Con menos pozos, un offset sistemático no se distingue de la "
+               "Barrenos mínimos para validar una malla", 3, "int", "pozos",
+               "Con menos barrenos, un offset sistemático no se distingue de la "
                "dispersión de un caso suelto.", 1, 100, "VAL_MIN_WELLS"),
         # ── Modelo de aprendizaje ────────────────────────────────────────────
         _param("ml.etiquetas_minimas", "Modelo de aprendizaje",
@@ -4466,7 +4466,7 @@ def seed_param_registry(force: bool = False):
         _param("ml.submuestreo_comparacion", "Modelo de aprendizaje",
                "Submuestreo para comparar modelos", 60000, "int", "puntos",
                "Comparar cinco modelos sobre 400.000 registros toma horas. El "
-               "submuestreo es por POZOS enteros —la agrupación de la CV hay "
+               "submuestreo es por BARRENOS enteros —la agrupación de la CV hay "
                "que preservarla— y se declara en el reporte.", 1000, 5000000,
                "COMPARISON_MAX_N"),
         _param("ml.semilla", "Modelo de aprendizaje",
@@ -4495,9 +4495,9 @@ def seed_param_registry(force: bool = False):
                "contra el RQD del testigo.", 5, 100000, "DI_RQD_MIN_PUNTOS"),
         # ── Visor ────────────────────────────────────────────────────────────
         _param("top.largo_min_pozo_m", "Recomendación de seteos",
-               "Largo mínimo del tiro", 20.0, "float", "m",
-               "Los seteos recomendados salen solo de tiros de producción. Un "
-               "tiro corto tiene sus parámetros dominados por el emboquillado y "
+               "Largo mínimo del barreno", 20.0, "float", "m",
+               "Los seteos recomendados salen solo de barrenos de producción. Un "
+               "barreno corto tiene sus parámetros dominados por el emboquillado y "
                "la maniobra.", 0.0, 200.0),
         # visor.puntos_maximos SALIÓ del perfil: su propia procedencia decía
         # "depende de la máquina, no del yacimiento" y seguía siendo un campo
@@ -4506,9 +4506,9 @@ def seed_param_registry(force: bool = False):
         # constante del módulo, junto a MAX_VIZ_TRIANGULOS_POR_MALLA.
         # ── Modelo de bloques ────────────────────────────────────────────────
         _param("bloques.pozos_minimos", "Modelo de bloques",
-               "Pozos distintos mínimos por bloque", 1, "int", "pozos",
-               "El soporte se cuenta por POZOS, no por registros: mil puntos de "
-               "un solo tiro alineado no son soporte tridimensional.", 1, 50,
+               "Barrenos distintos mínimos por bloque", 1, "int", "pozos",
+               "El soporte se cuenta por BARRENOS, no por registros: mil puntos de "
+               "un solo barreno alineado no son soporte tridimensional.", 1, 50,
                "IDW_MIN_POZOS"),
         _param("bloques.tamano_m", "Modelo de bloques", "Tamaño de bloque", 2.5,
                "float", "m", "Burden y espaciamiento de la operación en MPC. "
@@ -4547,9 +4547,9 @@ def seed_param_registry(force: bool = False):
                3, "int", "picos", "Bajo tres picos no hay plano que ajustar.",
                3, 100, "ABANICO_MIN_PICOS"),
         _param("abanico.planaridad_tiros", "Plano del abanico",
-               "Planaridad máxima de los tiros", 0.15, "float", "—",
+               "Planaridad máxima de los barrenos", 0.15, "float", "—",
                "Razón entre el tercer y el segundo valor singular del ajuste a "
-               "los trazados: bajo esto, los tiros forman un plano.",
+               "los trazados: bajo esto, los barrenos forman un plano.",
                0.01, 1.0, "ABANICO_PLANARIDAD_TIROS"),
         _param("abanico.ang_max_grad", "Plano del abanico",
                "Ángulo máximo con el plano del abanico", 20.0, "float", "°",
@@ -4573,7 +4573,7 @@ def seed_param_registry(force: bool = False):
                0.05, 5.0, "DISC_VENTANA_M"),
         _param("disc.base_m", "Discriminador", "Tramo de referencia previo",
                1.00, "float", "m", "Roca inmediatamente anterior al evento. No "
-               "es un promedio del pozo: la roca cambia a lo largo del tiro y "
+               "es un promedio del barreno: la roca cambia a lo largo del barreno y "
                "una referencia global diluiría la firma.",
                0.1, 20.0, "DISC_BASE_M"),
         _param("disc.caida_rel", "Discriminador", "Caída que cuenta como «cae»",
@@ -4590,7 +4590,7 @@ def seed_param_registry(force: bool = False):
                1.0, 10.0, "DISC_VAR_FACTOR"),
         _param("disc.radio_etiqueta_m", "Discriminador",
                "Radio de apareo pico-sondaje", 3.0, "float", "m",
-               "Los sondajes de exploración y los tiros de producción son "
+               "Los sondajes de exploración y los barrenos de producción son "
                "perforaciones distintas; más allá de este radio la "
                "correspondencia deja de ser creíble.",
                0.5, 100.0, "DISC_RADIO_ETIQUETA_M"),
@@ -4741,7 +4741,7 @@ def seed_param_registry(force: bool = False):
         _param("barra.largo_m", "Percusión (PP)", "Largo de barra", 1.756, "float", "m",
                "Largo de la barra del equipo (Simba E70S en MPC). Define la "
                "grilla sobre la que se buscan las detenciones (PR = 0) del "
-               "cambio de barra en cada pozo.", 0.5, 6.0, "LARGO_BARRA_M"),
+               "cambio de barra en cada barreno.", 0.5, 6.0, "LARGO_BARRA_M"),
         _param("barra.margen_antes", "Percusión (PP)",
                "Margen del cambio de barra, antes de la detención", 0, "int",
                "registros", "Antes de detenerse las presiones no muestran "
@@ -4756,20 +4756,20 @@ def seed_param_registry(force: bool = False):
         _param("emboquillado.tramo_estable_m", "Percusión (PP)",
                "Tramo de estabilidad de la meseta", 0.20, "float", "m",
                "Largo durante el cual la PP debe mantenerse pareja para "
-               "declarar el fin del emboquillado. Ajustado a seis pozos "
+               "declarar el fin del emboquillado. Ajustado a seis barrenos "
                "marcados a mano por el autor (2026-11-10).", 0.05, 2.0,
                "EMB_TRAMO_ESTABLE_M"),
         _param("emboquillado.banda_bar", "Percusión (PP)",
                "Banda de estabilidad de la meseta", 15.0, "float", "bar",
                "Desvío máximo respecto de la mediana del tramo para contar la "
                "PP como pareja (el 90% de los registros debe quedar dentro). "
-               "Ajustado a seis pozos marcados por el autor.", 1.0, 60.0,
+               "Ajustado a seis barrenos marcados por el autor.", 1.0, 60.0,
                "EMB_BANDA_BAR"),
         _param("emboquillado.fraccion_regimen", "Percusión (PP)",
                "Nivel mínimo de la meseta", 0.70, "float", "fracción",
-               "Fracción de la PP más frecuente del pozo que debe alcanzar la "
+               "Fracción de la PP más frecuente del barreno que debe alcanzar la "
                "mediana del tramo: deja fuera el nivel bajo del emboquillado. "
-               "Ajustado a seis pozos marcados por el autor.", 0.3, 1.0,
+               "Ajustado a seis barrenos marcados por el autor.", 0.3, 1.0,
                "EMB_FRACCION_REGIMEN"),
         # lito.cota_lavas_inferiores / lito.cota_lavas_superiores SALIERON: la
         # regla automática por cota que decidía Kpcli vs Kpcls se reemplazó
@@ -5085,7 +5085,7 @@ def build_di_sensitivity_content(well):
         html.Thead(html.Tr([html.Th("Ventana"), html.Th("N picos"), html.Th("% sobre umbral")])),
         html.Tbody([html.Tr([
             html.Td(str(r["ventana"])),
-            html.Td(str(r["n_picos"]) if r["n_picos"] is not None else "— (pozo corto)"),
+            html.Td(str(r["n_picos"]) if r["n_picos"] is not None else "— (barreno corto)"),
             html.Td(f"{r['pct_sobre_umbral']}%" if r["pct_sobre_umbral"] is not None else "—"),
         ]) for r in result["rows"]]),
     ], bordered=False, size="sm", style={"fontSize":"11px", "color":"#ccc", "marginTop":"6px"})
@@ -5095,7 +5095,7 @@ def build_di_sensitivity_content(well):
     ])
 
 def build_di_figure(well):
-    """Perfil DI vs profundidad de un pozo, con línea de umbral."""
+    """Perfil DI vs profundidad de un barreno, con línea de umbral."""
     pts = [p for p in well.points if p.di is not None]
     if not pts:
         return go.Figure()
@@ -5126,9 +5126,9 @@ VAL_MIN_WELLS = 3         # mínimo de pozos apareados para emitir veredicto
 
 def well_mesh_crossings(well, layer):
     """
-    (T4a) Profundidades (largo) donde el pozo ENTRA o SALE de la malla,
+    (T4a) Profundidades (largo) donde el barreno ENTRA o SALE de la malla,
     detectadas como transiciones del estado dentro/fuera al aplicar
-    points_in_mesh a los puntos del pozo en orden. La coordenada del cruce se
+    points_in_mesh a los puntos del barreno en orden. La coordenada del cruce se
     interpola al punto medio entre el último punto de un estado y el primero
     del otro (muestreo MWD ~2 cm → error de interpolación despreciable).
     Devuelve [(largo_cruce, coord_utm(3,)), ...] con coord = [Este,Norte,Cota].
@@ -5158,7 +5158,7 @@ def di_peaks(well, min_gap_m=None, variante: Optional[str] = None):
     [(largo_pico, coord_utm(3,), di_max), ...].
 
     (Paso 1) `variante` pide los picos de una VARIANTE del DI en vez de los de
-    la convención. Si la variante existe pero no se calculó en este pozo, la
+    la convención. Si la variante existe pero no se calculó en este barreno, la
     respuesta es vacía —no se cae a la convención en silencio, que sería
     devolver los picos de otra configuración sin decirlo—.
     """
@@ -5192,8 +5192,8 @@ def di_peaks(well, min_gap_m=None, variante: Optional[str] = None):
 
 def _pair_crossings_peaks(well, layer, max_offset_m=None):
     """
-    (T4c) Aparea cada cruce pozo↔malla con el pico DI más cercano del mismo
-    pozo. Offset firmado = largo_pico − largo_cruce (positivo = el pico está
+    (T4c) Aparea cada cruce barreno↔malla con el pico DI más cercano del mismo
+    barreno. Offset firmado = largo_pico − largo_cruce (positivo = el pico está
     MÁS PROFUNDO que la malla). Se descartan apareos con |offset| > max_offset_m.
     """
     max_offset_m = VAL_MAX_OFFSET_M if max_offset_m is None else max_offset_m
@@ -5231,21 +5231,21 @@ def validate_mesh_positions(kinds=("estructura",), max_offset_m=None,
                             min_wells=None, progress_cb=None):
     """
     (T4d/e) Validación multipozo de la posición de cada malla DXF de los tipos
-    `kinds`. Por malla: cruces y picos por pozo, apareo cruce↔pico, y con ≥
-    min_wells pozos apareados se calcula el offset medio ± std y un veredicto:
+    `kinds`. Por malla: cruces y picos por barreno, apareo cruce↔pico, y con ≥
+    min_wells barrenos apareados se calcula el offset medio ± std y un veredicto:
       · "consistente" si |offset medio| < 2·std  o  |offset medio| < 1.0 m
       · "posible desplazamiento de X m" en caso contrario.
 
-    El offset PRIMARIO (veredicto) es a lo largo del pozo (largo_pico −
+    El offset PRIMARIO (veredicto) es a lo largo del barreno (largo_pico −
     largo_cruce), robusto siempre. Como métrica adicional (T4d) se ajusta un
     plano por SVD a los picos apareados y, si no es degenerado (picos no
     colineales), se reporta el offset NORMAL: distancia firmada de cada pico al
     plano medio de los cruces DXF a lo largo de la normal ajustada (la
     aproximación aceptada por la spec frente al triángulo-más-cercano, que es
-    ambiguo en mallas rugosas). Si los picos son colineales (p.ej. pozos
+    ambiguo en mallas rugosas). Si los picos son colineales (p.ej. barrenos
     paralelos con picos a igual largo) la normal es ambigua y se omite.
 
-    Pozos con posición ficticia (origin no_dq/ambiguous) se excluyen: su
+    Barrenos con posición ficticia (origin no_dq/ambiguous) se excluyen: su
     geometría no aporta evidencia de posición.
     """
     max_offset_m = VAL_MAX_OFFSET_M if max_offset_m is None else max_offset_m
@@ -5306,7 +5306,7 @@ def validate_mesh_positions(kinds=("estructura",), max_offset_m=None,
             else:
                 res["veredicto"] = f"posible desplazamiento de {om:+.1f} m"
         elif pares_all:
-            res["veredicto"] = f"insuficiente (<{min_wells} pozos apareados)"
+            res["veredicto"] = f"insuficiente (<{min_wells} barrenos apareados)"
         resultados.append(res)
     return resultados
 
@@ -5337,7 +5337,7 @@ def run_validation_task():
             val_task_state.update(running=False, done=True, error=str(e), progress=100)
 
 def export_validation_csv():
-    """Detalle por pozo de la validación multipozo (para el botón de export)."""
+    """Detalle por barreno de la validación multipozo (para el botón de export)."""
     rows = []
     for r in mesh_validation_results:
         for p in r["detalle"]:
@@ -5522,8 +5522,8 @@ def _training_funnel(ucs_min, ucs_max, solo_conteos: bool = False):
 def _get_train_data(ucs_min, ucs_max):
     """
     (T6a) Envoltorio de compatibilidad sobre _training_funnel: solo X/y/
-    groups/n_excl. `groups` permite agrupar la validación cruzada por pozo
-    (GroupKFold) y evitar que muestras vecinas del mismo tiro —a 2 cm entre
+    groups/n_excl. `groups` permite agrupar la validación cruzada por barreno
+    (GroupKFold) y evitar que muestras vecinas del mismo barreno —a 2 cm entre
     sí y fuertemente autocorrelacionadas— terminen repartidas entre train y
     test, lo que infla artificialmente el R².
     """
@@ -5548,7 +5548,7 @@ def _r2_mediana(estimator, X, y) -> float:
 
 def validacion_por_pliegue(splitter, grupos, X, y, etiqueta=None) -> List[Dict]:
     """R², RMSE y Spearman por pliegue, con RF_PRODUCCION y predicción por
-    mediana. Sirve a las dos validaciones de la memoria: GroupKFold por pozo y
+    mediana. Sirve a las dos validaciones de la memoria: GroupKFold por barreno y
     LOOCV-Caserón. Un pliegue cuya prueba tiene UNA sola etiqueta deja el R²
     indefinido (varianza cero en el denominador) y se declara así, en vez de
     reportar un número del orden de -10^8 que no mide nada."""
@@ -5657,7 +5657,7 @@ def train_rf(ucs_min=None, ucs_max=None):
         except Exception as e:
             cv_warning = f"CV agrupada falló: {e}"
     else:
-        cv_warning = (f"CV agrupada requiere ≥3 pozos con etiqueta (hay {n_grupos}).")
+        cv_warning = (f"CV agrupada requiere ≥3 barrenos con etiqueta (hay {n_grupos}).")
     # (B3.2) EL HOLDOUT 70/30 INTERNO SE ELIMINÓ. Cortaba `X[:n_tr]` por ORDEN
     # DE ÍNDICE —que es orden de pozo, no aleatorio ni agrupado—, así que el
     # "test" eran los últimos pozos del recorrido y el número no medía
@@ -5703,9 +5703,9 @@ def train_rf(ucs_min=None, ucs_max=None):
                                       random_state=PERM_IMP_SEMILLA, n_jobs=-1)
         feat_imp = {ML_LABELS[i]: round(float(perm.importances_mean[i]), 4) for i in range(len(ML_FEATURES))}
         feat_imp_motivo = (f"Permutación sobre {n_samp:,} puntos".replace(",", ".") +
-                           (" DEL PROPIO AJUSTE (sin pozos suficientes para apartar): "
+                           (" DEL PROPIO AJUSTE (sin barrenos suficientes para apartar): "
                             "optimista." if base_vista else
-                            f" de {len(np.unique(groups[mask_fuera]))} pozos NO vistos en el ajuste.") +
+                            f" de {len(np.unique(groups[mask_fuera]))} barrenos NO vistos en el ajuste.") +
                            f" Semilla {PERM_IMP_SEMILLA}, 10 repeticiones.")
     except Exception as e:
         # Sin esto, la importancia de variables quedaba vacía y la pantalla la
@@ -5863,7 +5863,7 @@ def distancia_a_sondaje(este: float, norte: float, cota: float) -> Optional[floa
 
 def ucs_a_litologia(ucs: float) -> Optional[str]:
     """
-    Litología cuya banda de UCS queda más cerca del valor predicho.
+    Litología cuya banda de UCS queda más cerca del valor estimado.
 
     El modelo predice UCS continua, pero la concordancia se juzga contra una
     LITOLOGÍA logueada. Traducir de vuelta es una decisión declarada, no un
@@ -6152,7 +6152,7 @@ def contact_offset_report(max_busqueda_m: float = 10.0) -> Dict:
 
 def confusion_matrix_report(fuente: str = "sondajes", capas=None) -> Dict:
     """
-    (C.6) Matriz de confusión entre la litología predicha por MWD y la de la
+    (C.6) Matriz de confusión entre la litología estimada por MWD y la de la
     fuente de contraste. Reporta concordancia global, por unidad, y los pares
     que más se confunden.
 
@@ -6199,7 +6199,7 @@ def confusion_matrix_report(fuente: str = "sondajes", capas=None) -> Dict:
                                "ATENCIÓN: bandas bien separadas y aun así se confunden — "
                                "hay algo más ocurriendo que el traslape de UCS")})
     return {"status": "ok", "fuente": fuente, "unidades": unidades,
-            "matriz": M.tolist(), "orden": "filas=contraste, columnas=predicha por MWD",
+            "matriz": M.tolist(), "orden": "filas=contraste, columnas=estimada por MWD",
             "n": total, "concordancia_global": round(diag / total, 4) if total else None,
             "por_unidad": por_unidad, "pares_confundidos": confundidos[:20],
             "cruce_traslape_ucs": cruce, "terminologia": TERMINOLOGIA_C}
@@ -6266,7 +6266,7 @@ ROP_MIN_FISICA = 0.05          # m/min
 
 def _se_por_dominio(solo_roca_intacta: bool = True) -> Tuple[Dict[str, Dict], Dict]:
     """
-    SE, PR y PP agregados por LITOLOGÍA con UCS de laboratorio conocido.
+    SE, PR y PP agregados por LITOLOGÍA con UCS de ensayo conocido.
 
     Dos exclusiones, ambas declaradas en el reporte:
 
@@ -6394,7 +6394,7 @@ def se_ucs_coherence_report() -> Dict:
     intacta, excl = _se_por_dominio(solo_roca_intacta=True)
     if len(intacta) < 2:
         return {"status": "sin_datos",
-                "motivo": (f"Solo {len(intacta)} dominio(s) con UCS de laboratorio y "
+                "motivo": (f"Solo {len(intacta)} dominio(s) con UCS de ensayo y "
                            f"≥5 puntos de roca intacta. Hacen falta al menos 2 para "
                            f"poder hablar de coherencia: con uno solo no hay nada "
                            f"que ordenar."),
@@ -6446,7 +6446,7 @@ def se_ucs_coherence_report() -> Dict:
                      "entre dominios.")
     elif rho > 0.5 and base["monotona"]:
         veredicto = (f"COHERENTE: la PEP ordena las litologías por su "
-                     f"UCS de laboratorio (ρ={rho:+.2f}, monotonía respetada). Es la "
+                     f"UCS de ensayo (ρ={rho:+.2f}, monotonía respetada). Es la "
                      f"regla física que debe cumplirse en roca intacta, y se cumple: "
                      f"el MWD está midiendo resistencia de matriz.")
     elif rho > 0.5:
@@ -6455,7 +6455,7 @@ def se_ucs_coherence_report() -> Dict:
                      f"dominios queda fuera de orden. Revisar cuál y por qué.")
     elif rho < -0.5:
         veredicto = (f"INCOHERENTE — relación INVERTIDA (ρ={rho:+.2f}): la roca de mayor "
-                     f"UCS de laboratorio sale con MENOS PEP. Eso "
+                     f"UCS de ensayo sale con MENOS PEP. Eso "
                      f"contradice la física de la perforación en roca intacta. Antes de "
                      f"modelar nada hay que explicar esto: revisar la asignación de "
                      f"bandas de UCS, el cruce punto↔malla, o si los tramos siguen "
@@ -6961,7 +6961,7 @@ def classify_peak_signature(firma: Optional[Dict]) -> Dict:
 
 def discriminate_peaks(well, min_gap_m: Optional[float] = None) -> List[Dict]:
     """
-    (8.3) Clasifica cada pico DI del pozo. Reutiliza di_peaks() tal cual: los
+    (8.3) Clasifica cada pico DI del barreno. Reutiliza di_peaks() tal cual: los
     picos son los que el DI ya definió con la ventana y el umbral de la
     convención — esta función no los redefine.
     """
@@ -7032,7 +7032,7 @@ def _plano_de(P: np.ndarray) -> Tuple[np.ndarray, np.ndarray, float, float]:
     """
     Ajuste de plano por SVD. Devuelve (centro, normal, s3/s2, s2/s1).
     s3/s2 chico = los puntos caen en un plano. s2/s1 chico = caen en una recta,
-    que en un solo tiro es el tiro mismo y no informa de nada.
+    que en un solo barreno es el barreno mismo y no informa de nada.
     """
     c = P.mean(axis=0)
     _, S, Vt = np.linalg.svd(P - c, full_matrices=False)
@@ -7053,10 +7053,10 @@ def marcar_picos_de_abanico(picos: List[Dict], eps_m: Optional[float] = None,
     cada pico y devuelve el resumen por grupo.
 
     Un grupo se atribuye al abanico solo si se cumplen LAS DOS condiciones:
-    que los tiros involucrados sean coplanares —o sea, que efectivamente
+    que los barrenos involucrados sean coplanares —o sea, que efectivamente
     formen un abanico— y que el plano de los picos sea ESE mismo plano. Con
-    una sola de las dos no alcanza: tiros coplanares pueden estar cortados por
-    una estructura transversal real, y un grupo plano entre tiros dispersos es
+    una sola de las dos no alcanza: barrenos coplanares pueden estar cortados por
+    una estructura transversal real, y un grupo plano entre barrenos dispersos es
     justamente lo que buscamos.
     """
     eps_m = get_param("abanico.eps_m") if eps_m is None else eps_m
@@ -7119,7 +7119,7 @@ def marcar_picos_de_abanico(picos: List[Dict], eps_m: Optional[float] = None,
         es_abanico = (r32_ab < planaridad_tiros) and (dist <= tol_efectiva) \
             and (ang <= ang_max_grad if normal_util else True)
         if es_abanico:
-            motivo = (f"Grupo de {len(idx)} pico(s) en {len(pozos)} tiro(s) "
+            motivo = (f"Grupo de {len(idx)} pico(s) en {len(pozos)} barreno(s) "
                       f"coplanares (planaridad {r32_ab:.3f}); los picos caen a "
                       f"{dist:.2f} m o menos del plano del abanico, dentro de "
                       f"la tolerancia de {tol_efectiva:.2f} m que fija el "
@@ -7147,7 +7147,7 @@ def marcar_picos_de_abanico(picos: List[Dict], eps_m: Optional[float] = None,
                        "planaridad_tiros": planaridad_tiros,
                        "ang_max_grad": ang_max_grad, "tol_plano_m": tol_plano_m,
                        "factor_dispersion": factor_dispersion},
-            "criterio": ("Un grupo se atribuye al abanico solo si los tiros "
+            "criterio": ("Un grupo se atribuye al abanico solo si los barrenos "
                          "involucrados son coplanares Y el plano de los picos "
                          "es ese mismo plano. Dentro de un solo abanico la "
                          "estructura y el plano del abanico son indistinguibles: "
@@ -7161,7 +7161,7 @@ def discriminate_all(min_gap_m: Optional[float] = None,
                      ang_max_grad: Optional[float] = None,
                      tol_plano_m: Optional[float] = None,
                      factor_dispersion: Optional[float] = None) -> Dict:
-    """(8.4) Discriminación sobre todos los pozos cargados, con sus conteos."""
+    """(8.4) Discriminación sobre todos los barrenos cargados, con sus conteos."""
     min_gap_m = DI_PICOS_MIN_GAP_M if min_gap_m is None else min_gap_m
     picos, por_pozo = [], {}
     for wn, w in wells.items():
@@ -7175,7 +7175,7 @@ def discriminate_all(min_gap_m: Optional[float] = None,
         por_pozo[wn] = c
     if not picos:
         return {"status": "sin_datos",
-                "motivo": ("Ningún pozo tiene picos de DI sobre el umbral "
+                "motivo": ("Ningún barreno tiene picos de DI sobre el umbral "
                            f"{di_threshold:g}: no hay eventos que clasificar."),
                 "conteo": {k: 0 for k in DISC_CLASES}}
     abanico = marcar_picos_de_abanico(
@@ -7268,7 +7268,7 @@ def label_peaks_from_drillholes(radio_m: Optional[float] = None,
         return {"status": "sin_etiquetas",
                 "motivo": (f"Ninguno de los {disc['n_picos']} pico(s) tiene una "
                            f"discontinuidad de sondaje a menos de {radio_m:g} m. "
-                           "Los sondajes de exploración y los tiros de producción "
+                           "Los sondajes de exploración y los barrenos de producción "
                            "no están en el mismo lugar: sin cercanía la "
                            "correspondencia no es creíble."),
                 "n_picos": disc["n_picos"], "n_etiquetas": len(etiquetas),
@@ -7330,7 +7330,7 @@ def _matriz_discriminador(pares: List[Dict], radio_m: float,
            if picos_sin_etiqueta else
            "Todos los picos del MWD encontraron etiqueta cercana.")
         + (f" ATENCIÓN: con radio {radio_m:g} m la etiqueta puede provenir de un "
-           "volumen de roca distinto del que perforó el tiro; ampliar el radio "
+           "volumen de roca distinto del que perforó el barreno; ampliar el radio "
            "sube el número de pares a costa de la credibilidad de cada uno."
            if radio_m > 5.0 else ""))
     return {"matriz": matriz, "por_clase": por_clase, "aciertos": aciertos,
@@ -7463,7 +7463,7 @@ RQD_TRAMO_MIN_M = 0.10
 
 def rqd_mwd_well(well) -> Optional[Dict]:
     """
-    (8.8) RQD_MWD de un pozo. Devuelve None si el pozo no tiene DI calculado o
+    (8.8) RQD_MWD de un barreno. Devuelve None si el barreno no tiene DI calculado o
     no tiene largo útil — None es "no evaluable", y el agregado lo declara en
     vez de contarlo como cero.
     """
@@ -7503,8 +7503,8 @@ def rqd_mwd_well(well) -> Optional[Dict]:
 
 def rqd_mwd_report() -> Dict:
     """
-    (8.9) RQD_MWD por pozo y agregado por caserón. El agregado del caserón se
-    pondera por metraje, no por pozo: un tiro corto no pesa igual que uno de
+    (8.9) RQD_MWD por barreno y agregado por caserón. El agregado del caserón se
+    pondera por metraje, no por barreno: un barreno corto no pesa igual que uno de
     35 m.
     """
     pozos, no_evaluables = [], []
@@ -7516,7 +7516,7 @@ def rqd_mwd_report() -> Dict:
             pozos.append(r)
     if not pozos:
         return {"status": "sin_datos",
-                "motivo": ("Ningún pozo tiene DI calculado sobre un largo útil: "
+                "motivo": ("Ningún barreno tiene DI calculado sobre un largo útil: "
                            "correr compute_di() antes."),
                 "pozos": [], "caserones": {}, "no_evaluables": no_evaluables}
     caserones: Dict[str, Dict] = {}
@@ -7537,7 +7537,7 @@ def rqd_mwd_report() -> Dict:
                            f"continuos de {RQD_TRAMO_MIN_M*100:.0f} cm o más sin "
                            "discontinuidad, con la discontinuidad detectada por "
                            f"DI > {di_threshold:g}."),
-            "uso": ("Indicador AGREGADO por pozo y por caserón, orientado a "
+            "uso": ("Indicador AGREGADO por barreno y por caserón, orientado a "
                     "tronadura. No reemplaza al DI, que sigue siendo la variable "
                     "de trabajo punto a punto en el resto del pipeline.")}
 
@@ -7651,7 +7651,7 @@ def propagate_drillhole_rqd(radio_m: Optional[float] = None) -> Dict:
             + (f"están a {np.median(d_arr):.1f} m de mediana: "
                if d_arr.size else "")
             + "la etiqueta describe la roca del sondaje, no necesariamente la que "
-              "perforó el tiro. Usarla como si fuera una medición en el mismo "
+              "perforó el barreno. Usarla como si fuera una medición en el mismo "
               "punto es el error que la distancia existe para impedir."),
         "no_es_predictor": ("El RQD propagado NO entra al modelo de "
                             "caracterización, igual que el RMR. Es la vara "
@@ -7666,11 +7666,11 @@ def rqd_calibration_pairs(radio_m: Optional[float] = None,
     """
     (2.2) Pares de calibración: por cada intervalo de sondaje con RQD, UN solo
     punto MWD —el más cercano al centro medido— y el RQD_MWD del tramo de ESE
-    pozo con el mismo largo del intervalo.
+    barreno con el mismo largo del intervalo.
 
     UNO A UNO, decisión del autor: "asignas el RQD de cada centro medido al
     MWD más cercano, solo a 1, y con esos poquitos que tengan alcance buscamos
-    los pesos". Promediar varios pozos vecinos mezclaba roca que el sondaje
+    los pesos". Promediar varios barrenos vecinos mezclaba roca que el sondaje
     nunca vio y diluía justo la variación que se quiere seguir. Agregar o
     quitar sondajes mejora la calibración; esta primera aproximación ya sirve.
 
@@ -7761,7 +7761,7 @@ def rqd_calibration_pairs(radio_m: Optional[float] = None,
                             "max": round(float(dist.max()), 2)},
             "nota_soporte": ("UNO A UNO: cada intervalo de sondaje se aparea con "
                              "el punto MWD más cercano a su centro, y el RQD_MWD "
-                             "se mide sobre el tramo de ESE pozo con el mismo "
+                             "se mide sobre el tramo de ESE barreno con el mismo "
                              "largo del intervalo."),
             "validacion": ("La unidad de validación es el SONDAJE: dejar-uno-fuera "
                            "por sondaje, no por intervalo. Dos intervalos del mismo "
@@ -7771,7 +7771,7 @@ def rqd_calibration_pairs(radio_m: Optional[float] = None,
 def _tramo_di_de_pozo(well, variante: Optional[str], largo_centro: float,
                       media_m: float, min_puntos: int = 2):
     """
-    (largos, di) del tramo de un pozo centrado en `largo_centro`, de media
+    (largos, di) del tramo de un barreno centrado en `largo_centro`, de media
     longitud `media_m`, ordenado. None si no alcanza para medir nada.
 
     `min_puntos`: bajo esto el RQD_MWD del tramo es ruido de unos pocos
@@ -7841,7 +7841,7 @@ def _z2_por_param(points, window: int, params) -> Optional[Dict[str, np.ndarray]
 
         DI = sqrt( Σ_k  w_k_normalizado · z_k² )
 
-    Precalcularlo una vez por pozo convierte cada evaluación de pesos en una
+    Precalcularlo una vez por barreno convierte cada evaluación de pesos en una
     suma ponderada. Sin esto, la búsqueda recalcula el perfil completo por
     cada combinación y la calibración deja de ser practicable.
     """
@@ -7911,8 +7911,8 @@ def _rho_de_pesos(pesos: Dict[str, float], window: int, umbral: float,
     rho de Spearman entre el RQD_MWD que producen estos pesos y el RQD de los
     sondajes, sobre los intervalos pedidos. Devuelve (rho, n_pares).
 
-    Solo recalcula el perfil de DI en los pozos que aportan pares: recorrer los
-    619 pozos por cada combinación de pesos haría la búsqueda inviable, y los
+    Solo recalcula el perfil de DI en los barrenos que aportan pares: recorrer los
+    619 barrenos por cada combinación de pesos haría la búsqueda inviable, y los
     demás no cambian ningún par.
     """
     perfiles = {}
@@ -7953,7 +7953,7 @@ def _rho_de_pesos(pesos: Dict[str, float], window: int, umbral: float,
 
 def _preparar_intervalos_calibracion(radio_m: float, min_puntos: int):
     """
-    Intervalos de RQD con sus vecinos MWD ya indexados por pozo. Se calcula UNA
+    Intervalos de RQD con sus vecinos MWD ya indexados por barreno. Se calcula UNA
     vez y se reutiliza en cada evaluación de pesos: es lo que vuelve viable la
     búsqueda.
 
@@ -8350,7 +8350,7 @@ def di_quality_indicator(variante: Optional[str] = None,
 
 
 def export_rqd_mwd_csv(rep: Optional[Dict] = None) -> str:
-    """(8.10) RQD_MWD por pozo y por caserón como CSV."""
+    """(8.10) RQD_MWD por barreno y por caserón como CSV."""
     rep = rep if rep is not None else rqd_mwd_report()
     if rep.get("status") != "ok":
         return f"# {rep.get('motivo', 'sin datos')}\n"
@@ -8365,7 +8365,7 @@ def export_rqd_mwd_csv(rep: Optional[Dict] = None) -> str:
                       "n_tramos_validos": None, "n_tramos_descartados": None})
     cab = "\n".join("# " + l for l in [
         rep["definicion"], rep["uso"],
-        f"pozos no evaluables: {len(rep['no_evaluables'])}",
+        f"barrenos no evaluables: {len(rep['no_evaluables'])}",
         f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
     return cab + "\n" + pd.DataFrame(filas).to_csv(index=False)
 
@@ -8471,7 +8471,7 @@ def _calidad_factor(lito: Optional[str]) -> Tuple[float, Optional[int]]:
 
 def _muestras_bloques(fuente: str = "ucs_matriz") -> Dict:
     """
-    Muestras para interpolar: coordenadas UTM, UCS predicho, DI y litología.
+    Muestras para interpolar: coordenadas UTM, UCS estimado, DI y litología.
     `fuente` elige entre "ucs_matriz" (UCS de la matriz rocosa, sin
     discontinuidades) y "ucs_ml" (predicción cruda). Los puntos sin UCS no se
     rellenan con nada: quedan fuera y se cuentan.
@@ -8519,10 +8519,10 @@ def interpolate_block_model(bloque_m: Optional[float] = None,
     máscara de soporte.
 
     El DOMINIO del modelo es el espacio perforado más `holgura_m`. Un bloque
-    más lejos que eso de todo tiro no es un bloque vacío: está FUERA, y no
+    más lejos que eso de todo barreno no es un bloque vacío: está FUERA, y no
     entra en la cobertura. Dentro del dominio, un bloque recibe valor solo si
     en el elipsoide de búsqueda (radio_h_m en planta, radio_v_m en cota) hay
-    al menos `min_muestras` registros de al menos `min_pozos` pozo(s). Si no
+    al menos `min_muestras` registros de al menos `min_pozos` barreno(s). Si no
     los hay queda VACÍO y se cuenta — nunca se estira la búsqueda para
     llenarlo.
     """
@@ -8542,7 +8542,7 @@ def interpolate_block_model(bloque_m: Optional[float] = None,
     P = m["P"]
     if P.shape[0] == 0:
         return {"status": "sin_datos",
-                "motivo": ("Ningún punto MWD tiene UCS predicho dentro de los "
+                "motivo": ("Ningún punto MWD tiene UCS estimado dentro de los "
                            f"límites físicos ({UCS_CONFIG['physical_min']:g}-"
                            f"{UCS_CONFIG['physical_max']:g} MPa): "
                            "correr el entrenamiento y la predicción antes de "
@@ -8858,7 +8858,7 @@ def export_se_ucs_coherence_csv(rep: Optional[Dict] = None) -> str:
               "n_puntos_roca_intacta": d["n"]}
              for d in rep["dominios"]]
     cab = "\n".join("# " + l for l in [
-        "Coherencia PEP ↔ UCS de laboratorio, sobre ROCA INTACTA.",
+        "Coherencia PEP ↔ UCS de ensayo, sobre ROCA INTACTA.",
         rep["veredicto"],
         f"rho_spearman={rep['rho_spearman']} · monotona={rep['monotona']}",
         rep["di_nota"], rep["advertencia_pp"],
@@ -8965,7 +8965,7 @@ COMPARISON_SEED = 42
 
 def _submuestrear_por_pozo(X, y, groups, max_n, seed=None):
     """
-    Sortea POZOS enteros hasta acercarse a `max_n` registros. Devuelve
+    Sortea BARRENOS enteros hasta acercarse a `max_n` registros. Devuelve
     (X, y, groups, nota) — nota es None si no hizo falta submuestrear.
     """
     seed = COMPARISON_SEED if seed is None else int(seed)
@@ -8982,7 +8982,7 @@ def _submuestrear_por_pozo(X, y, groups, max_n, seed=None):
         elegidos.append(p); n += k
     mask = np.isin(groups, elegidos)
     nota = (f"SUBMUESTREADO: {int(mask.sum()):,} de {len(X):,} registro(s), "
-            f"{len(elegidos)} de {len(pozos)} pozo(s), sorteados por POZO COMPLETO "
+            f"{len(elegidos)} de {len(pozos)} barreno(s), sorteados por BARRENO COMPLETO "
             f"con semilla {seed} para no romper la validación agrupada. El modelo "
             "de producción entrena con todos los datos; este tope aplica solo a la "
             "comparación.").replace(",", ".")
@@ -9008,7 +9008,7 @@ def _make_comparison_model(name):
 def model_comparison_report(with_se=True, ucs_min=None, ucs_max=None):
     """
     Compara Lineal, KNN, Random Forest, HistGradientBoosting y MLP (control)
-    con la MISMA validación cruzada agrupada por pozo (GroupKFold) que usa
+    con la MISMA validación cruzada agrupada por barreno (GroupKFold) que usa
     train_rf, para que la comparación sea metodológicamente consistente con
     el modelo de producción. `with_se` decide si el proxy de energía
     específica de reacción entra como predictor.
@@ -9025,7 +9025,7 @@ def model_comparison_report(with_se=True, ucs_min=None, ucs_max=None):
     n_grupos = len(set(groups.tolist())) if groups.size else 0
     if n_grupos < 3:
         return {"status": "sin_grupos",
-                "motivo": f"CV agrupada por pozo requiere ≥3 pozos con etiqueta (hay {n_grupos})."}
+                "motivo": f"CV agrupada por barreno requiere ≥3 barrenos con etiqueta (hay {n_grupos})."}
     X, y_s, groups_s, nota_sub = _submuestrear_por_pozo(X, y, groups, COMPARISON_MAX_N)
     y, groups = y_s, groups_s
     n_grupos = len(set(groups.tolist()))
@@ -9080,15 +9080,15 @@ def model_comparison_report(with_se=True, ucs_min=None, ucs_max=None):
 
 def caseron_de_pozo(well) -> Optional[str]:
     """
-    Caserón al que pertenece un pozo.
+    Caserón al que pertenece un barreno.
 
-    El caserón de un punto lo define su POZO —el abanico perforado—, no la
+    El caserón de un punto lo define su BARRENO —el abanico perforado—, no la
     litología que lo contiene: una litología cruza varios caserones por
     definición (en los datos reales de MPC, Bht está en los tres cargados),
     así que resolver el caserón desde la litología devuelve None por
-    ambigüedad. Un pozo, en cambio, pertenece a exactamente uno.
+    ambigüedad. Un barreno, en cambio, pertenece a exactamente uno.
 
-    Prioridad: el caserón DECLARADO en el pozo; si no lo tiene, se deriva
+    Prioridad: el caserón DECLARADO en el barreno; si no lo tiene, se deriva
     del prefijo del plan_id ("PCS_1043_PR01_TH_P07" -> "PCS_1043"), que es
     la convención de nomenclatura de Pucobre. La derivación es una
     heurística sobre el nombre, así que solo se usa cuando no hay dato
@@ -9103,7 +9103,7 @@ def caseron_de_pozo(well) -> Optional[str]:
 
 def _point_caseron_map(pts_por_pozo):
     """
-    {id(punto): caserón|None} a partir del POZO de cada punto.
+    {id(punto): caserón|None} a partir del BARRENO de cada punto.
 
     `pts_por_pozo` es un iterable de (punto, nombre_de_pozo).
     """
@@ -9120,7 +9120,7 @@ def cota_ablation_report(ucs_min=None, ucs_max=None):
     Ablación EXPLÍCITA de la cota como predictor — nunca en el modelo de
     producción (train_rf/ML_FEATURES), prohibido por diseño porque el
     yacimiento es estratiforme y la cota es casi un proxy directo de la
-    litología. Compara desempeño DENTRO-DEL-CASERÓN (GroupKFold por pozo,
+    litología. Compara desempeño DENTRO-DEL-CASERÓN (GroupKFold por barreno,
     igual que siempre) contra LOOCV-Caserón (dejando un caserón completo fuera),
     con y sin cota. Si "con cota" degrada mucho más en LOOCV-Caserón que "sin
     cota", es evidencia de que el modelo memorizaba la posición en vez de
@@ -9185,7 +9185,7 @@ def cota_ablation_report(ucs_min=None, ucs_max=None):
         resultado["dentro_caseron_sin_cota"] = _cv(X[:, idx_sin_cota], groups_pozo, gkf)
         resultado["dentro_caseron_con_cota"] = _cv(X[:, idx_con_cota], groups_pozo, gkf)
     else:
-        motivo = f"requiere ≥3 pozos con etiqueta (hay {n_grupos_pozo})"
+        motivo = f"requiere ≥3 barrenos con etiqueta (hay {n_grupos_pozo})"
         resultado["dentro_caseron_sin_cota"] = (None, motivo)
         resultado["dentro_caseron_con_cota"] = (None, motivo)
     logo = LeaveOneGroupOut()
@@ -9763,7 +9763,7 @@ def _marcar_banda(p) -> None:
 
     INFORMA, NO CORRIGE. Acotar a la banda impediría que el modelo diga "más
     duro que el rango documentado de su unidad" —que es justamente el hallazgo
-    que uno querría ver— y rompería el caso de los tiros piloto, donde todavía
+    que uno querría ver— y rompería el caso de los barrenos piloto, donde todavía
     no se conoce la litología. El único acote es el físico, 0–450 MPa.
     """
     if p.ucs_ml is None:
@@ -9783,7 +9783,7 @@ def predict_ucs_relacion() -> Dict:
     """
     Aplica la curva SE→UCS punto a punto: cada medición recibe SU valor, no la
     constante de su dominio. Un punto sin litología también lo recibe —es el
-    caso de los tiros piloto— y queda marcado "sin_banda".
+    caso de los barrenos piloto— y queda marcado "sin_banda".
     """
     global ucs_modelo_vigente, ucs_modelo_meta
     anclas = _anclas_por_litologia()
@@ -9968,7 +9968,7 @@ def predict_ucs_banda() -> Dict:
     la señal de alteración que se quiere ver. El único límite es el físico.
 
     Un punto sin litología no tiene banda: cae a la curva global SE↔UCS, que es
-    el caso de los tiros piloto en un caserón todavía sin modelo litológico.
+    el caso de los barrenos piloto en un caserón todavía sin modelo litológico.
     """
     global ucs_modelo_vigente, ucs_modelo_meta
     anclas = _anclas_por_litologia()
@@ -10326,7 +10326,7 @@ def predict_unclassified(tol_ucs=DOMINIO_TOL_UCS, tol_di=DOMINIO_TOL_DI,
 def _segments_by_domain(group_id, min_len=5):
     """
     Reconstruye segmentos continuos (mismo dominio, sin cortes de entrenable
-    ni caídas DI) dentro de un dominio, atravesando todos los pozos. Cada
+    ni caídas DI) dentro de un dominio, atravesando todos los barrenos. Cada
     segmento agrupa >= min_len muestras consecutivas.
     """
     segments = []
@@ -10361,7 +10361,7 @@ def top_drilling(group_id, n=5, method="min_se_cv"):
       penetración = mayor productividad).
 
     En los 3 casos, los segmentos candidatos pertenecen al MISMO dominio
-    predicho por el modelo ML (grupo geomecánico), no se mezclan dominios.
+    estimado por el modelo ML (grupo geomecánico), no se mezclan dominios.
     """
     segments = _segments_by_domain(group_id)
     if not segments:
@@ -10486,7 +10486,7 @@ def _export_descriptor(kind: str) -> Optional[Dict]:
         if n == 0: return None
         return {"kind": kind, "n": n, "unidad": "puntos MWD",
                 "filename": export_filename("predicciones", "csv"),
-                "desc": "Predicción de UCS punto a punto de todos los pozos cargados."}
+                "desc": "Predicción de UCS punto a punto de todos los barrenos cargados."}
     if kind == "validacion":
         df = export_validation_csv()
         if df.empty: return None
@@ -10507,7 +10507,7 @@ def _export_descriptor(kind: str) -> Optional[Dict]:
         return {"kind": kind, "n": n, "unidad": "puntos MWD",
                 "filename": export_filename("kit_cap5", "zip"),
                 "desc": f"Kit completo para el Capítulo 5: CSVs, figuras HTML y resumen "
-                       f"({len(domains)} dominios, {len(wells)} pozos)."}
+                       f"({len(domains)} dominios, {len(wells)} barrenos)."}
     return None
 
 # ─── T10: PERSISTENCIA DE SESIÓN (save / load project) ───────────────────────
@@ -11187,12 +11187,12 @@ SE_MAX_REPORTE = 1000.0        # bar·min/m
 
 
 def _se_valida_reporte(p) -> bool:
-    """SE utilizable en un reporte por pozo: finita y bajo el techo físico."""
+    """SE utilizable en un reporte por barreno: finita y bajo el techo físico."""
     return (p.se is not None and np.isfinite(p.se) and p.se <= SE_MAX_REPORTE)
 
 def well_basic_stats(well_name):
     """
-    Estadísticas descriptivas básicas de un pozo: media, mediana, std, min,
+    Estadísticas descriptivas básicas de un barreno: media, mediana, std, min,
     max por variable. SE queda bajo SE_MAX_REPORTE: sin el techo, un solo
     registro con PR≈0 (lavado del bit, no perforación) manda el máximo a
     valores sin sentido físico y arrastra con él media y desviación.
@@ -11216,7 +11216,7 @@ def well_basic_stats(well_name):
 
 def build_well_report_figure(well_name, hist_vars=None, profile_var="di"):
     """
-    Reporte gráfico de un pozo: perfil de UNA variable elegida vs profundidad
+    Reporte gráfico de un barreno: perfil de UNA variable elegida vs profundidad
     (P3-3.5: antes fijo en DI; ahora cualquier variable de REPORT_VARS, cruda
     o calculada) + histogramas de hasta 3 variables MWD seleccionadas por el
     usuario.
@@ -11315,7 +11315,7 @@ def _submuestrear_indices(n: int, max_n: int) -> List[int]:
     Índices espaciados regularmente para submuestrear `n` elementos a como
     máximo `max_n`, preservando el orden — a diferencia de un muestreo
     aleatorio, esto conserva la continuidad espacial de una traza (línea +
-    marcadores) y garantiza que el primer punto (el collar del pozo) quede
+    marcadores) y garantiza que el primer punto (el collar del barreno) quede
     incluido siempre.
     """
     if n <= max_n or n == 0:
@@ -11327,7 +11327,7 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
     """
     hidden_layers / hidden_wells: sets de nombres a OCULTAR (checkbox destildado).
 
-    Un pozo o malla oculto SIGUE en la figura, en visible="legendonly": el
+    Un barreno o malla oculto SIGUE en la figura, en visible="legendonly": el
     número y el orden de trazas no puede cambiar entre renders porque
     `uirevision="viewport"` (fijo, en render_viewport) depende de eso para
     conservar la cámara y el estado de interacción del usuario entre un
@@ -11336,23 +11336,23 @@ def build_3d_figure(color_by="se", hidden_layers=None, hidden_wells=None):
     justo lo que uirevision no tolera bien.
 
     (P9) Lo que SÍ se recorta a nada es el CONTENIDO de esa traza cuando está
-    oculta: un pozo apagado manda un solo punto (su collar) en vez de su serie
+    oculta: un barreno apagado manda un solo punto (su collar) en vez de su serie
     completa, y una malla apagada manda un único triángulo en vez de sus hasta
     MAX_VIZ_TRIANGULOS_POR_MALLA. Antes mandaban el contenido COMPLETO igual
     de apagados que encendidos —"legendonly" solo le decía a Plotly que no lo
     dibujara, no que no lo armara ni que no lo mandara— así que apagar 400 de
-    463 pozos no ahorraba un byte de JSON ni un milisegundo de armado en
-    Python. Medido sobre PCS_1043+PCC_0042 reales (601.324 puntos, 463 pozos,
-    17 mallas): con un caserón completo apagado (338 de 463 pozos) el armado
+    463 barrenos no ahorraba un byte de JSON ni un milisegundo de armado en
+    Python. Medido sobre PCS_1043+PCC_0042 reales (601.324 puntos, 463 barrenos,
+    17 mallas): con un caserón completo apagado (338 de 463 barrenos) el armado
     bajó de 1,13 s a 0,60 s y el JSON de 18,3 a 13,3 MB — sin perder la
     posibilidad de reactivarlo con el mismo checkbox de siempre.
 
     (E.4) La VISTA se recorta a MAX_VIZ_POINTS puntos en total, repartidos
-    proporcionalmente entre los pozos VISIBLES (uno con más metraje aporta más
+    proporcionalmente entre los barrenos VISIBLES (uno con más metraje aporta más
     puntos a la vista). well.points NUNCA se toca — el recorte vive solo en
     las listas locales que arma esta función para dibujar. El presupuesto se
-    reparte contra el total de los pozos visibles, no contra el total del
-    proyecto: con la mitad de los pozos ocultos, la mitad visible ahora
+    reparte contra el total de los barrenos visibles, no contra el total del
+    proyecto: con la mitad de los barrenos ocultos, la mitad visible ahora
     aprovecha el presupuesto completo en vez de seguir repartido como si los
     ocultos también compitieran por puntos que nunca iban a dibujarse.
 
@@ -11688,7 +11688,7 @@ def _kit_comparacion_modelos() -> str:
         f"Comparación de los cinco modelos: {', '.join(COMPARISON_MODELS)}.",
         "MLP entra como CONTROL de complejidad, no como candidato de producción.",
         "Se reporta con SE y sin SE porque SE es función de las demás variables.",
-        "validación: GroupKFold por pozo."]
+        "validación: GroupKFold por barreno."]
         + ([nota_sub] if nota_sub else [])
         + ([nota_prod] if nota_prod else [])
         + [f"generado: {time.strftime('%Y-%m-%d %H:%M')}"])
@@ -11788,14 +11788,14 @@ def _kit_resumen_bloques() -> str:
 
 def _kit_fig_3d():
     if not wells and not layers:
-        raise KitSinDatos("Sin pozos ni mallas cargadas no hay vista 3D.")
+        raise KitSinDatos("Sin barrenos ni mallas cargadas no hay vista 3D.")
     return build_3d_figure()
 
 
 def _kit_fig_di():
     cand = [w for w in wells.values() if any(p.di is not None for p in w.points)]
     if not cand:
-        raise KitSinDatos("Ningún pozo tiene DI calculado: correr compute_di().")
+        raise KitSinDatos("Ningún barreno tiene DI calculado: correr compute_di().")
     # El pozo más largo con DI: es el perfil más legible como figura.
     w = max(cand, key=lambda w: len(w.points))
     return build_di_figure(w)
@@ -11804,7 +11804,7 @@ def _kit_fig_di():
 def _kit_fig_di_sensibilidad():
     cand = [w for w in wells.values() if len(w.points) >= max(DI_SENSITIVITY_WINDOWS)]
     if not cand:
-        raise KitSinDatos("Ningún pozo alcanza el largo mínimo para recalcular el "
+        raise KitSinDatos("Ningún barreno alcanza el largo mínimo para recalcular el "
                           f"DI con las ventanas {DI_SENSITIVITY_WINDOWS}.")
     w = max(cand, key=lambda w: len(w.points))
     return build_di_sensitivity_figure(di_sensitivity_analysis(w))
@@ -11876,10 +11876,10 @@ KIT_CAP5: Tuple[Dict, ...] = (
      "titulo": "Composición del conjunto de entrenamiento",
      "tipo": "tabla", "generador": "_kit_composicion"},
     {"id": "F5.1", "seccion": "5.2 Datos y escala",
-     "titulo": "Vista 3D de pozos y mallas",
+     "titulo": "Vista 3D de barrenos y mallas",
      "tipo": "figura", "generador": "_kit_fig_3d"},
     {"id": "F5.2", "seccion": "5.3 Índice de discontinuidad",
-     "titulo": "Perfil de DI de un pozo representativo",
+     "titulo": "Perfil de DI de un barreno representativo",
      "tipo": "figura", "generador": "_kit_fig_di"},
     {"id": "F5.3", "seccion": "5.3 Índice de discontinuidad",
      "titulo": "Sensibilidad de la ventana del DI",
@@ -11900,7 +11900,7 @@ KIT_CAP5: Tuple[Dict, ...] = (
      "titulo": "Ablación de cota dentro y entre caserones",
      "tipo": "tabla", "generador": "_kit_ablacion_cota"},
     {"id": "T5.9", "seccion": "5.4 Modelo de caracterización",
-     "titulo": "Validación por pozo (GroupKFold)",
+     "titulo": "Validación por barreno (GroupKFold)",
      "tipo": "tabla", "generador": "export_validation_csv"},
     {"id": "T5.10", "seccion": "5.5 Concordancia con el modelo geológico",
      "titulo": "Diagnósticos de concordancia (C.3 a C.7)",
@@ -11915,7 +11915,7 @@ KIT_CAP5: Tuple[Dict, ...] = (
      "titulo": "Discriminador fractura contra contacto",
      "tipo": "tabla", "generador": "export_discriminator_csv"},
     {"id": "T5.14", "seccion": "5.8 Discriminación de discontinuidades",
-     "titulo": "RQD_MWD por pozo y por caserón",
+     "titulo": "RQD_MWD por barreno y por caserón",
      "tipo": "tabla", "generador": "export_rqd_mwd_csv"},
     {"id": "T5.15", "seccion": "5.9 Modelo de bloques",
      "titulo": "Modelo de bloques: X, Y, Z, tamaño, UCS, DI, confianza",
@@ -11942,12 +11942,12 @@ KIT_INDICE_MD = "INDICE_capitulo5.md"
 _KIT_CSV_DIRECTOS = {
     "export_vocabulary_csv": "El registro de vocabulario está vacío.",
     "export_validation_csv": ("No se corrió la validación multipozo de posición "
-                              "de mallas: sin resultados no hay detalle por pozo."),
+                              "de mallas: sin resultados no hay detalle por barreno."),
     "export_concordance_csv": "Sin contraste disponible no hay concordancia.",
-    "export_se_ucs_coherence_csv": "Sin dominios con UCS de laboratorio.",
+    "export_se_ucs_coherence_csv": "Sin dominios con UCS de ensayo.",
     "export_pp_curves_csv": "Sin puntos con dominio para construir curvas.",
     "export_discriminator_csv": "Sin picos de DI que clasificar.",
-    "export_rqd_mwd_csv": "Sin pozos con DI calculado.",
+    "export_rqd_mwd_csv": "Sin barrenos con DI calculado.",
     "export_block_model_csv": "Sin modelo de bloques.",
     "export_predictions_csv": ("Sin puntos MWD cargados no hay predicciones que "
                                "exportar."),
@@ -11957,7 +11957,7 @@ _KIT_CSV_DIRECTOS = {
 # tanto no traen encabezado propio.
 _KIT_ENCABEZADOS = {
     "export_validation_csv": ("Validación multipozo de la posición de cada malla: "
-                              "offset entre el cruce pozo-malla y el pico de DI "
+                              "offset entre el cruce barreno-malla y el pico de DI "
                               "más cercano."),
     "export_predictions_csv": ("Predicciones punto a punto. ucs_matriz es la UCS "
                                "de la matriz rocosa SIN discontinuidades; ucs_ml "
@@ -12165,7 +12165,7 @@ def wz_prereq(step):
 
     IMPORTANTE: el prerequisito de cada paso N es lo que se necesita para
     ENTRAR a N, no lo que se logra completando N. Por ejemplo, el Paso 3 (DI)
-    solo requiere tener pozos cargados —el DI se calcula DENTRO del paso 3,
+    solo requiere tener barrenos cargados —el DI se calcula DENTRO del paso 3,
     así que exigir 'DI ya calculado' para entrar sería una contradicción que
     deja al usuario atrapado sin poder nunca alcanzar ese paso.
     """
@@ -12238,7 +12238,7 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
             html.Div(id="wz-content", style={"flex":1,"overflowY":"auto","padding":"10px"}),
             html.Div(style={"borderTop":"1px solid #222","padding":"8px","maxHeight":"210px",
                              "overflowY":"auto","background":"#0a0a14"}, children=[
-                html.Small("CAPAS DXF Y POZOS", style={"color":"#555","letterSpacing":"1px","fontSize":"10px"}),
+                html.Small("CAPAS DXF Y BARRENOS", style={"color":"#555","letterSpacing":"1px","fontSize":"10px"}),
                 html.Div(id="layer-tree"),
             ]),
         ]),
@@ -12268,7 +12268,7 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
     dcc.Interval(id="kit-interval", interval=1000, disabled=True),
     dcc.Store(id="report-well-name", data=None),
     dbc.Modal([
-        dbc.ModalHeader(dbc.ModalTitle(id="well-report-title", children="Reporte de pozo")),
+        dbc.ModalHeader(dbc.ModalTitle(id="well-report-title", children="Reporte de barreno")),
         dbc.ModalBody([
             html.Div([
                 # (P3-3.5) Antes fijo en DI. Cualquier variable de REPORT_VARS
@@ -12297,7 +12297,7 @@ app.layout = dbc.Container(fluid=True, style={"height":"100vh","padding":0,"over
     # (P2-T2.6) Panel de sondajes: lista con selección, métricas por pozo,
     # reparto espacial y cruce traza↔malla.
     dbc.Modal([
-        dbc.ModalHeader(dbc.ModalTitle("Sondajes — selección de pozos relevantes")),
+        dbc.ModalHeader(dbc.ModalTitle("Sondajes — selección de barrenos relevantes")),
         # (Corrección) Los controles de orden viven ACÁ, en la cabecera
         # estática, y no dentro del cuerpo del modal. Estando dentro del
         # cuerpo no existían mientras el modal estaba cerrado, y el callback
@@ -12779,7 +12779,7 @@ _bloques_cache: Dict[str, object] = {"firma": None, "rep": None}
 # corrió es lo que queda en p.ucs_ml—; esto elige DENTRO de ese resultado.
 UCS_FUENTES_TRONADURA = {
     "ucs_matriz": "UCS de la matriz (sin discontinuidades)",
-    "ucs_ml": "UCS predicha cruda",
+    "ucs_ml": "UCS estimada cruda",
 }
 _tronadura_ucs_fuente: str = "ucs_matriz"
 
@@ -12969,7 +12969,7 @@ def reportes_disponibles() -> List[Dict]:
         "radio_rqd": (hay_sondajes, "No hay sondajes con RQD cargados."),
         "bloques": (hay_ucs, "Falta correr un modelo de UCS (paso 4)."),
         "perfil": (True, ""),
-        "composicion": (hay_pozos, "No hay pozos cargados."),
+        "composicion": (hay_pozos, "No hay barrenos cargados."),
     }
     out = []
     for r in REPORTES:
@@ -14446,7 +14446,7 @@ def _drillhole_panel_body(sort_field="holeid", desc=False):
         if not b: continue
         cota = (f"{b['cota_min']:.0f}–{b['cota_max']:.0f}" if b["cota_min"] is not None else "—")
         band_rows.append(html.Small(
-            f"{lbl}: {b['n_pozos']} pozos · {b['m_litologia']:.1f} m litología · "
+            f"{lbl}: {b['n_pozos']} barrenos · {b['m_litologia']:.1f} m litología · "
             f"{b['n_estructuras']} estructuras · cota {cota}",
             style={"display": "block", "fontSize": "10px", "color": "#aaa"}))
 
@@ -14462,7 +14462,7 @@ def _drillhole_panel_body(sort_field="holeid", desc=False):
             html.Small("Sin traza calculada todavía.", style={"color": "#666", "fontSize": "10px"})]),
         card("Cruce traza↔malla", [
             html.Small("Contra las mallas de litología cargadas (representan caserones/"
-                      "dominios). Los pozos cercanos no seleccionan por defecto, pero "
+                      "dominios). Los barrenos cercanos no seleccionan por defecto, pero "
                       "siguen siendo útiles para la interpolación al modelo de bloques.",
                       style={"color": "#888", "fontSize": "10px", "display": "block",
                              "marginBottom": "6px"}),
@@ -14474,7 +14474,7 @@ def _drillhole_panel_body(sort_field="holeid", desc=False):
                                    outline=True, size="sm", className="mt-4"), width="auto"),
             ], className="g-2"),
         ]),
-        card(f"Pozos ({len(holes)})", [
+        card(f"Barrenos ({len(holes)})", [
             dbc.ListGroup([_dh_row(dh) for dh in holes], flush=True,
                          style={"maxHeight": "340px", "overflowY": "auto"}),
         ]),
@@ -14608,7 +14608,7 @@ def render_wizard(step, _):
     Contenido del wizard y barra de pasos. Deliberadamente SEPARADO del
     callback de la figura 3D: cambiar de paso (o cargar datos) NO debe
     reconstruir el viewport, así la cámara y el estado de visibilidad de
-    capas/pozos permanecen intactos.
+    capas/barrenos permanecen intactos.
     """
     renderers = {1:_step1,2:_step2,3:_step3,4:_step4,5:_step5}
     content = renderers.get(step, _step1)()
@@ -14622,8 +14622,8 @@ def render_wizard(step, _):
 )
 def render_layer_tree(_):
     """
-    Árbol de capas/pozos con sus checkboxes de visibilidad. Se regenera solo
-    cuando cambian los datos (nueva capa, nuevo pozo, UCS asignado) — NO cada
+    Árbol de capas/barrenos con sus checkboxes de visibilidad. Se regenera solo
+    cuando cambian los datos (nueva capa, nuevo barreno, UCS asignado) — NO cada
     vez que se togglea un checkbox, para no perder el estado del propio
     checkbox que el usuario acaba de clickear.
     """
@@ -14677,7 +14677,7 @@ def _caseron_de_sondaje(dh) -> Optional[str]:
 
 def _abanico_de_pozo(well) -> str:
     """
-    Abanico de un tiro. Sale del plan_id del DQ, que es justamente lo que
+    Abanico de un barreno. Sale del plan_id del DQ, que es justamente lo que
     identifica el abanico perforado: la agrupación es AUTOMÁTICA y no hay que
     etiquetar nada a mano.
     """
@@ -14688,8 +14688,8 @@ def resolver_ocultos(caserones_apagados: set, mallas_apagadas: set,
                      pozos_apagados: set, sondajes_apagados: set):
     """
     Traduce el estado de las casillas del árbol a los dos conjuntos que
-    entiende build_3d_figure: mallas ocultas y "pozos" ocultos (los sondajes
-    viajan ahí con prefijo DH:: para no chocar con un pozo del mismo nombre).
+    entiende build_3d_figure: mallas ocultas y "barrenos" ocultos (los sondajes
+    viajan ahí con prefijo DH:: para no chocar con un barreno del mismo nombre).
 
     Un caserón apagado apaga TODO lo suyo sin que haya que destildar cada
     elemento; con el caserón encendido, manda la casilla individual.
@@ -14783,12 +14783,12 @@ def _carpeta(titulo, hijos, item_id):
 
 def _layer_tree():
     """
-    Árbol por CASERÓN. Antes era una lista plana: con 619 pozos y 23 mallas de
+    Árbol por CASERÓN. Antes era una lista plana: con 619 barrenos y 23 mallas de
     tres caserones, encontrar un abanico ahí es imposible y apagar un caserón
     entero para mirar otro, también.
 
     Cada caserón es una carpeta que se prende y apaga completa, y dentro trae
-    tiros —agrupados por ABANICO, automáticamente desde el plan_id del DQ—,
+    barrenos —agrupados por ABANICO, automáticamente desde el plan_id del DQ—,
     litología, estructuras y sondajes.
     """
     caseron_opts = [{"label": c, "value": c}
@@ -14839,7 +14839,7 @@ def _layer_tree():
         sondajes = [_fila_sondaje(hid, dh) for hid, dh in sorted(d["sondajes"])]
 
         sub = [c for c in (
-            _carpeta(f"Tiros ({len(d['pozos'])})", tiros, f"{cas}::tiros"),
+            _carpeta(f"Barrenos ({len(d['pozos'])})", tiros, f"{cas}::barrenos"),
             _carpeta(f"Litología ({len(litos)})", litos, f"{cas}::lito"),
             _carpeta(f"Estructuras ({len(estrs)})", estrs, f"{cas}::estr"),
             _carpeta(f"Sondajes ({len(sondajes)})", sondajes, f"{cas}::son"),
@@ -14849,7 +14849,7 @@ def _layer_tree():
             dbc.Checkbox(id={"type": "vis-caseron", "index": cas}, value=True,
                          style={"display": "inline-block", "marginRight": "6px"}),
             html.Small(html.B(cas), style={"fontSize": "11px"}),
-            html.Small(f"  {len(d['pozos'])} tiros · {len(d['mallas'])} mallas"
+            html.Small(f"  {len(d['pozos'])} barrenos · {len(d['mallas'])} mallas"
                        f" · {len(d['sondajes'])} sondajes",
                        style={"color": "#888", "fontSize": "10px", "marginLeft": "6px"}),
         ], style={"display": "flex", "alignItems": "center",
@@ -15074,7 +15074,7 @@ def on_xml(contents_list, filenames, ref):
         tolerancia_err_pct=float(get_param("carga.tolerancia_err_pct")))
     if wells:
         wz_state['step1']['xml_loaded'] = True
-    parts = [f"✅ {len(mw_by_hole)} pozos MWD"]
+    parts = [f"✅ {len(mw_by_hole)} barrenos MWD"]
     if counts["matched"]:   parts.append(f"{counts['matched']} matcheados")
     if counts["fallback"]:  parts.append(f"{counts['fallback']} por hermano ⚠")
     if counts.get("tolerancia"):
@@ -15090,9 +15090,9 @@ def on_xml(contents_list, filenames, ref):
                      f"(no cargados — ver advertencias)")
     if dq_rep["n_archivos"] > dq_rep["n_planes"]:
         parts.append(f"{dq_rep['n_archivos']} DQ → {dq_rep['n_planes']} planes "
-                     f"({dq_rep['n_tiros']} tiros)")
+                     f"({dq_rep['n_tiros']} barrenos)")
     if dq_rep["conflictos"]:
-        parts.append(f"{len(dq_rep['conflictos'])} tiro(s) con coordenadas distintas "
+        parts.append(f"{len(dq_rep['conflictos'])} barreno(s) con coordenadas distintas "
                      f"entre revisiones ⚠")
     if errs: parts.append(f"Err: {'; '.join(errs)}")
     # El corte de emboquillado es obligatorio (memoria 4.2.2): se reaplica con
@@ -15176,7 +15176,7 @@ def do_remove_filt(n_clicks_list, ref):
 )
 def on_assign_dq(values, ids, ref):
     """
-    Reasigna manualmente el DQ×hole de un pozo ambiguo. El dropdown vive dentro
+    Reasigna manualmente el DQ×hole de un barreno ambiguo. El dropdown vive dentro
     del árbol de capas regenerado, por eso usa id pattern-matching
     {"type":"assign-dq","index":well_name} (no un id fijo). Al elegir un
     candidato se reinterpolan las coordenadas de los puntos con la MISMA
@@ -15203,7 +15203,7 @@ def on_assign_dq(values, ids, ref):
         p.norte = collar["norte"] + p.t*(final_pt["norte"] - collar["norte"])
         p.cota  = collar["cota"]  + p.t*(final_pt["cota"]  - collar["cota"])
     well.origin = "manual"
-    log_warn(f'Pozo "{well_name}" reasignado manualmente a DQ '
+    log_warn(f'Barreno "{well_name}" reasignado manualmente a DQ '
              f'"{cand["plan_id"]}" hole={cand["hole_id"]} (err {cand["err_pct"]}%).')
     return ref+1, (f"✅ {well_name}: reasignado a {_plan_short(cand['plan_id'])} / "
                    f"hole {cand['hole_id']} (err {cand['err_pct']}%)."), True
@@ -15311,8 +15311,8 @@ def do_di_reset(n, ref):
 )
 def do_di_sensitivity(n_clicks_list, well_sel_list, out_ids):
     """
-    (T7b/c) Análisis de sensibilidad del DI (ventanas 10/14/20) para el pozo
-    seleccionado. Callback normal (no hilo): un solo pozo, cálculo rápido con
+    (T7b/c) Análisis de sensibilidad del DI (ventanas 10/14/20) para el barreno
+    seleccionado. Callback normal (no hilo): un solo barreno, cálculo rápido con
     la función pura di_profile — no toca p.di ni bloquea la UI. El dropdown,
     botón y contenedor de salida viven en wz-content (contenido regenerado al
     navegar de paso) → todos con ids pattern-matching.
@@ -15325,7 +15325,7 @@ def do_di_sensitivity(n_clicks_list, well_sel_list, out_ids):
     wn = well_sel_list[0] if well_sel_list else None
     well = wells.get(wn)
     if not well or not well.points:
-        return [dbc.Alert("Selecciona un pozo válido.", color="warning",
+        return [dbc.Alert("Selecciona un barreno válido.", color="warning",
                           style={"fontSize":"11px","padding":"6px 10px"})] * n_out
     content = build_di_sensitivity_content(well)
     return [content] * n_out
@@ -15565,16 +15565,16 @@ def poll_ml_task(_, ref):
                 color="dark"), width="auto")
             for k,v in [("R² in-sample",result["r2_train"]),("RMSE in-sample",f"{result['rmse_train']} MPa"),
                         ("RMSEA",result["rmsea"]),
-                        ("R² CV agrupada (por pozo)",cv_display),
+                        ("R² CV agrupada (por barreno)",cv_display),
                         ("N",result["n_train"]),("Excl. caídas",result["n_excl_disc"])]
         ], className="g-1 mt-2"),
         dbc.Alert([
             html.Small([
                 html.B("R² in-sample"), " mide el ajuste sobre los mismos datos usados para entrenar ",
                 "(equivalente a evaluar con predict(X) sobre el 100% de los datos, sin holdout separado). ",
-                html.B("R² CV agrupada (por pozo)"), " es la métrica honesta de generalización: usa "
-                "GroupKFold, que mantiene TODO un pozo del mismo lado del split train/test. Evita la fuga "
-                "espacial entre muestras vecinas de un mismo tiro (a 2 cm entre sí y fuertemente "
+                html.B("R² CV agrupada (por barreno)"), " es la métrica honesta de generalización: usa "
+                "GroupKFold, que mantiene TODO un barreno del mismo lado del split train/test. Evita la fuga "
+                "espacial entre muestras vecinas de un mismo barreno (a 2 cm entre sí y fuertemente "
                 "autocorrelacionadas), que un KFold aleatorio mezclaría e infla artificialmente el R². "
                 "Para reportar en la memoria, usar esta métrica.",
             ] + ([html.Br(), html.Br(), f"⚠ {result['cv_warning']}"] if result.get('cv_warning') else []),
@@ -15748,7 +15748,7 @@ def on_export_confirm(n, pending):
                              "navegador soporta con confianza — recupéralo desde "
                              "la ruta.")
         return (no_update, descarga, no_update, False,
-                (f"✅ Proyecto guardado en {rep['ruta']} — {rep['n_pozos']} pozos, "
+                (f"✅ Proyecto guardado en {rep['ruta']} — {rep['n_pozos']} barrenos, "
                  f"{rep['n_puntos']:,} puntos, {rep['tamano_MB']:g} MB."
                  .replace(",", ".")) + nota_descarga,
                 True)
@@ -15857,7 +15857,7 @@ def on_load_project(content, fname, ref):
         tmp.write(raw); tmp.close()
         load_project(tmp.name)
         os.unlink(tmp.name)
-        msg = (f"✅ Proyecto cargado — {len(wells)} pozos, "
+        msg = (f"✅ Proyecto cargado — {len(wells)} barrenos, "
                f"{sum(len(w.points) for w in wells.values())} pts. "
                "El modelo RF no se restaura: re-entrenar en Paso 4.")
         return ref+1, msg, True
@@ -15914,7 +15914,7 @@ def toggle_well_report(open_clicks, close_click, is_open):
         val = ctx.triggered[0]["value"]
         if not val: return no_update, no_update, no_update
         wn = triggered_id["index"]
-        return True, wn, f"Reporte de pozo — {wn}"
+        return True, wn, f"Reporte de barreno — {wn}"
     return no_update, no_update, no_update
 
 @app.callback(
@@ -16063,7 +16063,7 @@ def _step1():
         card("Registros MWD (XML IREDES)", [
             html.Small("Archivos DQ (con TMatrix) + archivos MW. Se cargan juntos.",
                        style={"color":"#aaa","display":"block","marginBottom":"8px"}),
-            dbc.Button([f"📊 Cargar XMLs ({n_wells} pozos)"], id="btn-xml",
+            dbc.Button([f"📊 Cargar XMLs ({n_wells} barrenos)"], id="btn-xml",
                        color="primary", outline=True, size="sm"),
         ]),
         dbc.Button("🔎 Vista previa del cruce DXF↔MWD (opcional)", id="btn-preview-cross",
@@ -16073,18 +16073,18 @@ def _step1():
             html.Small("header · survey · lithology · structure · geomec · density "
                        "(6 CSV, ';' / latin-1). Fuente de verdad INDEPENDIENTE del MWD: "
                        "desurvey por curvatura mínima y cruce traza↔malla determinan "
-                       "qué pozos son relevantes para las mallas de litología cargadas.",
+                       "qué barrenos son relevantes para las mallas de litología cargadas.",
                        style={"color":"#aaa","display":"block","marginBottom":"8px"}),
             dbc.Row([
                 dbc.Col(dbc.Button(f"🗿 Cargar CSV de sondajes ({len(drillholes)} cargados)",
                                     id="btn-drillhole", color="secondary", outline=True, size="sm"),
                         width="auto"),
-                dbc.Col(dbc.Button("Ver / seleccionar pozos →", id="btn-open-drillhole-step1",
+                dbc.Col(dbc.Button("Ver / seleccionar barrenos →", id="btn-open-drillhole-step1",
                                     color="link", size="sm") if drillholes else None, width="auto"),
             ], className="g-2"),
         ]),
         card("Proyecto (.gwz)", [
-            html.Small("Guarda/carga toda la sesión (pozos, DXF, configuración). "
+            html.Small("Guarda/carga toda la sesión (barrenos, DXF, configuración). "
                        "El modelo RF no se guarda: re-entrena al cargar.",
                        style={"color":"#aaa","display":"block","marginBottom":"8px"}),
             dbc.Row([
@@ -16117,9 +16117,9 @@ def _step2():
     # de clean_filters, es el corte base que recompute_filters() siempre
     # reaplica primero.
     filter_items = [dbc.ListGroupItem([
-        html.Small(("Emboquillado — hasta la meseta de PP de cada pozo"
+        html.Small(("Emboquillado — hasta la meseta de PP de cada barreno"
                     + (f" ({sum(1 for _, m in inicio_por_pozo.values() if m == 'respaldo')} "
-                       f"pozo(s) sin meseta: corte de {inicio_cut_m:g} m)")
+                       f"barreno(s) sin meseta: corte de {inicio_cut_m:g} m)")
                     if emboquillado_modo == "meseta" else
                     f"Emboquillado — largo < {inicio_cut_m:g} m"),
                    style={"fontSize":"11px","marginRight":"6px","flex":1}),
@@ -16142,7 +16142,7 @@ def _step2():
         # MWD por un factor derivado de esos promedios no corrige unidades,
         # reescala el dato crudo contra un agregado que ya lo contiene.
         card("Filtros de limpieza (globales)", [
-            dbc.Alert(f"Activos: {active}/{n_pts} pts · {len(wells)} pozos",
+            dbc.Alert(f"Activos: {active}/{n_pts} pts · {len(wells)} barrenos",
                       color="info", style={"fontSize":"11px","padding":"4px 8px"}, className="mb-2"),
             dbc.Row([
                 dbc.Col(html.Small("Corte emboquillado (m):", style={"color":"#aaa"}), width=5),
@@ -16169,7 +16169,7 @@ def _step2():
             ], className="g-1 mb-2"),
             html.Small("«Percusión de empate» ignora la variable de arriba: "
                        "siempre revisa PP, muestra por muestra dentro de cada "
-                       "pozo — marca la medición única que cae y se recupera al "
+                       "barreno — marca la medición única que cae y se recupera al "
                        "empatar una barra nueva, según "
                        "«Caída mínima para marcar percusión de empate» del perfil.",
                        style={"color":"#888","fontSize":"10px","display":"block",
@@ -16230,19 +16230,19 @@ def _di_rqd_card():
 def _di_sensitivity_card():
     """
     (T7a) Card "Análisis de sensibilidad" del Paso 3: recalcula el DI de un
-    pozo con ventanas 10/14/20 (sin sobrescribir el DI oficial) para justificar
+    barreno con ventanas 10/14/20 (sin sobrescribir el DI oficial) para justificar
     la elección de ventana=14. Dropdown y botón viven en contenido regenerado
     (wz-content) → ids pattern-matching, nunca fijos. El resultado se calcula
-    en un callback normal (rápido, un solo pozo) y no requiere hilo de fondo.
+    en un callback normal (rápido, un solo barreno) y no requiere hilo de fondo.
     """
     well_opts = [{"label": wn, "value": wn} for wn in wells.keys()]
     if not well_opts:
         return card("Análisis de sensibilidad (ventanas 10/14/20)", [
-            dbc.Alert("Carga y matchea pozos primero.", color="secondary",
+            dbc.Alert("Carga y matchea barrenos primero.", color="secondary",
                       style={"fontSize":"11px","padding":"6px 10px"}),
         ])
     return card("Análisis de sensibilidad (ventanas 10/14/20)", [
-        html.Small("Recalcula el DI del pozo elegido con ventanas 10, 14 y 20 muestras "
+        html.Small("Recalcula el DI del barreno elegido con ventanas 10, 14 y 20 muestras "
                    "SIN sobrescribir el DI oficial de los puntos — útil para justificar "
                    "en la memoria la elección de ventana=14.",
                    style={"color":"#aaa","display":"block","marginBottom":"8px"}),
@@ -16575,7 +16575,7 @@ def _varjust_panel_body():
                     html.Td(html.Small(f"{r['rmse_mean']:.1f} ± {r['rmse_std']:.1f}", style={"fontSize":"10px"})),
                 ]))
         return dbc.Table([
-            html.Thead(html.Tr([html.Th("Modelo"), html.Th("R² (CV por pozo)"), html.Th("RMSE")])),
+            html.Thead(html.Tr([html.Th("Modelo"), html.Th("R² (CV por barreno)"), html.Th("RMSE")])),
             html.Tbody(rows),
         ], bordered=False, size="sm")
 
@@ -16595,7 +16595,7 @@ def _varjust_panel_body():
             r2, err = pair
             return f"{r2:.3f}" if r2 is not None else f"— ({err})"
         rows = [
-            html.Tr([html.Td(html.Small("Dentro del caserón (GroupKFold por pozo)", style={"fontSize":"10px"})),
+            html.Tr([html.Td(html.Small("Dentro del caserón (GroupKFold por barreno)", style={"fontSize":"10px"})),
                     html.Td(html.Small(_fmt(abl["dentro_caseron_sin_cota"]), style={"fontSize":"10px"})),
                     html.Td(html.Small(_fmt(abl["dentro_caseron_con_cota"]), style={"fontSize":"10px"}))]),
             html.Tr([html.Td(html.Small("LOOCV-Caserón (deja un caserón fuera)", style={"fontSize":"10px"})),
@@ -16740,7 +16740,7 @@ def _mesh_validation_card():
     """
     struct_layers = [n for n, l in layers.items() if l.kind == "estructura"]
     body = [html.Small(
-        "Consistencia multipozo: si ≥3 pozos cruzan la misma estructura y sus "
+        "Consistencia multipozo: si ≥3 barrenos cruzan la misma estructura y sus "
         "picos DI apareados están sistemáticamente desplazados respecto de la "
         "malla, la evidencia favorece que la malla está corrida. El emboquillado "
         "se excluye con el corte existente (puntos no entrenables).",
@@ -16802,7 +16802,7 @@ def _mesh_validation_card():
                           legend=dict(font=dict(size=9)))
         body.append(dcc.Graph(figure=fig, config={"displayModeBar": False},
                               style={"marginTop":"6px"}))
-        body.append(dbc.Button("CSV detalle por pozo",
+        body.append(dbc.Button("CSV detalle por barreno",
                                id={"type":"val-export-btn","index":0},
                                color="secondary", outline=True, size="sm", className="mt-2"))
     return card("Validación de capas DXF (consistencia multipozo)", body)
@@ -16835,7 +16835,7 @@ def _step5():
         ]),
         card("Ranking de 5 recomendaciones históricas de perforación", [
             html.Small("Selecciona un dominio y el criterio de selección. Los segmentos "
-                       "candidatos siempre pertenecen al mismo dominio predicho por el ML.",
+                       "candidatos siempre pertenecen al mismo dominio estimado por el ML.",
                        style={"color":"#aaa","display":"block","marginBottom":"8px"}),
             dbc.Row([
                 dbc.Col(dcc.Dropdown(id="topn-domain", clearable=False,

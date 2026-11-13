@@ -148,7 +148,7 @@ def dentro_van_las_cuatro_carpetas():
     section("Árbol — dentro de un caserón: tiros, litología, estructuras, sondajes")
     _escenario()
     txt = " | ".join(_textos(gw._layer_tree())).lower()
-    for palabra in ("tiros", "litolog", "estructura", "sondaje"):
+    for palabra in ("barrenos", "litolog", "estructura", "sondaje"):
         check(palabra in txt, f"hay carpeta de {palabra}", txt[:300])
 
 

@@ -140,8 +140,8 @@ caja(33, 26.6, 34, 4.6, f"Agregación  ·  mediana de los {RF['n_estimators']} �
 banda(1.5, 23.0, "Esquema de validación")
 
 # GroupKFold por pozo
-ax.text(6.0, 19.6, f"Validación cruzada agrupada por pozo\nGroupKFold, k = {gk['n_pliegues']}  ·  "
-        f"{mil(D['n_pozos_grupo'])} pozos", fontsize=11, va="center", zorder=5)
+ax.text(6.0, 19.6, f"Validación cruzada agrupada por barreno\nGroupKFold, k = {gk['n_pliegues']}  ·  "
+        f"{mil(D['n_pozos_grupo'])} barrenos", fontsize=11, va="center", zorder=5)
 nf, x0, w, hgt = gk["n_pliegues"], 6.0, 6.4, 2.1
 for it in range(nf):
     yy = 15.0 - it * 2.65
@@ -170,7 +170,7 @@ for it, f in enumerate(lo["pliegues"]):
             va="center", zorder=5)
 
 caja(57.0, 2.2, 38.0, 4.0,
-     (f"R² = {gk['r2_medio']:.3f}  ·  RMSE = {gk['rmse_medio']:.1f} MPa   (por pozo)\n"
+     (f"R² = {gk['r2_medio']:.3f}  ·  RMSE = {gk['rmse_medio']:.1f} MPa   (por barreno)\n"
       f"R² = {lo['r2_medio_cross_val_score']:.3f}  ·  RMSE = {lo['rmse_medio']:.1f} MPa   (por caserón, {lo['n_definidos']} definidos)").replace(".", ","),
      "white", fs=10.5)
 

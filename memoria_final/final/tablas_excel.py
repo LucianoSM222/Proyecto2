@@ -79,13 +79,13 @@ def col(j): return get_column_letter(j)
 DI = R["di_vigente"]; L = R["limpieza"]; RF = R["train_rf"]
 ws = hoja("Configuración"); titulo(ws, f"Configuración de la corrida final ({R.get('fecha', '')})")
 tabla(ws, ["Elemento", "Valor"], [
-    ["Registros MWD / pozos", f"{R['tabla_6_1']['n_total']} / 928"],
-    ["Serie del DI", "depurada: emboquillado, cambio de barra, equipo sin perforar y saltos de continuidad fuera antes de la varianza móvil"],
+    ["Registros MWD / barrenos", f"{R['tabla_6_1']['n_total']} / 928"],
+    ["Serie del DI", "filtrada: emboquillado, cambio de barra, equipo sin perforar y saltos de continuidad fuera antes de la varianza móvil"],
     ["Ventana del DI [muestras]", DI["window"]], ["Umbral del DI", DI["umbral"]],
     *[[f"Peso {SIG[k]} (calibrado a 5 m)", round(v, 4)] for k, v in DI["pesos"].items()],
     ["ρ ajuste calibración", DI["rho_ajuste"]], ["ρ validación (un sondaje fuera)", DI["rho_validacion"]],
     ["Pares / sondajes de la calibración", f"{DI['n_pares']} / {DI['n_sondajes']}"],
-    ["Emboquillado", f"meseta de PP por pozo (corte mediano {L['emboquillado_corte_mediano_m']} m; respaldo {L['emboquillado_m']} m en {len(L['pozos_sin_meseta'])} pozos)"],
+    ["Emboquillado", f"meseta de PP por barreno (corte mediano {L['emboquillado_corte_mediano_m']} m; respaldo {L['emboquillado_m']} m en {len(L['pozos_sin_meseta'])} barrenos)"],
     ["Cambio de barra", "PR = 0 sobre la grilla de 1,756 m (±6 cm, ≥ 3 uniones) + 2 registros siguientes"],
     ["Límites del equipo", "PR 0,1–1,5 m/min · PP 90–230 · FP 20–150 · DP 25–150 · RP 30–80 · FLP 2–10 bar"],
     ["Largo de barra [m]", R["tabla_6_1"]["largo_barra_m"]],
@@ -99,7 +99,7 @@ ws = hoja("Limpieza"); titulo(ws, "Tabla 5.1 · Resumen de filtros y registros p
 _pb = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(SRC))), "barra")
 RFIL = json.load(open(os.path.join(_pb, "resumen_filtros.json"), encoding="utf-8"))
 _C = RFIL["conteo"]; _n_ent = R["entrenamiento"]["n"]
-_et = [("Carga", "Registros MWD de 928 pozos", None),
+_et = [("Carga", "Registros MWD de 928 barrenos", None),
        ("Antes del DI", "Emboquillado (meseta de PP)", _C["emboquillado"]),
        ("Antes del DI", "Cambio de barra (detención y 2 registros siguientes)", _C["barra_detencion"] + _C["barra_margen"]),
        ("Antes del DI", "Equipo sin perforar (PR = 0, PP < 90, FP < 20, FLP > 10, PR > 10)", _C["equipo"]),
@@ -114,22 +114,22 @@ titulo(ws, "Registros fuera de los límites del equipo, según su tratamiento")
 tabla(ws, ["Tratamiento", "Condición", "Registros"],
       [["Sale del DI y del entrenamiento", k, v] for k, v in RFIL["equipo_detalle"].items()] +
       [["Solo sale del entrenamiento", k, v] for k, v in RFIL["roca_detalle"].items()], fmt=[None, None, "#,##0"])
-titulo(ws, "Emboquillado por meseta de PP: largo del corte por pozo")
+titulo(ws, "Emboquillado por meseta de PP: largo del corte por barreno")
 tabla(ws, ["Corte [m]", "Pozos"], [[k, v] for k, v in RFIL["emboquillado"]["histograma_m"].items()], fmt=[None, "#,##0"])
 VB = json.load(open(os.path.join(_pb, "validacion_barra.json"), encoding="utf-8"))
 ws = hoja("Barra"); titulo(ws, "Validación del largo de barra con los registros")
 _dd = VB["diferencias_entre_detenciones"]; _bl = VB["barrido_L"]; _lp = VB["L_por_pozo"]
 tabla(ws, ["Prueba", "Resultado"], [
-    ["Distancia más frecuente entre detenciones del mismo pozo [m]", _dd["mejor_pico_1_2_a_2_4_m"]["media_fina_m"]],
+    ["Distancia más frecuente entre detenciones del mismo barreno [m]", _dd["mejor_pico_1_2_a_2_4_m"]["media_fina_m"]],
     ["Segundo pico [m]", _dd["segundo_armonico"]["media_fina_m"]],
     ["Detenciones fuera del emboquillado", _bl["detenciones_fuera_emboquillado"]],
     ["Detenciones alineadas con la grilla de 1,756 m", _bl["alineadas_en_1_756"]],
     ["Detenciones alineadas al azar (media)", _bl["azar_media"]],
-    ["Largo por pozo, mediana [m]", _lp["mediana_m"]], ["Desviación estándar entre pozos [m]", _lp["sd_m"]],
-    ["Pozos con ≥ 4 uniones", _lp["n_pozos"]]], fmt=[None, "General"])
+    ["Largo por barreno, mediana [m]", _lp["mediana_m"]], ["Desviación estándar entre barrenos [m]", _lp["sd_m"]],
+    ["Barrenos con ≥ 4 uniones", _lp["n_pozos"]]], fmt=[None, "General"])
 titulo(ws, "Barrido del largo de barra")
 tabla(ws, ["Largo probado [m]", "Detenciones alineadas"], [[a, b] for a, b in zip(_bl["L_m"], _bl["alineadas"])], fmt=["0.000", "#,##0"])
-titulo(ws, "Transitorio alrededor del cambio de barra (mediana del valor relativo al nivel del pozo)")
+titulo(ws, "Transitorio alrededor del cambio de barra (mediana del valor relativo al nivel del barreno)")
 _T = VB["transitorio"]["barra"]; _of = [f"-{o}" for o in range(8, 0, -1)] + [f"+{o}" for o in range(1, 9)]
 tabla(ws, ["Variable"] + _of, [[v] + [_T[v][k]["mediana"] for k in _of] for v in ("PR", "PP", "FP", "DP", "RP", "FLP")],
       fmt=[None] + ["0.00"] * len(_of))
@@ -176,7 +176,7 @@ FV = os.path.join(os.path.dirname(SRC), "di_ventanas.json")
 if os.path.exists(FV):
     DV = json.load(open(FV, encoding="utf-8")); ws = hoja("DI ventanas")
     titulo(ws, "Sensibilidad del DI al tamaño de ventana (10, 14 y 20 muestras)")
-    titulo(ws, "Pozo de referencia PCC_0042_PR01_TH_P20_H12")
+    titulo(ws, "Barreno de referencia PCC_0042_PR01_TH_P20_H12")
     tabla(ws, ["Ventana [muestras]", "Ventana [cm]", "Registros con DI", "Picos", "% sobre umbral"],
           [[r["ventana"], r["ventana"] * DV["paso_m"] * 100, r["registros_con_di"], r["picos"], r["pct_sobre_umbral"] / 100]
            for r in DV["pozo"]["filas"]], fmt=["0", "0", "#,##0", "#,##0", "0.0%"])
@@ -184,12 +184,12 @@ if os.path.exists(FV):
     for et, bloque in [("Cuatro caserones", {"TOTAL": DV["global"]})] + [(f"Caserón {k}", {k: v}) for k, v in sorted(DV["por_caseron"].items())]:
         titulo(ws, et)
         (k, d), = bloque.items()
-        tabla(ws, ["Ventana [muestras]", "Ventana [cm]", "Pozos", "Pozos sin DI (cortos)", "Registros con DI", "Picos",
+        tabla(ws, ["Ventana [muestras]", "Ventana [cm]", "Pozos", "Barrenos sin DI (cortos)", "Registros con DI", "Picos",
                    "Picos por 100 m", "% sobre umbral"],
               [[d[str(v)]["ventana"], d[str(v)]["ventana_cm"], d[str(v)]["pozos"], d[str(v)]["pozos_sin_di"],
                 d[str(v)]["registros_con_di"], d[str(v)]["picos"], d[str(v)]["picos_por_100m"],
                 d[str(v)]["pct_sobre_umbral"] / 100] for v in DV["ventanas"]], fmt=FMT_DV)
-    nota(ws, f"Umbral DI {DV['umbral']}; pesos calibrados a 5 m; serie depurada. "
+    nota(ws, f"Umbral DI {DV['umbral']}; pesos calibrados a 5 m; serie filtrada. "
              f"Picos: eventos sobre el umbral agrupados si están a menos de {DV['gap_m']} m.")
 
 # ── DI medio vs RQD de sondaje ─────────────────────────────────────────────
@@ -206,9 +206,9 @@ if os.path.exists(FR):
           [[c, v["dist_min_m"], v["dist_mediana_m"]] + [v[f"tramos_a_{r:g}m"] for r in DR["radios"]] for c, v in DR["cobertura"].items()],
           fmt=[None, "#,##0.0", "#,##0.0"] + ["0"] * len(DR["radios"]))
     nota(ws, f"{DR['n_tramos_rqd']} tramos de RQD en {len(DR['sondajes_rqd'])} sondajes. Apareo uno a uno: registro MWD más cercano al centro "
-             f"del tramo; DI medio sobre el tramo de ese pozo con el largo del intervalo y ≥ {DR['piso']} registros.")
+             f"del tramo; DI medio sobre el tramo de ese barreno con el largo del intervalo y ≥ {DR['piso']} registros.")
     titulo(ws, "Pares a ≤ 25 m")
-    tabla(ws, ["Caserón", "Sondaje", "Desde [m]", "Hasta [m]", "RQD [%]", "Distancia [m]", "Pozo MWD", "Registros con DI", "DI medio"],
+    tabla(ws, ["Caserón", "Sondaje", "Desde [m]", "Hasta [m]", "RQD [%]", "Distancia [m]", "Barreno MWD", "Registros con DI", "DI medio"],
           [[p["caseron"], p["sondaje"], p["desde"], p["hasta"], p["rqd"], p["dist_m"], p["pozo"], p["n_di"], p["di_medio"]]
            for p in sorted(DR["pares"], key=lambda p: p["dist_m"]) if p["dist_m"] <= 25],
           fmt=[None, None, "0.00", "0.00", "0.0", "0.00", None, "0", "0.000"])
@@ -217,7 +217,7 @@ if os.path.exists(FR):
 FMT_V = [None, "#,##0", "0", "+0.000;-0.000", "0.00", "+0.000;-0.000"]
 for nombre, clave, et in (("GroupKFold", "groupkfold", "Fold"), ("LOOCV-Caserón", "loocv_caseron", "Caserón fuera")):
     ws = hoja(nombre)
-    titulo(ws, f"Validación del Random Forest · {nombre}" + (" por pozo (k = 5)" if clave == "groupkfold" else ""))
+    titulo(ws, f"Validación del Random Forest · {nombre}" + (" por barreno (k = 5)" if clave == "groupkfold" else ""))
     PL = R[clave]["pliegues"]
     _, a, b = tabla(ws, [et, "Registros de prueba", "Etiquetas en prueba", "R²", "RMSE [MPa]", "ρ de Spearman"],
                     [[str(f["pliegue"]), f["n_prueba"], f["n_etiquetas_prueba"], f["r2"], f["rmse"], f["spearman"]] for f in PL],
@@ -234,7 +234,7 @@ for nombre, clave, et in (("GroupKFold", "groupkfold", "Fold"), ("LOOCV-Caserón
     ws._fila = b + 4
     if clave != "groupkfold":
         nota(ws, "PCS_1059 tiene una sola etiqueta en la prueba: R² y ρ de Spearman indefinidos (celda vacía); AVERAGE los omite.")
-    nota(ws, "Predicción = mediana de los 200 árboles. ρ de Spearman entre UCS predicha y UCS referencial.")
+    nota(ws, "Predicción = mediana de los 200 árboles. ρ de Spearman entre UCS estimada y UCS referencial.")
 
 # ── Los cuatro métodos bajo LOOCV-Caserón ──────────────────────────────────
 FL = os.path.join(os.path.dirname(SRC), "loocv_caseron_metodos.json")
@@ -280,18 +280,18 @@ tabla(ws, ["Métrica", "Valor"], [["R² GroupKFold (media)", RF["cv_r2_mean"]], 
                                  ["R² entrenamiento", RF["r2_train"]], ["RMSE entrenamiento [MPa]", RF["rmse_train"]],
                                  ["Registros de entrenamiento", RF["n_train"]]], fmt=[None, "0.000"])
 
-C = R["comparacion"]; ws = hoja("Comparación"); titulo(ws, "Comparación de algoritmos · GroupKFold por pozo")
+C = R["comparacion"]; ws = hoja("Comparación"); titulo(ws, "Comparación de algoritmos · GroupKFold por barreno")
 _, a, b = tabla(ws, ["Modelo", "R² entrenamiento", "R² prueba", "Desv. R² prueba", "RMSE prueba [MPa]", "Desv. RMSE", "Sobreajuste (R² ent. − R² prueba)"],
                 [[r["modelo"], r.get("r2_train_mean"), r["r2_mean"], r.get("r2_std"), r.get("rmse_mean"), r.get("rmse_std"), None]
                  for r in C["rows"] if r.get("r2_mean") is not None],
                 fmt=[None, "0.000", "+0.000;-0.000", "0.000", "0.0", "0.0", "0.000"])
 for i in range(a, b + 1):
     ws.cell(i, 7, f"=B{i}-C{i}").number_format = "0.000"; ws.cell(i, 7).alignment = Alignment(horizontal="center")
-nota(ws, f"Mismos {C['n_samples']:,} registros para los cinco modelos, {C['n_grupos']} pozos, k = {C['k_splits']}.".replace(",", "."))
+nota(ws, f"Mismos {C['n_samples']:,} registros para los cinco modelos, {C['n_grupos']} barrenos, k = {C['k_splits']}.".replace(",", "."))
 
 # ── UCS por litología, P10–P90 ─────────────────────────────────────────────
 U = R["ucs_por_litologia"]; ws = hoja("UCS por litología")
-titulo(ws, "UCS de laboratorio (referencial) y UCS predicha, roca continua entrenable (DI ≤ 1)")
+titulo(ws, "UCS de ensayo (referencial) y UCS estimada, roca continua entrenable (DI ≤ 1)")
 _, a, b = tabla(ws, ["Litología", "Registros", "UCS referencial [MPa]", "P10 ML", "P50 ML", "P90 ML", "P50 − referencial"],
                 [[NOM_LITO.get(k, k), v["n"], v["ancla"], v["p10"], v["p50"], v["p90"], None]
                  for k, v in sorted(U.items(), key=lambda kv: kv[1]["ancla"])],
@@ -345,11 +345,11 @@ FRP = os.path.join(os.path.dirname(SRC), "rop_presiones.json")
 if os.path.exists(FRP):
     RPJ = json.load(open(FRP, encoding="utf-8")); ws = hoja("PR vs presiones")
     titulo(ws, "Relación de la PR con PP, FP, RP y DP (roca continua entrenable; FLP excluida por criterio físico)")
-    tabla(ws, ["Grupo", "Presión", "Registros", "Pozos", "ρ simple", "ρ parcial", "ρ dentro del pozo", "R² sola (rangos)", "R² las 4 (rangos)", "Mediana [bar]"],
+    tabla(ws, ["Grupo", "Presión", "Registros", "Pozos", "ρ simple", "ρ parcial", "ρ dentro del barreno", "R² sola (rangos)", "R² las 4 (rangos)", "Mediana [bar]"],
           [[NOM_LITO.get(g, g), p, d["n"], d["n_pozos"], v["rho_simple"], v["rho_parcial"], v["rho_intra_pozo"], v["r2_sola"], d["r2_rangos_las_4"], v["mediana"]]
            for g, d in RPJ["grupos"].items() for p, v in zip(siglas_xml(d["presiones"]), d["presiones"].values())],
           fmt=[None, None, "#,##0", "#,##0", "+0.000;-0.000", "+0.000;-0.000", "+0.000;-0.000", "0.000", "0.000", "0.0"])
-    nota(ws, "ρ parcial: rangos descontando linealmente las otras tres presiones. ρ dentro del pozo: desviaciones respecto de la mediana de cada pozo.")
+    nota(ws, "ρ parcial: rangos descontando linealmente las otras tres presiones. ρ dentro del barreno: desviaciones respecto de la mediana de cada barreno.")
     titulo(ws, "Correlación entre presiones (todas las litologías)")
     tabla(ws, ["Par", "ρ de Spearman"], [[k, v] for k, v in zip(siglas_xml(RPJ["grupos"]["Todas las litologías"]["correlacion_entre_presiones"]), RPJ["grupos"]["Todas las litologías"]["correlacion_entre_presiones"].values())],
           fmt=[None, "+0.000;-0.000"])
@@ -374,7 +374,7 @@ FCC = os.path.join(os.path.dirname(SRC), "concordancia_caserones.json")
 if os.path.exists(FCC):
     CC = json.load(open(FCC, encoding="utf-8")); ws = hoja("Concordancia caserones")
     titulo(ws, "Picos de DI y cruces de malla: 4 caserones, PCC_0042 (calibración) y PCC_1541 (prueba)")
-    tabla(ws, ["Conjunto", "Pozos", "Pozos con cruces", "Picos (umbral 1)", "Desfase medio [m]", "Desfase mediano [m]", "σ desfase [m]"],
+    tabla(ws, ["Conjunto", "Pozos", "Barrenos con cruces", "Picos (umbral 1)", "Desfase medio [m]", "Desfase mediano [m]", "σ desfase [m]"],
           [[k, C["n_pozos"], C["n_pozos_con_cruces"], C["desfase"]["n"], C["desfase"]["media"], C["desfase"]["mediana"], C["desfase"]["sd"]]
            for k, C in CC["conjuntos"].items()], fmt=[None, "#,##0", "#,##0", "#,##0", "0.00", "0.00", "0.00"])
     for k, C in CC["conjuntos"].items():
@@ -384,7 +384,7 @@ if os.path.exists(FCC):
                         fmt=["0.00", "#,##0", "#,##0", "0.0%", "0.0%", "0.0%", "+0.0%;-0.0%"])
         for i in range(a, b + 1):
             ws.cell(i, 7, f"=D{i}-F{i}").number_format = "+0.0%;-0.0%"; ws.cell(i, 7).alignment = Alignment(horizontal="center")
-    nota(ws, f"Radio de concordancia {CC['radio_m']:g} m; picos fusionados a < 0,5 m; azar: mismos picos recolocados al azar en su pozo (30 repeticiones).")
+    nota(ws, f"Radio de concordancia {CC['radio_m']:g} m; picos fusionados a < 0,5 m; azar: mismos picos recolocados al azar en su barreno (30 repeticiones).")
 
 # ── Dominios y ranking ─────────────────────────────────────────────────────
 Dm = R["dominios"]; ws = hoja("T6.3 Dominios")

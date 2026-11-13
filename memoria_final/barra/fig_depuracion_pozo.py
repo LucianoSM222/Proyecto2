@@ -1,5 +1,5 @@
-"""Figura de depuración (antes / después) de un pozo, con PP o con PR.
-Uso: python3 fig_depuracion_pozo.py pozo_ejemplo.json POZO {pp|pr} salida.png"""
+"""Figura de filtrado (antes / después) de un barreno, con PP o con PR.
+Uso: python3 fig_depuracion_pozo.py pozo_ejemplo.json BARRENO {pp|pr} salida.png"""
 import sys, json
 import numpy as np
 import matplotlib; matplotlib.use("Agg")
@@ -31,15 +31,15 @@ for k, et, c_ in MOT:
         a1.plot(L[m], Y[m], "o", color=c_, ms=4.2, mec="white", mew=0.4, zorder=5, label=f"{et} ({int(m.sum())})")
 a1.axvline(corte, color=GRIS, ls="--", lw=1)
 a1.set_ylabel(ETQ); a1.legend(loc="lower right", fontsize=9, ncol=3)
-a1.set_title("Antes de la depuración", loc="left", fontsize=10)
+a1.set_title("Antes del filtrado", loc="left", fontsize=10)
 serie = (mot == "") | (mot == "roca")
 Ys = Y.copy(); Ys[~serie] = np.nan
-a2.plot(L, Ys, "-", color=VERDE, lw=0.8, label=f"Serie depurada para el DI ({mil(serie.sum())} registros)")
+a2.plot(L, Ys, "-", color=VERDE, lw=0.8, label=f"Serie filtrada para el DI ({mil(serie.sum())} registros)")
 a2.axvspan(0, corte, color=GRIS, alpha=0.30, lw=0, zorder=0, label=f"Emboquillado (< {dec(corte, 2)} m)")
 for x_ in L[mot == "barra"]:
     a2.axvline(x_, color=ROJO, ls=":", lw=0.8, alpha=0.6, zorder=0)
-a2.set_ylabel(ETQ); a2.set_xlabel("Profundidad a lo largo del pozo [m]")
-a2.set_title("Después de la depuración (líneas punteadas: cambios de barra cada 1,756 m)", loc="left", fontsize=10)
+a2.set_ylabel(ETQ); a2.set_xlabel("Profundidad a lo largo del barreno [m]")
+a2.set_title("Después del filtrado (líneas punteadas: cambios de barra cada 1,756 m)", loc="left", fontsize=10)
 a2.legend(loc="lower right", fontsize=9, ncol=2)
 if VAR == "pr":
     hi = np.nanpercentile(Y[Y > 0], 99.5) * 1.15

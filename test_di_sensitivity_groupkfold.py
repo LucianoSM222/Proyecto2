@@ -10,7 +10,7 @@ Cubre:
     %sobre umbral coherentes; ventana muy grande (> n puntos) → fila con
     n_picos=None en vez de excepción.
   · train_rf con GroupKFold: con 1 solo pozo, cv_r2_mean queda None y
-    cv_warning="CV agrupada requiere ≥3 pozos con etiqueta (hay 1)." sin
+    cv_warning="CV agrupada requiere ≥3 barrenos con etiqueta (hay 1)." sin
     lanzar excepción; con ≥3 pozos, GroupKFold corre y da un cv_r2_mean.
   · e2e real (obligatorio): clasificación 1437/1743 exacto; DI 1743 pts con
     ventana 14 idéntico al valor de referencia; import sin servidor.
@@ -186,7 +186,7 @@ def test_groupkfold_single_well():
     assert "error" not in stats, f"train_rf no debería fallar: {stats}"
     assert stats["cv_r2_mean"] is None
     assert stats["cv_n_grupos"] == 1
-    assert stats["cv_warning"] == "CV agrupada requiere ≥3 pozos con etiqueta (hay 1)."
+    assert stats["cv_warning"] == "CV agrupada requiere ≥3 barrenos con etiqueta (hay 1)."
     print("[TEST GKF 1-pozo] OK — CV omitida sin excepción, advertencia correcta.")
     return True
 

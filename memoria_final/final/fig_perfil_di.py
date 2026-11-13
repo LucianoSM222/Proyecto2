@@ -1,5 +1,5 @@
 """Figura 5.3: perfil del DI calibrado en PCC_0042_PR01_TH_P20_H12, con las
-zonas del pozo que alcanzan los tramos de RQD de sondaje dentro del radio de
+zonas del barreno que alcanzan los tramos de RQD de sondaje dentro del radio de
 asignación. Uso: python3 fig_perfil_di.py final.json salida.png"""
 import sys, json
 from collections import defaultdict
@@ -25,7 +25,7 @@ for k, (son, ts) in enumerate(sorted(Z.items(), key=lambda kv: min(t["largo_pozo
     ax.axvspan(a, b, color=VERDE_Z, alpha=0.45, lw=0, zorder=0)
     rq = [t["rqd"] for t in ts]; dist = min(t["dist_m"] for t in ts)
     rm = sorted({t["rqd_mwd"] for t in ts if t["rqd_mwd"] is not None})
-    txt = (f"Sondaje {son}\n{len(ts)} tramos, a {dec(dist, 1)} m del pozo\n"
+    txt = (f"Sondaje {son}\n{len(ts)} tramos, a {dec(dist, 1)} m del barreno\n"
            f"RQD sondaje: {dec(min(rq), 0)}–{dec(max(rq), 0)} %\n"
            f"RQD equivalente DI: {dec(min(rm), 0)}–{dec(max(rm), 0)} %")
     xc = (a + b) / 2
@@ -46,7 +46,7 @@ for t in P["tramos_rqd"]:
 ax.plot(L, D, "-", color=AZUL, lw=1.1, zorder=3)
 ax.fill_between(L, U, D, where=np.isfinite(D) & (D > U), color=ROJO, alpha=0.25, lw=0, zorder=2, interpolate=True)
 ax.axhline(U, color=ROJO, ls="--", lw=1.1, zorder=4, label=f"Umbral DI = {dec(U, 0)} (roca discontinua sobre esta línea)")
-ax.set_xlabel("Profundidad a lo largo del pozo [m]"); ax.set_ylabel("Índice de discontinuidad (DI)", color=AZUL)
+ax.set_xlabel("Profundidad a lo largo del barreno [m]"); ax.set_ylabel("Índice de discontinuidad (DI)", color=AZUL)
 ax.tick_params(axis="y", colors=AZUL); ax.set_ylim(-0.2, ytop); ax.set_xlim(-1.5, max(L.max(), max(t["largo_pozo_m"] + t["largo_tramo_m"] / 2 for t in P["tramos_rqd"])) + 1.5)
 ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.13), fontsize=9, frameon=False)
 c = lambda v, _p=None: (f"{v:.6f}".rstrip("0").rstrip(".") or "0").replace(".", ",")

@@ -16,6 +16,11 @@ mina subterránea de cobre.
   de Pucobre FP = flujo, AP = avance, del 2026-10-22). Los JSON calculados
   antes de esa fecha traen las siglas viejas y los scripts de figuras las
   traducen al dibujar (`siglas_xml`).
+- Terminología en pantalla, figuras y memoria (decisión del autor, 2026-11-13):
+  **barreno** (no pozo ni tiro), **filtrado** (no depuración; «serie filtrada»),
+  **estimada** (no predicha; «UCS estimada») y **UCS de ensayo** (no UCS de
+  laboratorio). Solo cambia el texto visible: identificadores, claves de JSON
+  y nombres de archivo siguen como estaban (`pozo`, `por_pozo`, etc.).
 - TMatrix del DQ: fila0 -> Norte, fila1 -> Este, fila2 -> Cota.
 - Ejes DXF: X = Este, Y = Norte, Z = Cota.
 - Ray casting VERTICAL (0,0,1). El grid XY de aceleración solo vale con rayo

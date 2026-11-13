@@ -9,7 +9,7 @@ figuras y tablas. La numeración de figuras y tablas es la del cuerpo de la
   con el número de la memoria en el nombre del archivo.
 - **Tablas en Excel:** `figuras/tesis_2026-11-11/reemplazo/tablas_capitulo5.xlsx`.
 - **Corrida:** `memoria_final/final/final_calc.py`, 11 de noviembre de 2026,
-  sobre los cuatro caserones (928 pozos, 982.420 registros).
+  sobre los cuatro caserones (928 barrenos, 982.420 registros).
 
 ---
 
@@ -18,11 +18,11 @@ figuras y tablas. La numeración de figuras y tablas es la del cuerpo de la
 | # | Decisión | Efecto |
 |---|---|---|
 | 1 | Siglas del XML IREDES en todo: **PR** (velocidad de penetración), **FP** (avance), **FLP** (flujo de barrido) | Reemplazan a ROP, AP y FP = flujo. SE pasa a **PEP** |
-| 2 | Vocabulario: **pozo** (no tiro ni barreno) | Texto y figuras |
-| 3 | DI en dos clases: **roca continua** (DI ≤ 1) y **roca discontinua** (DI > 1) | Reemplaza a intacta/fracturada y a sana/transición/fracturada. «Roca intacta» queda solo para la UCS de laboratorio |
-| 4 | **Cambio de barra**: PR = 0 sobre la grilla de 1,756 m del pozo, más los 2 registros siguientes | Reemplaza a la percusión de empate |
+| 2 | Vocabulario: **barreno** (no barreno ni barreno) | Texto y figuras |
+| 3 | DI en dos clases: **roca continua** (DI ≤ 1) y **roca discontinua** (DI > 1) | Reemplaza a intacta/fracturada y a sana/transición/fracturada. «Roca intacta» queda solo para la UCS de ensayo |
+| 4 | **Cambio de barra**: PR = 0 sobre la grilla de 1,756 m del barreno, más los 2 registros siguientes | Reemplaza a la percusión de empate |
 | 5 | El filtro de caída relativa de la PP (percusión de empate o regulación automática) **sale** de la limpieza | Desaparecen la Ec. 4.1, la Tabla 5.2 y la Figura 5.2 actuales |
-| 6 | **Emboquillado por meseta de PP**, pozo por pozo | Reemplaza al corte fijo de 2 m |
+| 6 | **Emboquillado por meseta de PP**, barreno por barreno | Reemplaza al corte fijo de 2 m |
 | 7 | **Límites del equipo** para las seis variables | Reemplaza al rango de PP solo |
 | 8 | Criterio **equipo / roca**: lo que es del equipo sale antes del DI; lo que puede ser roca se queda en el DI y solo sale del entrenamiento | Cambia qué filtros van antes del DI |
 | 9 | La continuidad del registro pasa a filtrarse **antes** del DI | Antes solo afectaba al entrenamiento |
@@ -40,7 +40,7 @@ entrenamiento» a cuatro filtros ordenados por un criterio único:
 
 | Orden | Filtro | Criterio | Serie del DI | Entrenamiento |
 |---|---|---|---|---|
-| 1 | Cambio de barra | PR = 0 sobre la grilla de 1,756 m del pozo (±6 cm, ≥ 3 uniones), más los 2 registros siguientes | Excluye | Excluye |
+| 1 | Cambio de barra | PR = 0 sobre la grilla de 1,756 m del barreno (±6 cm, ≥ 3 uniones), más los 2 registros siguientes | Excluye | Excluye |
 | 2 | Emboquillado | Hasta que la PP se mantiene pareja 20 cm sobre el 70% de su nivel de régimen (sin meseta: 2 m) | Excluye | Excluye |
 | 3a | Límites del equipo: no perfora | PR = 0, PP < 90 bar, FP < 20 bar, FLP > 10 bar o PR > 10 m/min | Excluye | Excluye |
 | 3b | Límites del equipo: respuesta de la roca | PR, RP o DP fuera de su rango | Mantiene | Excluye |
@@ -52,7 +52,7 @@ Qué sale del texto actual:
   relativa). Si se quiere conservar, va como antecedente de lo que se probó.
 - La frase «entre 90 y **250** [bar]»: el rango es 90 a **230** bar.
 - La descripción del emboquillado como «distancia de los primeros metros a
-  eliminar»: ahora se determina por la estabilización de la PP en cada pozo.
+  eliminar»: ahora se determina por la estabilización de la PP en cada barreno.
 - La definición de continuidad como «tramos asociados a registros aislados o
   reperforación»: es un salto de más de 2,95 cm entre muestras consecutivas,
   cerca de 1,5 veces el espaciamiento nominal de 2 cm.
@@ -74,7 +74,7 @@ se mantiene al menos 5 m es de 225,1 bar en la PP y de 81,0 bar en la RP.
 ### 2.2 Sección 3.3, Cálculo del DI
 
 - La frase final del primer párrafo queda: «El cálculo se realiza sobre la
-  serie depurada del cambio de barra, del emboquillado, de los registros en
+  serie filtrada del cambio de barra, del emboquillado, de los registros en
   que el equipo no perfora y de los saltos de continuidad (3.2.2)». Hoy
   menciona la regulación automática de la percusión, que ya no se aplica.
 - «En la serie previamente filtrada, el DI varía entre 0 y 11, y el 83% de
@@ -95,12 +95,12 @@ se mantiene al menos 5 m es de 225,1 bar en la PP y de 81,0 bar en la RP.
 
 | Etapa | Filtro | Excluidos | Restantes |
 |---|---|---:|---:|
-| Carga | Registros MWD de 928 pozos | — | 982.420 |
+| Carga | Registros MWD de 928 barrenos | — | 982.420 |
 | Antes del DI | Emboquillado (meseta de PP) | 75.104 | 907.316 |
 | | Cambio de barra (detención y 2 registros siguientes) | 31.255 | 876.061 |
 | | Equipo sin perforar | 14.114 | 861.947 |
 | | Continuidad del registro | 1.123 | 860.824 |
-| | Registros sin DI calculable | 3 | **860.821** (serie depurada) |
+| | Registros sin DI calculable | 3 | **860.821** (serie filtrada) |
 | Solo entrenamiento | PR, RP, DP o PP fuera del rango del equipo | 24.939 | **835.882** (entrenables) |
 | Discontinuidad | DI > 1 | 145.462 | **690.420** (entrenamiento) |
 
@@ -110,10 +110,10 @@ Cifras del texto que cambian:
 
 | En la memoria | Nuevo |
 |---|---|
-| Emboquillado 86.785 registros | 75.104 (corte mediano 1,50 m; 11 pozos con el corte de respaldo de 2 m) |
+| Emboquillado 86.785 registros | 75.104 (corte mediano 1,50 m; 11 barrenos con el corte de respaldo de 2 m) |
 | Percusión de empate 8.911 | Se elimina. Cambio de barra: 11.070 detenciones + 20.185 de margen = 31.255 |
 | 65 registros sin DI calculable | 3 |
-| Serie depurada 886.659 | 860.821 |
+| Serie filtrada 886.659 | 860.821 |
 | Rango de PP y continuidad: 17.200 | Límites del equipo (roca): 24.939 |
 | Entrenables 869.459 | 835.882 |
 | Total excluido 112.961 | 146.538 |
@@ -131,7 +131,7 @@ Detalle para el texto (`Tabla_5.1b_NUEVA_detalle_limites_equipo_roca`):
 
 **Figura 5.1** → `Figura_5.1_correlacion_pearson` (misma matriz de 7
 variables, con las siglas nuevas, sobre los 860.824 registros de la serie
-depurada).
+filtrada).
 
 - El par de presiones más correlacionado sigue siendo **FP–DP**, ahora con
   r = **0,52** (antes 0,61). El argumento para dejar fuera el avance se
@@ -146,17 +146,17 @@ texto entre «Un segundo criterio previo a calibrar…» y «…se aplica antes 
 cálculo del DI» se sustituye por la validación del cambio de barra:
 
 - `Tabla_5.2b_NUEVA_validacion_largo_barra`: la distancia más frecuente
-  entre detenciones de un mismo pozo es 1,755 m (39.938 parejas), con un
+  entre detenciones de un mismo barreno es 1,755 m (39.938 parejas), con un
   segundo pico en 3,510 m. La grilla de 1,756 m alinea 10.124 de 14.229
-  detenciones; ubicadas al azar se alinean 2.470. El largo por pozo es
-  1,7549 m, con 1,2 mm de desviación estándar entre 795 pozos.
+  detenciones; ubicadas al azar se alinean 2.470. El largo por barreno es
+  1,7549 m, con 1,2 mm de desviación estándar entre 795 barrenos.
 - `Figura_5.2b_NUEVA_periodicidad_cambio_barra`: histograma de distancias y
   barrido del largo entre 1,20 y 2,40 m.
 - `Figura_5.2c_NUEVA_transitorio_cambio_barra`: sobre 10.972 cambios de
   barra, antes de la detención no hay transitorio; al reanudar, la primera
   muestra trae la PR al 62% y la PP al 76% de su nivel, y la segunda la PR
   al 84%. Por eso se excluyen los 2 registros siguientes.
-- `Figura_5.2_antes_despues_depuracion`: cambia de pozo, a
+- `Figura_5.2_antes_despues_depuracion`: cambia de barreno, a
   PCS_1059_PR01_P202_H11, donde la periodicidad y el emboquillado se ven
   mejor. Registros excluidos: 72 de emboquillado (corte a 1,55 m, donde la PP
   pasa de unos 130 a 225 bar), 17 de cambio de barra (17 uniones, ninguna
@@ -205,13 +205,13 @@ caserones:
 | 20 muestras (40 cm) | 33,5 | 20,3% |
 
 En el texto, «38,9 zonas por cada 100 m y 17,0%» pasa a 36,9 y 18,1%. Las
-cuentas del pozo P20_H12 (20, 17 y 17 zonas) hay que leerlas de la leyenda de
+cuentas del barreno P20_H12 (20, 17 y 17 zonas) hay que leerlas de la leyenda de
 la figura nueva.
 
 Párrafo de cierre de 5.2: «sobre los 886.659 registros… 735.674 (83,0%) como
 roca intacta y 150.985 (17,0%) como roca discontinua. De los registros de
 roca intacta, 12.073…» pasa a: sobre los **860.821** registros de la serie
-depurada, **704.859 (81,9%)** son roca continua y **155.962 (18,1%)** roca
+filtrada, **704.859 (81,9%)** son roca continua y **155.962 (18,1%)** roca
 discontinua; de los primeros, **14.439** quedan fuera de los límites del
 equipo, por lo que el entrenamiento usa **690.420** registros.
 
@@ -246,9 +246,9 @@ La etiqueta de 180 MPa se usa en **412.520** registros (antes 426.935), el
 **59,7%** del entrenamiento.
 
 **Figura 5.8, comparación de algoritmos: es el cambio que más cuidado
-requiere.** Esta comparación no usa todos los datos: sortea pozos completos
+requiere.** Esta comparación no usa todos los datos: sortea barrenos completos
 hasta un tope de 60.000 registros. Con el conjunto de entrenamiento nuevo el
-sorteo es otro (59.820 registros de 77 pozos) y el R² de prueba sale
+sorteo es otro (59.820 registros de 77 barrenos) y el R² de prueba sale
 **negativo en los cinco algoritmos**:
 
 | Algoritmo | Entrenamiento | Prueba (antes) | Prueba (nuevo) |
@@ -260,7 +260,7 @@ sorteo es otro (59.820 registros de 77 pozos) y el R² de prueba sale
 | MLP (control) | +0,503 | +0,054 | −0,371 |
 
 Para saber cuánto depende del sorteo, se repitió la comparación con seis
-sorteos distintos de pozos (`comparacion_sorteos.py`):
+sorteos distintos de barrenos (`comparacion_sorteos.py`):
 
 | Algoritmo | Sorteo 1 | 2 | 3 | 4 | 5 | 6 | Media | Desv. est. |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -273,8 +273,8 @@ sorteos distintos de pozos (`comparacion_sorteos.py`):
 - **Lo que se sostiene:** el Random Forest es el mejor en los seis sorteos, y
   KNN y la MLP son los que más se sobreajustan.
 - **Lo que no se sostiene:** el valor del R² de prueba. Va de −0,05 a +0,18
-  según los pozos sorteados. La frase «el Random Forest obtiene el mayor R² en
-  pozos excluidos (+0,166)» debe pasar a hablar del orden, no del valor.
+  según los barrenos sorteados. La frase «el Random Forest obtiene el mayor R² en
+  barrenos excluidos (+0,166)» debe pasar a hablar del orden, no del valor.
 - **Qué figura usar:** recomiendo
   `Figura_5.8_ALTERNATIVA_comparacion_algoritmos_6_sorteos` (media de los seis
   sorteos con su desviación) junto con `Tabla_5.8_NUEVA_R2_por_sorteo`. La
@@ -286,9 +286,9 @@ sorteos distintos de pozos (`comparacion_sorteos.py`):
 
 | | Antes | Nuevo |
 |---|---:|---:|
-| Validación por pozo: R² | +0,290 ± 0,022 | +0,284 ± 0,028 |
-| Validación por pozo: RMSE [MPa] | 30,4 | 30,2 |
-| Validación por pozo: ρ de Spearman | +0,564 | +0,561 |
+| Validación por barreno: R² | +0,290 ± 0,022 | +0,284 ± 0,028 |
+| Validación por barreno: RMSE [MPa] | 30,4 | 30,2 |
+| Validación por barreno: ρ de Spearman | +0,564 | +0,561 |
 | R² de entrenamiento | +0,323 | +0,326 |
 | LOOCV-Caserón: R² medio | −2,77 | −2,81 |
 | LOOCV-Caserón: ρ de Spearman | +0,111 | +0,115 |
@@ -318,11 +318,11 @@ FP 0,053 · PP 0,049 · PEP 0,049 · PR 0,014 · DP 0,008.
   conclusión de que los pesos se transfieren a PCC_1541 se mantiene, con una
   ventaja menor.
 - El desfase sistemático de PCC_0042 se mantiene (mediana −4,8 m).
-- Pozos con cruces: 450, 143 y 187, sin cambio.
+- Barrenos con cruces: 450, 143 y 187, sin cambio.
 
 **Figura 5.14** → `Figura_5.14_perfil_PCS1043_P07_H4`. Revisar los tres
 hallazgos numerados contra la figura nueva, porque el emboquillado y el DI
-del pozo cambiaron.
+del barreno cambiaron.
 
 ### 5.5 Soporte a la tronadura
 
@@ -402,31 +402,31 @@ se sostiene y lo que no:
 | RP | −0,181 | **−0,194** |
 | DP | −0,035 (figura) | **−0,051** |
 
-Sobre **690.420** registros de roca continua de **920** pozos (el texto dice
-718.032 registros de 900 pozos, y la figura actual 723.603).
+Sobre **690.420** registros de roca continua de **920** barrenos (el texto dice
+718.032 registros de 900 barrenos, y la figura actual 723.603).
 
 ---
 
 ## 4. Lo que hay que saber antes de pegar
 
-1. **La calibración del DI cambió y valida peor.** Con la serie depurada
+1. **La calibración del DI cambió y valida peor.** Con la serie filtrada
    nueva, los pesos a 5 m son otros y la correlación de validación es −0,009.
    La conclusión de la memoria («calibración preliminar que debe validarse por
    coherencia geológica») se mantiene, pero ya no se puede decir que la
    validación mejora con el radio.
 2. **La concordancia con las mallas bajó** de 4–5 puntos sobre el azar a
    2–4 puntos. Sigue siendo positiva en los tres conjuntos.
-3. **La comparación de algoritmos depende del sorteo de pozos** (ver 5.3). El
+3. **La comparación de algoritmos depende del sorteo de barrenos** (ver 5.3). El
    orden es estable; el valor no.
-4. **El emboquillado por meseta da cortes muy distintos entre pozos.** De los
-   917 pozos con meseta, 275 cortan antes de 0,5 m y 225 entre 2,0 y 2,5 m;
-   35 cortan después de 6 m, con un máximo de 30,3 m. En el pozo de ejemplo
+4. **El emboquillado por meseta da cortes muy distintos entre barrenos.** De los
+   917 barrenos con meseta, 275 cortan antes de 0,5 m y 225 entre 2,0 y 2,5 m;
+   35 cortan después de 6 m, con un máximo de 30,3 m. En el barreno de ejemplo
    de la Figura 5.2 el corte es a 0,29 m, aunque la PP sigue oscilando hasta
    cerca de los 4 m. Conviene revisar algunos de estos casos antes de
    defender la regla.
 5. **Tres defectos del programa corregidos durante la corrida**, todos con su
    test:
-   - Un pozo cuya serie depurada quedaba más corta que la ventana conservaba
+   - Un barreno cuya serie filtrada quedaba más corta que la ventana conservaba
      el DI calculado antes de la limpieza (2.633 registros). Era el origen de
      la diferencia 886.659 / 885.030 que se había detectado.
    - La varianza móvil fallaba con una serie de exactamente 14 registros.
@@ -460,7 +460,7 @@ Sobre **690.420** registros de roca continua de **920** pozos (el texto dice
 - Figura 5.6: el eje todavía dice «(PP + RP + AP) / ROP»; la figura nueva ya
   usa FP y PR.
 - Sección 3.2.2: «entre 90 y 250 [bar]».
-- Capítulo 5 usa «barreno» en casi todo el texto; la decisión fue «pozo».
+- Capítulo 5 usa «barreno» en casi todo el texto; la decisión fue «barreno».
 
 ---
 

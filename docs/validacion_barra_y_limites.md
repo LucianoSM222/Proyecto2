@@ -1,6 +1,6 @@
 # Validación del largo de barra y de los límites de limpieza
 
-Cuatro caserones de MPC, 928 pozos y 982.420 registros. Scripts:
+Cuatro caserones de MPC, 928 barrenos y 982.420 registros. Scripts:
 `memoria_final/barra/validacion_barra.py` y
 `memoria_final/barra/limites_por_grupo.py`, con sus JSON (2026-11-11).
 
@@ -11,11 +11,11 @@ respondió de tres formas, ninguna de las cuales supone el largo de antemano.
 
 | Prueba | Resultado |
 |---|---|
-| Distancia más frecuente entre detenciones del mismo pozo (39.938 parejas a menos de 4 m) | **1,7549 m** (bin de 1 cm con 10.115 parejas) |
+| Distancia más frecuente entre detenciones del mismo barreno (39.938 parejas a menos de 4 m) | **1,7549 m** (bin de 1 cm con 10.115 parejas) |
 | Segundo pico, el doble del largo | 3,5096 m → 1,7548 m por barra |
 | Largo que mejor alinea las detenciones, barriendo de 1,20 a 2,40 m | 1,756–1,760 m: alinea 10.124–10.132 de 14.229 detenciones |
-| Mismas detenciones ubicadas al azar en el pozo | 2.471 alineadas en promedio (máximo 3.308 en 5 repeticiones) |
-| Largo por pozo, regresión posición–número de unión (795 pozos con ≥ 4 uniones) | mediana 1,7549 m, desviación estándar 1,2 mm |
+| Mismas detenciones ubicadas al azar en el barreno | 2.471 alineadas en promedio (máximo 3.308 en 5 repeticiones) |
+| Largo por barreno, regresión posición–número de unión (795 barrenos con ≥ 4 uniones) | mediana 1,7549 m, desviación estándar 1,2 mm |
 
 Cuántas detenciones alinea la grilla según el largo probado:
 
@@ -24,8 +24,8 @@ Cuántas detenciones alinea la grilla según el largo probado:
 | Detenciones alineadas | 2.929 | 2.977 | 6.760 | 9.961 | **10.124** | 10.132 | 4.305 | 2.807 | 1.073 |
 
 **Conclusión.** El avance por barra que registra el equipo es 1,755 m, con una
-dispersión de un milímetro entre pozos. El valor de 1,756 m difiere en 1 mm.
-En un pozo de 35 m (20 barras) esa diferencia acumula 2 cm, dentro de la
+dispersión de un milímetro entre barrenos. El valor de 1,756 m difiere en 1 mm.
+En un barreno de 35 m (20 barras) esa diferencia acumula 2 cm, dentro de la
 tolerancia de ±6 cm del filtro. Un largo de 1,83 m (6 pies) alinearía 1.073
 detenciones, menos que el azar.
 
@@ -110,33 +110,33 @@ de operación normal en estos caserones.
 ## 3b. Topes de PP y RP: la meseta más alta sostenida
 
 La tabla anterior corresponde a la primera propuesta (PP hasta 225 y RP hasta
-60 bar). Para fijar los topes se buscó, en cada pozo, la meseta estable más
+60 bar). Para fijar los topes se buscó, en cada barreno, la meseta estable más
 alta que se mantiene al menos 5 m: una ventana de 5 m de registros de
 perforación con el 90% dentro de una banda en torno a su mediana (±15 bar
 para la PP, ±10 bar para la RP). Script: `memoria_final/barra/meseta_maxima.py`.
 
 | | PP | RP |
 |---|---:|---:|
-| Pozos con alguna meseta de 5 m | 719 | 817 |
+| Barrenos con alguna meseta de 5 m | 719 | 817 |
 | Meseta más alta | **225,1 bar** | **81,0 bar** |
-| Mediana de la meseta más alta por pozo | 223,3 bar | 48,7 bar |
+| Mediana de la meseta más alta por barreno | 223,3 bar | 48,7 bar |
 | Máximo registrado en un registro aislado | 230,5 bar | 142,6 bar |
 
 | Tope de PP [bar] | 220 | 225 | 228 | **230** |
 |---|---:|---:|---:|---:|
 | Registros sobre el tope | 365.483 | 99.754 | 78 | **4** |
-| Pozos con meseta sobre el tope | 435 | 55 | 0 | 0 |
+| Barrenos con meseta sobre el tope | 435 | 55 | 0 | 0 |
 
 | Tope de RP [bar] | 60 | 65 | 70 | 75 | **80** | 90 |
 |---|---:|---:|---:|---:|---:|---:|
 | Registros sobre el tope | 109.345 | 41.048 | 8.448 | 1.838 | **578** | 72 |
-| Pozos con meseta sobre el tope | 127 | 57 | 10 | 2 | 1 | 0 |
+| Barrenos con meseta sobre el tope | 127 | 57 | 10 | 2 | 1 | 0 |
 
 - **PP.** El equipo trabaja con la percusión fijada en torno a 225 bar: hay 55
-  pozos con mesetas de 225,0–225,1 bar. Un tope de 225 parte ese punto de
+  barrenos con mesetas de 225,0–225,1 bar. Un tope de 225 parte ese punto de
   operación por la mitad. Sobre 228 bar no queda ninguna meseta, y sobre
   230 bar hay 4 registros.
-- **RP.** Hay 127 pozos que perforan 5 m o más con la RP sobre 60 bar: es un
+- **RP.** Hay 127 barrenos que perforan 5 m o más con la RP sobre 60 bar: es un
   régimen de perforación, no una anomalía. La meseta más alta es de 81 bar.
 
 **Aplicado:** PP 90–230 bar y RP 30–80 bar.
@@ -158,7 +158,7 @@ DI y solo sale del entrenamiento. Corrida completa:
 
 | Filtro | Registros |
 |---|---:|
-| Emboquillado (corte mediano 1,50 m; 11 pozos con el corte de respaldo de 2 m) | 75.104 |
+| Emboquillado (corte mediano 1,50 m; 11 barrenos con el corte de respaldo de 2 m) | 75.104 |
 | Cambio de barra con sus 2 registros siguientes (los no excluidos ya por otro filtro) | 19.424 |
 | Límites del equipo (los no excluidos ya por el emboquillado) | 46.806 |
 | Continuidad (los no excluidos ya por otro filtro) | 5.201 |

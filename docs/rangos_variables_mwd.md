@@ -1,9 +1,9 @@
 # Rangos de las variables MWD
 
-Cuatro caserones de MPC (PCC_0042, PCC_1541, PCS_1043 y PCS_1059): 928 pozos.
+Cuatro caserones de MPC (PCC_0042, PCC_1541, PCS_1043 y PCS_1059): 928 barrenos.
 Se reportan dos conjuntos:
 
-- **Todos los registros**: 982.420 registros, sin ninguna depuración.
+- **Todos los registros**: 982.420 registros, sin ningún filtrado.
 - **Registros entrenables**: 881.536 registros que quedan después de la
   limpieza estándar. Se excluyen el cambio de barra, la regulación automática
   de la percusión, el emboquillado por meseta, la PP fuera de 90–230 bar y los
@@ -46,7 +46,7 @@ exactamente iguales a cero.
    4·10¹¹ bar·min/m, y la media queda dominada por esos pocos registros. Por
    eso, para la PEP solo se informan el mínimo y la mediana.
 3. **PR = 0 en registros entrenables.** El filtro de cambio de barra retira
-   solo las detenciones que caen sobre la grilla de 1,756 m del pozo. Las
+   solo las detenciones que caen sobre la grilla de 1,756 m del barreno. Las
    3.321 detenciones que quedan fuera de esa grilla siguen como entrenables.
    Los análisis que usan la PEP aplican además un mínimo de PR (por ejemplo,
    PR ≥ 0,2 m/min).

@@ -100,12 +100,12 @@ caja(48.5, 88.0, 22.5, 6.4, "Matriz X — 7 variables\n" + " · ".join(C["ml_lab
 caja(72.5, 86.0, 24.5, 8.4, "Vector y — UCS de la litología\n" + "\n".join(
     f"{e['litologia']}:  {dec(e['ucs_MPa'],1)} MPa   ({mil(e['n_puntos'])} pts)" for e in D["etiquetas"]),
      "tren", fs=6.7)
-caja(48.5, 80.4, 22.5, 6.0, f"Grupos — el POZO\n{D['n_pozos_grupo']} pozos distintos\n"
+caja(48.5, 80.4, 22.5, 6.0, f"Grupos — el BARRENO\n{D['n_pozos_grupo']} barrenos distintos\n"
      "unidad de la validación", "tren", fs=7.0)
 caja(72.5, 80.4, 24.5, 4.6, f"Conjunto final\n{mil(emb['roca_intacta']['quedan'])} filas × 7 columnas",
      "tren", fs=7.0)
 caja(48.5, 71.0, 48.5, 8.2, "Reparto por caserón\n" + "\n".join(
-    f"{c['caseron']}:  {mil(c['n_puntos'])} puntos  /  {c['n_pozos']} pozos" for c in D["por_caseron"]),
+    f"{c['caseron']}:  {mil(c['n_puntos'])} puntos  /  {c['n_pozos']} barrenos" for c in D["por_caseron"]),
      "tren", fs=6.9)
 
 # ═════════ B ═════════
@@ -168,10 +168,10 @@ flecha(50, 70.2, 50, 68.0)
 # ═════════ C ═════════
 grupo(2, 14.0, 96, 21.5, "C.  Evaluación", "eval")
 gk, lo = D["groupkfold"], D["loocv"]
-caja(3.3, 25.8, 45.5, 7.0, f"GroupKFold por pozo (k = {gk['n_pliegues']})\n"
-     "¿predice un pozo nuevo en un caserón conocido?\n"
+caja(3.3, 25.8, 45.5, 7.0, f"GroupKFold por barreno (k = {gk['n_pliegues']})\n"
+     "¿predice un barreno nuevo en un caserón conocido?\n"
      f"R² medio = {dec(gk['r2_medio'],3)}   ·   RMSE medio = {dec(gk['rmse_medio'],1)} MPa\n"
-     "el pozo entero cae de un solo lado del corte", "eval", fs=6.9)
+     "el barreno entero cae de un solo lado del corte", "eval", fs=6.9)
 pl = lo["pliegues"]
 l1 = "   ·   ".join(f"{f['pliegue'].split('_')[0]}_{f['pliegue'].split('_')[1]}: "
                     f"{dec(f['r2_reportado'],2) if f.get('r2_reportado') is not None else 'indef.'}"
@@ -190,13 +190,13 @@ ax.text(74.0, 24.9, "PCS_1059 lleva una sola etiqueta (Kpcli): su R² no está d
 caja(3.3, 20.0, 45.5, 4.3, "Contra la línea base\n"
      f"predecir siempre la media ({dec(D['linea_base']['media_global']['prediccion_MPa'],0)} MPa): "
      f"RMSE {dec(D['linea_base']['media_global']['rmse'],1)} MPa\n"
-     f"el bosque: {dec(gk['rmse_medio'],1)} MPa   ·   ρ de Spearman por pozo = {dec(D['spearman_ajuste'],3)}",
+     f"el bosque: {dec(gk['rmse_medio'],1)} MPa   ·   ρ de Spearman por barreno = {dec(D['spearman_ajuste'],3)}",
      "eval", fs=6.9)
 
 imp = D["importancia"]
 caja(51.0, 15.0, 46.0, 9.3, "", "eval")
 ax.text(74.0, 23.4, "Importancia por permutación", ha="center", fontsize=7.1, fontweight="bold")
-ax.text(74.0, 22.4, f"{mil(C['perm_n'])} puntos · semilla {C['perm_semilla']} · sobre pozos no vistos",
+ax.text(74.0, 22.4, f"{mil(C['perm_n'])} puntos · semilla {C['perm_semilla']} · sobre barrenos no vistos",
         ha="center", fontsize=6.1, color="#555555", style="italic")
 items = sorted(imp.items(), key=lambda kv: kv[1])
 mx = max(abs(v) for v in imp.values()) or 1

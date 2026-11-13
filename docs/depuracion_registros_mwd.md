@@ -1,4 +1,4 @@
-# Depuración de los registros MWD
+# Filtrado de los registros MWD
 
 Antes del cálculo del Índice de Discontinuidad (DI) y del entrenamiento del
 modelo de resistencia, los registros MWD se someten a cuatro filtros. Cada uno
@@ -6,7 +6,7 @@ identifica registros que no describen la respuesta del macizo rocoso a la
 perforación, sino eventos propios del equipo o del registro. Según su
 naturaleza, el registro se excluye de la serie con que se calcula el DI, del
 conjunto de entrenamiento del modelo, o de ambos. En ningún caso se elimina:
-queda marcado y conserva su posición en el pozo.
+queda marcado y conserva su posición en el barreno.
 
 Los filtros se aplican en el orden siguiente. El cambio de barra precede al
 emboquillado porque este lo utiliza para detectar la meseta de percusión. El
@@ -17,11 +17,11 @@ corresponde a la unión de los cuatro filtros.
 
 Al acoplar una nueva barra a la sarta de perforación, el equipo detiene el
 avance y la velocidad de penetración (PR) registra un valor nulo. Este evento
-se repite a lo largo del pozo a intervalos iguales al avance de una barra. Por
-ello se identifican, en cada pozo, las secuencias de registros con PR = 0 y se
+se repite a lo largo del barreno a intervalos iguales al avance de una barra. Por
+ello se identifican, en cada barreno, las secuencias de registros con PR = 0 y se
 busca la grilla de puntos separados por un largo de barra que reúne el mayor
 número de ellas, con una tolerancia de ±6 cm. La grilla se acepta solo si se
-repite en al menos tres uniones del pozo. Los registros con PR = 0 que caen
+repite en al menos tres uniones del barreno. Los registros con PR = 0 que caen
 sobre esa grilla corresponden a cambios de barra; una detención fuera de la
 grilla no se considera como tal.
 
@@ -29,18 +29,18 @@ El largo de barra se verificó sobre los propios registros, sin suponerlo de
 antemano:
 
 - **Distancia entre detenciones.** Entre las 39.938 parejas de detenciones de
-  un mismo pozo separadas por menos de 4 m, la distancia más frecuente es
+  un mismo barreno separadas por menos de 4 m, la distancia más frecuente es
   1,755 m. El segundo pico está en 3,510 m, el doble.
 - **Barrido del largo.** Al probar largos entre 1,20 y 2,40 m, la grilla de
   1,756 m alinea 10.124 de las 14.229 detenciones fuera del emboquillado. Con
   las mismas detenciones ubicadas al azar se alinean 2.471 en promedio. A
   1,74 m se alinean 6.760, y a 1,80 m, 2.807.
-- **Largo por pozo.** En los 795 pozos con al menos cuatro uniones, la
+- **Largo por barreno.** En los 795 barrenos con al menos cuatro uniones, la
   regresión de la posición de cada detención sobre su número de unión da un
-  largo de 1,7549 m, con una desviación estándar de 1,2 mm entre pozos.
+  largo de 1,7549 m, con una desviación estándar de 1,2 mm entre barrenos.
 
 El largo de 1,756 m queda así confirmado por los datos con una diferencia de
-1 mm, que en un pozo de 35 m (20 barras) acumula 2 cm, dentro de la
+1 mm, que en un barreno de 35 m (20 barras) acumula 2 cm, dentro de la
 tolerancia de ±6 cm.
 
 Junto con la detención se excluyen los dos registros siguientes. Al comparar
@@ -59,24 +59,24 @@ de la serie del DI y del entrenamiento.
 
 ## 2. Emboquillado
 
-Al inicio de cada pozo la broca aún no está empotrada en la roca y el operador
+Al inicio de cada barreno la broca aún no está empotrada en la roca y el operador
 perfora con una percusión reducida, hasta que esta alcanza su nivel de
 perforación. En lugar de un largo fijo, el fin del emboquillado se determina en
-cada pozo a partir de la estabilización de la PP:
+cada barreno a partir de la estabilización de la PP:
 
 - Primero se descartan los registros de cambio de barra y los que no tienen
   avance (PR = 0), para que sus caídas no interrumpan la estabilidad.
-- Luego se establece el nivel de régimen del pozo como la PP más frecuente, en
+- Luego se establece el nivel de régimen del barreno como la PP más frecuente, en
   intervalos de 5 bar.
 - El emboquillado termina en el primer punto desde el cual la PP se mantiene
   pareja durante 20 cm (al menos el 90% de los registros dentro de ±15 bar de
   su mediana), con esa mediana en al menos el 70% del nivel de régimen. La
   segunda condición evita confundir la meseta de perforación con el nivel bajo
   y estable que la PP puede mostrar durante el propio emboquillado.
-- En los pozos que no alcanzan esta condición se aplica un corte fijo de 2 m,
-  declarado pozo por pozo.
+- En los barrenos que no alcanzan esta condición se aplica un corte fijo de 2 m,
+  declarado barreno por barreno.
 
-Los parámetros del criterio se ajustaron a un conjunto de pozos revisados
+Los parámetros del criterio se ajustaron a un conjunto de barrenos revisados
 manualmente. Todos los registros anteriores al fin del emboquillado se excluyen
 de la serie del DI y del entrenamiento.
 
@@ -134,14 +134,14 @@ El criterio que ordena los filtros es el origen del registro. Lo que responde
 al equipo, a la operación o al registro —el cambio de barra, el emboquillado,
 los registros en que el equipo no está perforando y los saltos de
 continuidad— se retira de la serie antes de
-calcular la varianza móvil y la estandarización por pozo, de modo que el DI se
-calcula sobre una serie depurada. Lo que puede responder a la roca se mantiene
+calcular la varianza móvil y la estandarización por barreno, de modo que el DI se
+calcula sobre una serie filtrada. Lo que puede responder a la roca se mantiene
 en la serie del DI, aunque quede fuera del rango esperado, y solo se excluye
 del entrenamiento del modelo de resistencia.
 
 | Orden | Filtro | Criterio | Serie del DI | Entrenamiento |
 |---|---|---|---|---|
-| 1 | Cambio de barra | PR = 0 sobre la grilla de 1,756 m del pozo (±6 cm, ≥ 3 uniones), más los 2 registros siguientes | Excluye | Excluye |
+| 1 | Cambio de barra | PR = 0 sobre la grilla de 1,756 m del barreno (±6 cm, ≥ 3 uniones), más los 2 registros siguientes | Excluye | Excluye |
 | 2 | Emboquillado | Hasta que la PP se mantiene pareja 20 cm sobre el 70% de su nivel de régimen (sin meseta: 2 m) | Excluye | Excluye |
 | 3a | Límites del equipo: no perfora | PR = 0, PP < 90 bar, FP < 20 bar, FLP > 10 bar o PR > 10 m/min | Excluye | Excluye |
 | 3b | Límites del equipo: respuesta de la roca | PR, RP o DP fuera de su rango sano (tabla anterior) | Mantiene | Excluye |

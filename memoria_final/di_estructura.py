@@ -1,4 +1,4 @@
-"""DI del pozo PCC_0042_PR01_TH_P20_H12 contra el modelo geológico,
+"""DI del barreno PCC_0042_PR01_TH_P20_H12 contra el modelo geológico,
 con énfasis en lo estructural. Solo carga PCC_0042."""
 import sys, os, time, json
 sys.path.insert(0, "/home/user/Proyecto2")
@@ -173,11 +173,11 @@ for a, b, e in tr_est:
             bbox=dict(boxstyle="round,pad=0.18", facecolor="white", alpha=0.85, edgecolor="none"))
 if not tr_est:
     ax.text(float(lar[-1]) / 2, 0.30,
-            "El modelo geológico NO asigna ninguna estructura a este pozo",
+            "El modelo geológico NO asigna ninguna estructura a este barreno",
             ha="center", va="center", fontsize=10, fontweight="bold", color=ROJO, zorder=5,
             bbox=dict(boxstyle="round,pad=0.35", facecolor="white", edgecolor=ROJO, lw=1.2))
 ax.set_ylabel("Modelo\ngeológico", fontsize=9)
-ax.set_title(f"DI del pozo {POZO} contra el modelo geológico — énfasis estructural",
+ax.set_title(f"DI del barreno {POZO} contra el modelo geológico — énfasis estructural",
              fontsize=12.5, fontweight="bold", pad=10)
 
 # B — DI
@@ -201,7 +201,7 @@ for arr, nom, col in [(pp, "PP", "#2C5F8A"), (pd_, "DP", "#C77B2E"),
                       (pr, "RP", "#2E7D5B"), (pf, "FLP", "#7B2D8E")]:
     ax.plot(lar, arr, "-", lw=0.7, color=col, label=nom, zorder=3)
 ax.set_ylabel("Presiones del DI (bar)", fontsize=9)
-ax.set_xlabel("Profundidad a lo largo del pozo (m)", fontsize=10)
+ax.set_xlabel("Profundidad a lo largo del barreno (m)", fontsize=10)
 ax.grid(alpha=0.25, lw=0.6)
 ax.legend(fontsize=8, ncol=4, loc="upper right", framealpha=0.9)
 ax.set_xlim(0, float(lar[-1]))
@@ -218,8 +218,8 @@ if vn:
     axv.plot(lv, dv, "-", color="#1a1a1a", lw=0.85, zorder=3)
     axv.axhline(UMBRAL, color=ROJO, ls="--", lw=1.2, zorder=4)
     axv.fill_between(lv, UMBRAL, dv, where=(dv > UMBRAL), color=ROJO, alpha=0.25, zorder=2)
-    axv.set_ylabel("DI del pozo vecino", fontsize=9)
-    axv.set_xlabel("Profundidad a lo largo del pozo (m)", fontsize=10)
+    axv.set_ylabel("DI del barreno vecino", fontsize=9)
+    axv.set_xlabel("Profundidad a lo largo del barreno (m)", fontsize=10)
     axv.grid(alpha=0.25, lw=0.6)
     axv.text(0.005, 0.95, f"{vn} — a {VEC['distancia_collar_m']:.1f} m".replace(".", ",") + f" de collar del anterior. "
              f"AQUÍ la malla sí dibuja {', '.join(VEC['estructuras'])}.",
@@ -231,7 +231,7 @@ h = ([Patch(facecolor=COL_LITO[l], alpha=0.45, label=f"Litología: {l}")
      [Patch(facecolor=COL_EST[e], alpha=0.55, hatch="//", edgecolor=COL_EST[e],
             label=f"Estructura: {e}") for e in ests] +
      [Patch(facecolor=COL_EST.get(e, "#7B2D8E"), alpha=0.55, hatch="//",
-            edgecolor=COL_EST.get(e, "#7B2D8E"), label=f"Estructura (pozo vecino): {e}")
+            edgecolor=COL_EST.get(e, "#7B2D8E"), label=f"Estructura (barreno vecino): {e}")
       for e in sorted({c for _, _, c in tr_est_vec})] +
      [plt.Line2D([], [], color=ROJO, ls="--", label=f"Umbral DI = {UMBRAL:g}")] +
      ([plt.Line2D([], [], marker="v", ls="", color=ROJO, label="Pico de DI dentro de zona estructural"),
@@ -244,14 +244,14 @@ axes[0].legend(handles=h, loc="upper left", bbox_to_anchor=(0, -0.08), ncol=4,
 ctx = DAT["contexto_caseron"]
 if tr_est:
     cuerpo = (f"El modelo asigna estructura a {DAT['largo_con_estructura_m']:.1f} m "
-              f"({DAT['pct_largo_con_estructura']:.1f}% del pozo); "
+              f"({DAT['pct_largo_con_estructura']:.1f}% del barreno); "
               f"{DAT['picos_dentro_de_zona_estructural']} de los {DAT['n_picos']} picos caen "
               "dentro de esas zonas. Las franjas rayadas son zonas estructurales de la malla.")
 else:
     vec = ctx["pozo_con_estructura_mas_cercano"]
-    cuerpo = ("El modelo geológico no asigna NINGUNA estructura a este pozo: sus 35,93 m son "
+    cuerpo = ("El modelo geológico no asigna NINGUNA estructura a este barreno: sus 35,93 m son "
               f"Kpcli continuo. En el mismo caserón, {ctx['pozos_con_estructura']} de los "
-              f"{ctx['n_pozos']} pozos ({ctx['pct_con_estructura']:.1f}%) sí cruzan estructura "
+              f"{ctx['n_pozos']} barrenos ({ctx['pct_con_estructura']:.1f}%) sí cruzan estructura "
               + (f"—el más cercano, {vec['pozo']}, a {vec['distancia_collar_m']:.1f} m de collar "
                  f"({', '.join(vec['estructuras'])})—. " if vec else "— ") +
               f"El contraste es el resultado: el MWD registra {DAT['n_picos']} picos de "
