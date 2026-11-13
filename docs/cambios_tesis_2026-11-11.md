@@ -300,7 +300,7 @@ FP 0,053 · PP 0,049 · PEP 0,049 · PR 0,014 · DP 0,008.
 ### 5.4 Coherencia geológica
 
 **Figuras 5.10 a 5.13 y Anexo C** → `Figura_5.10` a `Figura_5.13` y
-`Anexo_C_*`.
+`Anexo_C_Figura_C.*`.
 
 | Conjunto | | Zonas | Precisión | Azar | Diferencia | Recall | Media [m] | Mediana [m] | σ [m] |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -485,7 +485,8 @@ Sobre **690.420** registros de roca continua de **920** barrenos (el texto dice
 | (nueva) | `Tabla_5.8_NUEVA_R2_por_sorteo` |
 | Figura 5.9 | `Figura_5.9_spearman_por_esquema` |
 | Figuras 5.10 a 5.13 | `Figura_5.10_desfase_muestra_total`, `Figura_5.11_umbral_muestra_total`, `Figura_5.12_desfase_PCC0042`, `Figura_5.13_umbral_PCC0042` |
-| Anexo C | `Anexo_C_desfase_PCC1541`, `Anexo_C_umbral_PCC1541` |
+| Anexo C, Figuras C.1 y C.2 | `Anexo_C_Figura_C.1_desfase_PCC1541`, `Anexo_C_Figura_C.2_umbral_PCC1541` |
+| Anexo D, Figuras D.1 a D.3 | `Anexo_D_Figura_D.1_PEP_vs_UCS_por_litologia`, `Anexo_D_Figura_D.2_PEP_vs_PR`, `Anexo_D_Figura_D.3_PEP_vs_PP` |
 | Figura 5.14 | `Figura_5.14_perfil_PCS1043_P07_H4` |
 | Figura 5.15 | `Figura_5.15_seccion_tronadura` |
 | Figura 5.16 | `Figura_5.16_clasificacion_DI_UCS` |
