@@ -1,0 +1,10 @@
+# Coherencia energía específica ↔ UCS de laboratorio, sobre ROCA INTACTA.
+# SIN COHERENCIA CLARA (ρ=-0.50): la energía específica no ordena las litologías por su UCS. O las bandas de laboratorio no representan a estos dominios, o el MWD no está resolviendo la diferencia entre ellos.
+# rho_spearman=-0.5 · monotona=False
+# Apartar los tramos con DI sobre el umbral MEJORA la coherencia SE↔UCS: el DI está haciendo su trabajo en estos datos, no solo por autoridad de Fernández et al. 2023.
+# SE_reacción = (PP + RP + AP) / ROP, y PP es la ÚNICA variable que el operador manipula — y la sube en roca dura. Parte de la relación SE↔UCS puede venir de esa respuesta y no de la roca. Por eso se reporta la relación DENTRO de estratos estrechos de PP: si se sostiene ahí, no es artefacto del operador. El análisis agregado de PP se aborda de frente en la sesión de curvas de respuesta.
+# generado: 2026-08-26 00:30
+dominio,ucs_lab_MPa,se_mediana,se_cv,rop_mediana,pp_mediana,n_puntos_roca_intacta
+Brecha_mixta,111.5,453.0,0.2865,0.712,179.76,18417
+Bht,128.1,328.41,0.2863,0.969,211.0,231010
+Kpcli,190.0,330.82,0.362,0.97,210.25,110968

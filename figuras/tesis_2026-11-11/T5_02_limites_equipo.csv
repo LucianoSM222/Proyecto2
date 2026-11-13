@@ -1,0 +1,7 @@
+﻿Variable;Mínimo;Máximo;Unidad;Fuera del rango
+PR, velocidad de penetración;0,1;1,5;m/min;"PR = 0 y PR > 10: sale de todo; resto: solo entrenamiento"
+PP, presión de percusión;90;230;bar;PP < 90: sale de todo
+FP, presión de avance;20;150;bar;FP < 20: sale de todo
+DP, presión del dámper;25;150;bar;Solo entrenamiento
+RP, presión de rotación;30;80;bar;Solo entrenamiento
+FLP, presión del flujo de barrido;2;10;bar;FLP > 10: sale de todo

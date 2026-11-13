@@ -1,0 +1,21 @@
+{
+ "largo_barra_m": 1.756,
+ "tol_m": 0.06,
+ "min_uniones": 3,
+ "umbral_pp": 0.25,
+ "todos_los_registros": {
+  "total": 982420,
+  "barra": 11020,
+  "regulacion": 12786,
+  "ambos": 2875,
+  "union": 20931
+ },
+ "fuera_del_emboquillado": {
+  "total": 895635,
+  "barra": 11008,
+  "regulacion": 10591,
+  "ambos": 2875,
+  "union": 18724
+ },
+ "pozos_con_grilla_de_barra": 824
+}

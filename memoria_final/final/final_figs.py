@@ -1,0 +1,986 @@
+"""Figuras y tablas finales del Capítulo 6. Solo DIBUJA: todo número sale de
+final.json (final_calc.py). PNG 300 dpi, español, coma decimal, siglas Pucobre
+(FLP = flujo, FP = avance), PEP = presión específica de penetración."""
+import sys, os, json, csv
+import numpy as np
+
+# Siglas del XML IREDES (decisión del autor, 2026-11-10): PR = velocidad de
+# penetración, FP = avance, FLP = flujo de barrido. Los JSON calculados antes
+# traen las siglas viejas (ROP, AP = avance, FP = barrido); se traducen al
+# dibujar, solo si el conjunto de siglas es el viejo (trae ROP o AP).
+_XML_VIEJA = {"ROP": "PR", "AP": "FP", "FP": "FLP"}
+
+
+def siglas_xml(lista):
+    lista = list(lista); viejo = any(s in ("ROP", "AP") or str(s).startswith(("AP-", "ROP")) or "-AP" in str(s) for s in lista)
+    if not viejo: return lista
+    return ["-".join(_XML_VIEJA.get(t, t) for t in str(s).split("-")) for s in lista]
+
+import matplotlib; matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
+
+SRC = sys.argv[1]; OUT = sys.argv[2]
+os.makedirs(OUT, exist_ok=True)
+R = json.load(open(SRC, encoding="utf-8"))
+# Estilo de gráfico de Excel: Carlito (métrica de Calibri), sin marco superior
+# ni derecho, grilla gris clara, leyenda sin recuadro, título centrado y sin
+# pies de figura; el layout restringido elimina el espacio en blanco.
+plt.rcParams.update({
+    "font.family": "Carlito", "font.size": 11, "text.color": "#262626",
+    "axes.titlesize": 12, "axes.titlecolor": "#404040", "axes.labelcolor": "#404040",
+    "axes.edgecolor": "#BFBFBF", "axes.spines.top": False, "axes.spines.right": False,
+    "axes.grid": True, "axes.grid.axis": "y", "axes.axisbelow": True, "grid.color": "#D9D9D9", "grid.linewidth": 0.8,
+    "xtick.color": "#595959", "ytick.color": "#595959", "legend.frameon": False,
+    "figure.titlesize": 14, "figure.titleweight": "normal",
+    "figure.constrained_layout.use": True, "savefig.pad_inches": 0.04,
+})
+AZUL, ROJO, VERDE, NARANJA, GRIS, MORADO = "#4472C4", "#C00000", "#70AD47", "#ED7D31", "#A5A5A5", "#7030A0"
+COL_LITO = {"Kpcli": "#70AD47", "Bht": "#4472C4", "Kpcls": "#C00000", "Brecha_mixta": "#ED7D31"}
+NOM_LITO = {"Kpcli": "Lavas inferiores (Kpcli)", "Bht": "Brecha hidrotermal (Bht)",
+            "Kpcls": "Lavas superiores (Kpcls)", "Brecha_mixta": "Brecha mixta"}
+SIG = {"pp": "PP", "pr": "RP", "pd": "DP", "pf": "FLP", "pa": "FP"}
+DI = R["di_vigente"]; W = DI["pesos"]; UMB = DI["umbral"]
+hechas = []
+
+
+def dec(x, n=1):
+    if x is None: return "—"
+    return f"{x:,.{n}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def mil(n): return f"{int(n):,}".replace(",", ".")
+
+
+def pesos_txt():
+    return " · ".join(f"{SIG[k]} {dec(W[k], 2)}" for k in ("pp", "pr", "pd", "pf") if k in W)
+
+
+def pie(fig, txt, y=0.005):
+    """Sin pies de figura (pedido del autor): el contexto va en el texto de la memoria."""
+    return None
+
+
+def _coma(v, _pos=None):
+    t = f"{v:.6f}".rstrip("0").rstrip(".")
+    return "0" if t in ("-0", "") else t.replace(".", ",")
+
+
+def guardar(fig, nombre):
+    # Ejes numéricos con coma decimal, como en un Excel en español.
+    from matplotlib.ticker import ScalarFormatter, FuncFormatter
+    from matplotlib.collections import QuadMesh
+    for ax in fig.axes:
+        if ax.images or any(isinstance(c, QuadMesh) for c in ax.collections):
+            ax.grid(False)   # sin rejilla sobre mapas de calor ni sobre bloques
+        for eje in (ax.xaxis, ax.yaxis):
+            if type(eje.get_major_formatter()) is ScalarFormatter:
+                eje.set_major_formatter(FuncFormatter(_coma))
+    # Sin títulos (pedido del autor, 2026-11-13): fuera el título general y,
+    # si la figura tiene un solo gráfico, también el de su eje. Los rótulos de
+    # panel de las figuras de varios gráficos se conservan.
+    if fig._suptitle is not None:
+        fig._suptitle.remove(); fig._suptitle = None
+    ejes = [a for a in fig.axes if not hasattr(a, "_colorbar") and a.get_label() != "<colorbar>"]
+    if len(ejes) == 1:
+        for loc in ("center", "left", "right"): ejes[0].set_title("", loc=loc)
+    fig.savefig(f"{OUT}/{nombre}", dpi=300, bbox_inches="tight", facecolor="white")
+    plt.close(fig); hechas.append(nombre); print("OK", nombre, flush=True)
+
+
+def tabla_png(nombre, titulo, cab, filas, anchos=None, nota=None, fs=9, ancho_fig=None, primera_azul=True, alinear_izq=None, alto_fila=0.32):
+    with open(f"{OUT}/{nombre}.csv", "w", newline="", encoding="utf-8-sig") as fh:
+        wr = csv.writer(fh, delimiter=";"); wr.writerow(cab); wr.writerows(filas)
+    h = alto_fila * (len(filas) + 1) + 0.35
+    fig, ax = plt.subplots(figsize=(ancho_fig or max(7, 1.25 * len(cab)), h)); ax.axis("off")
+    t = ax.table(cellText=filas, colLabels=cab, cellLoc="center", colWidths=anchos,
+                 bbox=[0, 0, 1, 1])
+    t.auto_set_font_size(False); t.set_fontsize(fs + 1)
+    # Formato de las tablas de la memoria: encabezado y primera columna en azul
+    # con texto blanco, cuerpo en dos tonos de celeste y bordes negros.
+    for (i, j), c in t.get_celld().items():
+        c.set_edgecolor("#000000"); c.set_linewidth(0.6)
+        if i == 0:
+            c.set_facecolor("#4472C4"); c.set_edgecolor("#4472C4"); c.set_text_props(weight="bold", color="white")
+        elif j == 0 and primera_azul:
+            c.set_facecolor("#4472C4"); c.set_edgecolor("#4472C4"); c.set_text_props(color="white")
+        else:
+            c.set_facecolor("#B4C6E7" if i % 2 else "#D9E1F2")
+        if alinear_izq and j in alinear_izq and i > 0:
+            c.set_text_props(ha="left"); c._loc = "left"; c.PAD = 0.03
+    guardar(fig, nombre + ".png")
+
+
+PIE_CFG = ""
+BARRA = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(SRC))), "barra")
+
+
+def _jb(nombre):
+    p = os.path.join(BARRA, nombre)
+    return json.load(open(p, encoding="utf-8")) if os.path.exists(p) else None
+
+
+# ── Tabla 5.1: resumen de filtros y registros por etapa ─────────────────────
+RFIL = _jb("resumen_filtros.json")
+if RFIL:
+    C = RFIL["conteo"]; tot = RFIL["total"]; em = RFIL["emboquillado"]
+    r1 = tot - C["emboquillado"]; r2 = r1 - C["barra_detencion"] - C["barra_margen"]
+    r3 = r2 - C["equipo"]; r4 = r3 - C["continuidad"]; r5 = r4 - C.get("sin_di", 0)
+    # Los registros sin DI calculable no salen del entrenamiento (el filtro de
+    # discontinuidad solo excluye DI > 1): los entrenables se cuentan desde r4.
+    ent = r4 - C["roca"]; emb_f = R["embudo"]
+    n_ent = R["entrenamiento"]["n"]
+    filas = [["Carga", f"Registros MWD de {len(R.get('pozos', [])) or 928} barrenos", "—", mil(tot)],
+             ["Antes del DI", "Emboquillado (meseta de PP)", mil(C["emboquillado"]), mil(r1)],
+             ["", "Cambio de barra (detención y 2 registros siguientes)", mil(C["barra_detencion"] + C["barra_margen"]), mil(r2)],
+             ["", "Equipo sin perforar (PR = 0, PP < 90, FP < 20, FLP > 10, PR > 10)", mil(C["equipo"]), mil(r3)],
+             ["", "Continuidad del registro (salto > 2,95 cm)", mil(C["continuidad"]), mil(r4)],
+             ["", "Registros sin DI calculable", mil(C.get("sin_di", 0)), f"{mil(r5)} (serie filtrada)"],
+             ["Solo entrenamiento", "PR, RP, DP o PP fuera del rango del equipo", mil(C["roca"]), f"{mil(ent)} (entrenables)"],
+             ["Discontinuidad", f"DI > {dec(UMB, 1)}", mil(ent - n_ent), f"{mil(n_ent)} (entrenamiento)"]]
+    tabla_png("T5_01_resumen_filtros", "Resumen de filtros y registros por etapa",
+              ["Etapa", "Filtro", "Registros excluidos", "Registros restantes"], filas,
+              anchos=[0.16, 0.46, 0.16, 0.22], ancho_fig=11, alinear_izq=(1,))
+    eq = RFIL["equipo_detalle"]; ro = RFIL["roca_detalle"]
+    tabla_png("T5_01b_detalle_equipo_roca", "Registros fuera de los límites del equipo, según su tratamiento",
+              ["Tratamiento", "Condición", "Registros"],
+              [["Sale del DI y del entrenamiento", "PR = 0 fuera de la grilla de barra", mil(eq.get("PR = 0", 0))],
+               ["", "PP < 90 bar", mil(eq.get("PP < 90", 0))], ["", "FP < 20 bar", mil(eq.get("FP < 20", 0))],
+               ["", "FLP > 10 bar", mil(eq.get("FLP > 10", 0))], ["", "PR > 10 m/min", mil(eq.get("PR > 10", 0))],
+               ["Solo sale del entrenamiento", "PR < 0,1 m/min", mil(ro.get("PR bajo", 0))],
+               ["", "PR > 1,5 m/min", mil(ro.get("PR sobre", 0))], ["", "RP < 30 bar", mil(ro.get("RP bajo", 0))],
+               ["", "RP > 80 bar", mil(ro.get("RP sobre", 0))], ["", "DP < 25 bar", mil(ro.get("DP bajo", 0))],
+               ["", "DP > 150 bar", mil(ro.get("DP sobre", 0))], ["", "PP > 230 bar", mil(ro.get("PP sobre", 0))]],
+              anchos=[0.42, 0.38, 0.20], ancho_fig=8.5, alinear_izq=(1,))
+
+# ── Tabla 5.2 (reemplazo): límites operacionales del equipo ─────────────────
+tabla_png("T5_02_limites_equipo", "Límites operacionales del equipo",
+          ["Variable", "Mínimo", "Máximo", "Unidad", "Fuera del rango"],
+          [["PR, velocidad de penetración", "0,1", "1,5", "m/min", "PR = 0 y PR > 10: sale de todo; resto: solo entrenamiento"],
+           ["PP, presión de percusión", "90", "230", "bar", "PP < 90: sale de todo"],
+           ["FP, presión de avance", "20", "150", "bar", "FP < 20: sale de todo"],
+           ["DP, presión del dámper", "25", "150", "bar", "Solo entrenamiento"],
+           ["RP, presión de rotación", "30", "80", "bar", "Solo entrenamiento"],
+           ["FLP, presión del flujo de barrido", "2", "10", "bar", "FLP > 10: sale de todo"]],
+          anchos=[0.27, 0.09, 0.09, 0.09, 0.46], ancho_fig=12, alinear_izq=(4,))
+
+VB = _jb("validacion_barra.json")
+if VB:
+    dd = VB["diferencias_entre_detenciones"]; bl = VB["barrido_L"]; lp = VB["L_por_pozo"]
+    tabla_png("T5_02b_validacion_largo_barra", "Validación del largo de barra con los registros",
+              ["Prueba", "Resultado"],
+              [[f"Distancia más frecuente entre detenciones del mismo barreno ({mil(dd['n_parejas'])} parejas)", f"{dec(dd['mejor_pico_1_2_a_2_4_m']['media_fina_m'], 3)} m"],
+               ["Segundo pico (el doble del largo)", f"{dec(dd['segundo_armonico']['media_fina_m'], 3)} m"],
+               [f"Detenciones alineadas con la grilla de 1,756 m (de {mil(bl['detenciones_fuera_emboquillado'])})", mil(bl["alineadas_en_1_756"])],
+               ["Detenciones alineadas si se ubican al azar", mil(round(bl["azar_media"]))],
+               [f"Largo por barreno, mediana ({lp['n_pozos']} barrenos con ≥ 4 uniones)", f"{dec(lp['mediana_m'], 4)} m"],
+               ["Desviación estándar del largo entre barrenos", f"{dec(1000 * lp['sd_m'], 1)} mm"]],
+              anchos=[0.74, 0.26], ancho_fig=9.5, primera_azul=False, alinear_izq=(0,))
+
+    # ── Figura: periodicidad del cambio de barra ────────────────────────────
+    hh = dd["histograma_1_5_a_2_1_m"]; xs = np.array([float(k) for k in hh]); ys = np.array(list(hh.values()))
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 4.6))
+    a1.bar(xs + 0.005, ys, width=0.0095, color=AZUL)
+    a1.axvline(1.756, color=ROJO, ls="--", lw=1.2, label="Largo de barra 1,756 m")
+    a1.set_xlabel("Distancia entre detenciones (PR = 0) del mismo barreno [m]"); a1.set_ylabel("N° de parejas")
+    a1.legend(loc="upper left", fontsize=9)
+    Lb = np.array(bl["L_m"]); Ab = np.array(bl["alineadas"])
+    a2.plot(Lb, Ab, "-", color=AZUL, lw=1.4, label="Detenciones alineadas con la grilla")
+    a2.axhline(bl["azar_media"], color=GRIS, ls=":", lw=1.4, label=f"Mismas detenciones al azar ({mil(round(bl['azar_media']))})")
+    a2.axvline(1.756, color=ROJO, ls="--", lw=1.2, label=f"1,756 m: {mil(bl['alineadas_en_1_756'])} de {mil(bl['detenciones_fuera_emboquillado'])}")
+    a2.set_xlabel("Largo de barra probado [m]"); a2.set_ylabel("N° de detenciones alineadas (±6 cm)")
+    a2.set_ylim(0, Ab.max() * 1.25); a2.legend(loc="upper left", fontsize=9)
+    guardar(fig, "F5_02b_periodicidad_cambio_barra.png")
+
+    # ── Figura: transitorio alrededor del cambio de barra ───────────────────
+    T = VB["transitorio"]["barra"]; offs = [f"-{o}" for o in range(8, 0, -1)] + [f"+{o}" for o in range(1, 9)]
+    xo = [-o for o in range(8, 0, -1)] + list(range(1, 9))
+    fig, ax = plt.subplots(figsize=(10, 4.6))
+    for s_, c_, mk in (("PR", ROJO, "o"), ("PP", AZUL, "s"), ("FP", NARANJA, "^"), ("DP", VERDE, "D"), ("RP", MORADO, "v"), ("FLP", GRIS, "x")):
+        ax.plot(xo, [T[s_][k]["mediana"] for k in offs], "-", marker=mk, ms=4.5, color=c_, lw=1.3, label=s_)
+    ax.axvspan(-0.5, 0.5, color="#D9D9D9", alpha=0.7, lw=0); ax.text(0, 0.56, "detención\n(PR = 0)", ha="center", va="bottom", fontsize=8.5, color="#595959")
+    ax.axvspan(0.5, 2.5, color=ROJO, alpha=0.08, lw=0); ax.text(1.5, 1.16, "margen\nexcluido", ha="center", va="top", fontsize=8.5, color=ROJO)
+    ax.axhline(1.0, color="#7F7F7F", lw=0.8)
+    ax.set_xticks(xo); ax.set_xticklabels([f"{o:+d}" for o in xo]); ax.set_ylim(0.55, 1.18)
+    ax.set_xlabel("Posición del registro respecto de la detención [muestras de 2 cm]")
+    ax.set_ylabel("Valor relativo al nivel del barreno (mediana)"); ax.legend(loc="lower right", ncol=3, fontsize=9)
+    guardar(fig, "F5_02c_transitorio_cambio_barra.png")
+
+# ── Figura 5.2 (reemplazo): antes y después de la depuración, P20_H12 ───────
+LE = _jb("limpieza_ejemplo.json")
+if LE:
+    wn = "PCC_0042_PR01_TH_P20_H12"; E = LE[wn]
+    L = np.array(E["largo"]); PP = np.array(E["pp"], float); mot = np.array(E["motivo"], dtype=object)
+    corte = E["corte_emboquillado"][0]
+    MOT = [("emboquillado", "Emboquillado (meseta de PP)", GRIS), ("barra", "Cambio de barra (PR = 0)", ROJO),
+           ("margen", "Margen tras el cambio de barra", NARANJA), ("equipo", "Equipo sin perforar", MORADO),
+           ("continuidad", "Continuidad del registro", "#000000"), ("roca", "Fuera de rango, solo entrenamiento", VERDE)]
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=(14, 6.8), sharex=True)
+    a1.plot(L, PP, "-", color=AZUL, lw=0.8)
+    for k, et, c_ in MOT:
+        m = mot == k
+        if m.any():
+            a1.plot(L[m], PP[m], "o", color=c_, ms=4.2, mec="white", mew=0.4, zorder=5, label=f"{et} ({int(m.sum())})")
+    a1.set_ylabel("PP [bar]"); a1.legend(loc="lower right", fontsize=9, ncol=3)
+    a1.set_title("Antes del filtrado", loc="left", fontsize=10)
+    serie = (mot == "") | (mot == "roca")
+    Ls = L.copy().astype(float); PPs = PP.copy(); PPs[~serie] = np.nan
+    a2.plot(Ls, PPs, "-", color=VERDE, lw=0.8, label=f"Serie filtrada para el DI ({mil(int(serie.sum()))} registros)")
+    a2.axvspan(0, corte, color=GRIS, alpha=0.30, lw=0, zorder=0, label=f"Emboquillado (< {dec(corte, 2)} m)")
+    for x_ in L[mot == "barra"]:
+        a2.axvline(x_, color=ROJO, ls=":", lw=0.8, alpha=0.6, zorder=0)
+    a2.set_ylabel("PP [bar]"); a2.set_xlabel("Profundidad a lo largo del barreno [m]")
+    a2.set_title("Después del filtrado (líneas punteadas: cambios de barra)", loc="left", fontsize=10)
+    a2.legend(loc="lower right", fontsize=9, ncol=2)
+    guardar(fig, "F5_02_antes_despues_depuracion.png")
+
+# ── 6.1 Pearson ─────────────────────────────────────────────────────────────
+pe = R["pearson"]; V = siglas_xml(pe["variables"])
+
+
+def heat(ax, M, titulo):
+    M = np.array(M)
+    im = ax.imshow(M, cmap="RdBu_r", vmin=-1, vmax=1)
+    ax.set_xticks(range(len(V))); ax.set_xticklabels(V); ax.set_yticks(range(len(V))); ax.set_yticklabels(V)
+    for i in range(len(V)):
+        for j in range(len(V)):
+            ax.text(j, i, dec(M[i, j], 2), ha="center", va="center", fontsize=9,
+                    color="white" if abs(M[i, j]) > 0.6 else "#222222")
+    ax.set_title(titulo, fontsize=10.5); return im
+
+
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(12, 5.4))
+heat(a1, pe["crudas"], "Señales registradas")
+im = heat(a2, pe["perfiles_varianza"], "Varianza móvil estandarizada\n(entrada del DI)")
+fig.colorbar(im, ax=[a1, a2], shrink=0.8, label="r de Pearson")
+fig.suptitle("Correlación de Pearson entre las cinco presiones MWD")
+pie(fig, f"n = {mil(pe['n'])} registros, 4 caserones. PP percusión · RP rotación · DP dámper · FLP flujo · FP avance.", y=-0.02)
+guardar(fig, "F6_01_correlacion_pearson.png")
+
+P = R["pozo_P20_H12"]; L = np.array(P["largo"]); PP = np.array(P["pp"], float)
+
+# ── Figura 5.1 (formato de la memoria): Pearson de las 7 variables ─────────
+_p7 = os.path.join(os.path.dirname(SRC), "pearson7.json")
+if os.path.exists(_p7):
+    P7 = json.load(open(_p7, encoding="utf-8")); V7 = P7["variables"]; M7 = np.array(P7["r"])
+    fig, ax = plt.subplots(figsize=(8.2, 6.6))
+    im = ax.imshow(M7, cmap="RdBu_r", vmin=-1, vmax=1)
+    ax.set_xticks(range(len(V7))); ax.set_xticklabels(V7); ax.set_yticks(range(len(V7))); ax.set_yticklabels(V7)
+    pres = [i for i, v in enumerate(V7) if v in ("PP", "FP", "DP", "RP", "FLP")]
+    mx = max(((abs(M7[i, j]), i, j) for i in pres for j in pres if i < j))
+    for i in range(len(V7)):
+        for j in range(len(V7)):
+            dest = {i, j} == {mx[1], mx[2]}
+            ax.text(j, i, dec(M7[i, j], 2), ha="center", va="center", fontsize=9, weight="bold" if dest else "normal",
+                    color="white" if abs(M7[i, j]) > 0.5 else "#222222")
+    from matplotlib.patches import Rectangle
+    for (i, j) in ((mx[1], mx[2]), (mx[2], mx[1])):
+        ax.add_patch(Rectangle((j - 0.5, i - 0.5), 1, 1, fill=False, ec="black", lw=2))
+    fig.colorbar(im, ax=ax, shrink=0.85, label="Correlación de Pearson")
+    guardar(fig, "F5_01_correlacion_pearson_7_variables.png")
+
+# ── Tabla 6.2 ───────────────────────────────────────────────────────────────
+filas = []
+for f in R["tabla_6_2"]["filas"]:
+    if f["status"] != "ok":
+        filas.append([dec(f["radio_m"], 1), str(f.get("n_intervalos") or 0), str(f.get("n_sondajes") or "—"),
+                      "—", "—", "—", "—", "—", "—"]); continue
+    w = f["pesos"]
+    filas.append([dec(f["radio_m"], 1), str(f["n_pares"]), str(f["n_sondajes"]),
+                  dec(w.get("pp", 0), 2), dec(w.get("pr", 0), 2), dec(w.get("pd", 0), 2), dec(w.get("pf", 0), 2),
+                  ("+" if f["rho_ajuste"] >= 0 else "") + dec(f["rho_ajuste"], 3),
+                  "—" if f["rho_validacion"] is None else ("+" if f["rho_validacion"] >= 0 else "") + dec(f["rho_validacion"], 3)])
+T62 = R["tabla_6_2"]
+tabla_png("T6_02_sensibilidad_radio_RQD", "Sensibilidad de la calibración del DI al radio de asignación del RQD",
+          ["Radio [m]", "Pares", "Sondajes", "Peso PP", "Peso RP", "Peso DP", "Peso FLP", "ρ ajuste", "ρ validación"],
+          filas,
+          nota=(f"Umbral DI {dec(T62['umbral'], 1)} · ventana {T62['ventana']} · {T62['n_candidatos']} combinaciones "
+                f"(400 Dirichlet + convención, semilla {T62['semilla']}) · ≥ {T62['min_puntos_intervalo']} puntos por intervalo. "
+                "ρ de Spearman entre RQD_MWD y RQD de sondaje; validación dejando un sondaje fuera."))
+
+# ── 6.3 perfil de DI con RQD ────────────────────────────────────────────────
+D3 = np.array([np.nan if v is None else v for v in P["di"]])
+fig, (ax, ax2) = plt.subplots(2, 1, figsize=(14, 6.4), sharex=True, gridspec_kw={"height_ratios": [2.2, 1]})
+ax.plot(L, D3, "-", color="#1a1a1a", lw=0.7, label="DI")
+ax.axhline(UMB, color=ROJO, ls="--", lw=1.2, label=f"Umbral DI = {dec(UMB, 1)}")
+ax.fill_between(L, UMB, D3, where=D3 > UMB, color=ROJO, alpha=0.25)
+ax.set_ylabel("DI"); ax.grid(alpha=0.3); ax.legend(loc="upper right", fontsize=8.5)
+sond = sorted({t["sondaje"] for t in P["tramos_rqd"]}); MK = ["o", "s", "^", "D", "v"]
+for k, sd in enumerate(sond):
+    tt = [t for t in P["tramos_rqd"] if t["sondaje"] == sd]
+    for t in tt:
+        a_ = t["largo_pozo_m"] - t["largo_tramo_m"] / 2; b_ = t["largo_pozo_m"] + t["largo_tramo_m"] / 2
+        ax2.hlines(t["rqd"], a_, b_, color=VERDE, lw=1.6, alpha=0.7)
+    ax2.plot([t["largo_pozo_m"] for t in tt], [t["rqd"] for t in tt], MK[k % 5], color=VERDE, ms=6,
+             label=f"RQD sondaje {sd} (d = {dec(min(t['dist_m'] for t in tt), 1)}–{dec(max(t['dist_m'] for t in tt), 1)} m)")
+    q = [t for t in tt if t.get("rqd_mwd") is not None]
+    ax2.plot([t["largo_pozo_m"] for t in q], [t["rqd_mwd"] for t in q], MK[k % 5], mfc="white", mec="#1a1a1a", ms=6,
+             label=f"RQD_MWD del mismo tramo ({sd})")
+ax2.set_ylim(0, 105); ax2.set_ylabel("RQD [%]"); ax2.grid(alpha=0.3)
+ax2.set_xlabel("Profundidad a lo largo del barreno [m]"); ax2.legend(fontsize=7.5, loc="lower left", ncol=2)
+nso = int(np.nansum(D3 > UMB))
+fig.suptitle("Índice de discontinuidad calibrado y RQD de sondaje — PCC_0042_PR01_TH_P20_H12")
+pie(fig, f"Pesos calibrados a 5 m: {pesos_txt()}. {mil(nso)} de {mil(D3.size)} registros ({dec(100*nso/D3.size, 1)}%) sobre el umbral. "
+         f"Tramos de RQD cuyo centro está a ≤ 5 m del barreno ({len(P['tramos_rqd'])}); RQD_MWD = regla de Deere (0,10 m) sobre DI ≤ umbral.", y=-0.03); guardar(fig, "F6_03_perfil_DI_calibrado.png")
+
+# ── sensibilidad del DI a la ventana: 10, 14 y 20 muestras (di_ventanas.py) ─
+FV = os.path.join(os.path.dirname(SRC), "di_ventanas.json")
+if os.path.exists(FV):
+    DV = json.load(open(FV, encoding="utf-8")); VS = DV["ventanas"]; PZ = DV["pozo"]
+    CV = {10: AZUL, 14: VERDE, 20: NARANJA}
+    Lv = np.array(PZ["largo"])
+    fig, ax = plt.subplots(figsize=(14, 4.8))
+    for v in VS:
+        d = np.array([np.nan if x is None else x for x in PZ[str(v)]["di"]])
+        f = next(r for r in PZ["filas"] if r["ventana"] == v)
+        ax.plot(Lv, d, "-", color=CV.get(v, GRIS), lw=0.9 if v != 14 else 1.2, alpha=0.9,
+                label=f"Ventana {v} ({dec(v * DV['paso_m'] * 100, 0)} cm): {f['picos']} zonas discontinuas · {dec(f['pct_sobre_umbral'], 1)}% sobre el umbral")
+    ax.axhline(DV["umbral"], color=ROJO, ls="--", lw=1.2, label=f"Umbral DI = {dec(DV['umbral'], 1)}")
+    ax.set_xlabel("Profundidad a lo largo del barreno [m]"); ax.set_ylabel("DI"); ax.legend(fontsize=9, loc="upper right")
+    fig.suptitle("Sensibilidad del DI al tamaño de ventana — PCC_0042_PR01_TH_P20_H12")
+    guardar(fig, "F6_03b_sensibilidad_ventana_DI.png")
+    G = DV["global"]
+    tabla_png("T6_05_sensibilidad_ventana_DI", "Sensibilidad del DI al tamaño de ventana",
+              ["Ventana [muestras]", "Ventana [cm]", "Picos P20_H12", "% sobre umbral P20_H12",
+               "Picos 4 caserones", "Picos por 100 m", "% sobre umbral 4 caserones"],
+              [[str(v), dec(G[str(v)]["ventana_cm"], 0), str(next(r["picos"] for r in PZ["filas"] if r["ventana"] == v)),
+                dec(next(r["pct_sobre_umbral"] for r in PZ["filas"] if r["ventana"] == v), 1),
+                mil(G[str(v)]["picos"]), dec(G[str(v)]["picos_por_100m"], 1), dec(G[str(v)]["pct_sobre_umbral"], 1)]
+               for v in VS], ancho_fig=13)
+
+# ── DI medio vs RQD de sondaje (di_rqd_caserones.py) ──────────────────────
+FR = os.path.join(os.path.dirname(SRC), "di_rqd_caserones.json")
+if os.path.exists(FR):
+    DR = json.load(open(FR, encoding="utf-8"))
+    fig, axs = plt.subplots(1, len(DR["radios"]), figsize=(15, 5.2), sharey=True)
+    SDS = sorted({p["sondaje"] for p in DR["pares"] if p["dist_m"] <= max(DR["radios"]) and p["di_medio"] is not None})
+    EST = {sd: (["o", "s", "^", "D", "v"][i % 5], [AZUL, VERDE, NARANJA, MORADO, ROJO][i % 5]) for i, sd in enumerate(SDS)}
+    for ax, r in zip(axs, DR["radios"]):
+        mejor = {}
+        for p in DR["pares"]:
+            if p["dist_m"] <= r and p["di_medio"] is not None:
+                k = (p["sondaje"], p["desde"])
+                if k not in mejor or p["dist_m"] < mejor[k]["dist_m"]: mejor[k] = p
+        sel = list(mejor.values())
+        for sd in SDS:
+            q = [p for p in sel if p["sondaje"] == sd]
+            ax.plot([p["di_medio"] for p in q], [p["rqd"] for p in q], EST[sd][0], color=EST[sd][1], ms=6, alpha=0.8)
+        f = next(x for x in DR["spearman"] if x["radio_m"] == r and x["caseron"] == "4 caserones")
+        ax.set_title(f"Radio {dec(r, 0)} m — n = {f['n_pares']} · ρ = {('+' if f['rho'] >= 0 else '') + dec(f['rho'], 3)} (p = {dec(f['p'], 3)})",
+                     fontsize=10.5)
+        ax.set_xlabel("DI medio del tramo"); ax.grid(True, axis="both")
+    axs[0].set_ylabel("RQD de sondaje [%]"); axs[0].set_ylim(-3, 103)
+    fig.legend(handles=[plt.Line2D([], [], ls="", marker=EST[sd][0], color=EST[sd][1], ms=7, label=sd) for sd in SDS],
+               fontsize=9.5, ncol=len(SDS), loc="outside lower center")
+    fig.suptitle("DI medio y RQD de sondaje — todos los pares caen en PCC_0042")
+    guardar(fig, "F6_03c_DI_medio_vs_RQD.png")
+
+# ── 6.5 Spearman del bosque según el esquema de validación ───────────────
+gk = R["groupkfold"]; lc = R["loocv_caseron"]
+vals = [("GroupKFold\npor barreno", gk["spearman_medio"], ""),
+        ("LOOCV-Caserón", float(np.mean([f["spearman"] for f in lc["pliegues"] if f["spearman"] is not None])), "")]
+fig, ax = plt.subplots(figsize=(7, 4.8))
+bb = ax.bar([v[0] for v in vals], [v[1] for v in vals], color=[AZUL, MORADO], width=0.5)
+for b_, (_, x, nt) in zip(bb, vals):
+    ax.annotate(("+" if x >= 0 else "") + dec(x, 3) + (f"\n{nt}" if nt else ""), (b_.get_x() + b_.get_width() / 2, x),
+                xytext=(0, 4 if x >= 0 else -26), textcoords="offset points", ha="center", fontsize=8.5)
+ax.axhline(0, color="#333", lw=0.8); ax.set_ylim(0, 1); ax.set_ylabel("ρ de Spearman (UCS estimada vs. referencial)"); ax.grid(axis="y", alpha=0.3)
+fig.suptitle("Ordenamiento de la resistencia según qué se deja fuera del entrenamiento")
+pie(fig, "Random Forest con la mediana de sus árboles. Barreno nuevo en caserón conocido · caserón nunca visto · litología nunca vista. "
+         "En LOOCV-Caserón, PCS_1059 tiene una sola etiqueta y su ρ no está definido.", y=-0.04); guardar(fig, "F6_05_spearman_por_esquema.png")
+
+# ── 6.4 LOOCV-Caserón: ρ de Spearman y R² por caserón dejado fuera ────────
+PL = lc["pliegues"]; nom = [f["pliegue"] for f in PL]; xx = np.arange(len(PL))
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 5))
+for ax, clave, et, col, lim in ((a1, "spearman", "ρ de Spearman (UCS estimada vs. referencial)", MORADO, (0, 1)),
+                                (a2, "r2", "R²", AZUL, None)):
+    v = [f[clave] for f in PL]
+    bb = ax.bar(xx, [0 if x is None else x for x in v], color=col, width=0.55)
+    for b_, x, f in zip(bb, v, PL):
+        cx = b_.get_x() + b_.get_width() / 2
+        if x is None:
+            ax.annotate("indefinido\n(una sola etiqueta)", (cx, 0), xytext=(0, 4 if lim else -6), textcoords="offset points",
+                        ha="center", va="bottom" if lim else "top", fontsize=8.5, color="#595959")
+        else:
+            ax.annotate(("+" if x >= 0 else "") + dec(x, 3), (cx, x), xytext=(0, 4 if x >= 0 else -13),
+                        textcoords="offset points", ha="center", fontsize=9)
+    dfn = [x for x in v if x is not None]; mu = float(np.mean(dfn))
+    ax.axhline(mu, color="#333", ls="--", lw=1, label=f"Media de los definidos: {('+' if mu >= 0 else '') + dec(mu, 3)}")
+    ax.axhline(0, color="#333", lw=0.8)
+    ax.set_xticks(xx); ax.set_xticklabels([f"{n}\n({mil(f['n_prueba'])} reg.)" for n, f in zip(nom, PL)])
+    ax.set_ylabel(et); ax.set_xlabel("Caserón dejado fuera del entrenamiento")
+    ax.legend(fontsize=9, loc="upper right" if lim else "lower right")
+    ax.set_ylim(*(lim or (min(dfn) - 0.5, 0.25)))
+a1.set_title("Ordenamiento de la resistencia", fontsize=10.5); a2.set_title("Varianza explicada", fontsize=10.5)
+fig.suptitle("Validación LOOCV-Caserón del Random Forest")
+guardar(fig, "F6_04_LOOCV_caseron.png")
+
+# ── 6.4b los cuatro métodos bajo LOOCV-Caserón (loocv_caseron_metodos.py) ──
+FL = os.path.join(os.path.dirname(SRC), "loocv_caseron_metodos.json")
+if os.path.exists(FL):
+    LM = json.load(open(FL, encoding="utf-8")); MD = LM["medias"]
+    MET = [("linea_base", "Línea base\n(media litología)", "#7F7F7F"), ("banda", "Banda\npor unidad", NARANJA),
+           ("relacion", "Relación directa\nPEP↔UCS", "#2E7D57"), ("ml", "ML\n(Random Forest)", "#2F5597")]
+    fig, axs = plt.subplots(1, 3, figsize=(16, 5.2))
+    for ax, cl, et, nd in ((axs[0], "rmse", "RMSE [MPa]", 1), (axs[1], "pearson", "r de Pearson", 3),
+                           (axs[2], "spearman", "ρ de Spearman", 3)):
+        v = [MD[k][cl] for k, _, _ in MET]
+        bb = ax.bar(range(len(MET)), [0 if x is None else x for x in v], color=[c for _, _, c in MET], width=0.62)
+        for b_, x in zip(bb, v):
+            cx = b_.get_x() + b_.get_width() / 2
+            if x is None:
+                ax.annotate("indefinido\n(predicción\nconstante)", (cx, 0), xytext=(0, 4), textcoords="offset points",
+                            ha="center", va="bottom", fontsize=8.5, color="#595959")
+            else:
+                ax.annotate((("+" if x >= 0 else "") if cl != "rmse" else "") + dec(x, nd), (cx, x),
+                            xytext=(0, 4 if x >= 0 else -13), textcoords="offset points", ha="center", fontsize=9.5)
+        ax.set_xticks(range(len(MET))); ax.set_xticklabels([e for _, e, _ in MET], fontsize=9)
+        ax.set_ylabel(et); ax.axhline(0, color="#333", lw=0.8)
+        if cl != "rmse":
+            dfn = [x for x in v if x is not None]
+            ax.set_ylim(min(dfn) - 0.1 if min(dfn) < 0 else 0, 1)
+    axs[0].set_title("Error", fontsize=10.5); axs[1].set_title("Correlación lineal", fontsize=10.5)
+    axs[2].set_title("Ordenamiento", fontsize=10.5)
+    fig.suptitle("Comparación de métodos de UCS — LOOCV-Caserón (media de los caserones dejados fuera)")
+    guardar(fig, "F6_04b_LOOCV_caseron_metodos.png")
+
+# ── 6.6 PEP vs UCS predicha ─────────────────────────────────────────────────
+S6 = R["pep_vs_ucs"]
+fig, axs = plt.subplots(1, 2, figsize=(13, 5.2), sharey=True)
+for ax, k, tit in ((axs[0], "intacta", f"Roca continua (DI ≤ {dec(UMB, 1)})"), (axs[1], "fracturada", f"Roca discontinua (DI > {dec(UMB, 1)})")):
+    d = S6[k]; pep = np.array(d["pep"]); u = np.array(d["ucs_ml"])
+    for lito, c in COL_LITO.items():
+        m = np.array([l == lito for l in d["lito"]])
+        if m.any(): ax.scatter(pep[m], u[m], s=2, alpha=0.25, color=c, label=NOM_LITO[lito], rasterized=True)
+    ax.set_xscale("log"); ax.set_xlabel("PEP [bar·min/m] (escala log)"); ax.grid(alpha=0.3)
+    ax.set_title(f"{tit} — n = {mil(d['n'])}", fontsize=10)
+axs[0].set_ylabel("UCS estimada [MPa]")
+lg = axs[0].legend(fontsize=8, markerscale=5, loc="upper left")
+for hnd in lg.legend_handles: hnd.set_alpha(1)
+fig.suptitle("Presión específica de penetración (PEP) y UCS estimada por el modelo")
+pie(fig, "Muestra aleatoria de 25.000 registros por panel (semilla 42), PR ≥ 0,2 m/min. " + PIE_CFG, y=-0.03); guardar(fig, "F6_06_PEP_vs_UCS.png")
+
+# ── 6.6b PEP vs UCS predicha: dominio de entrenamiento y extrapolación ─────
+# Una sola vista: el bosque se entrena SOLO con DI ≤ umbral, así que lo que
+# predice sobre roca fracturada es extrapolación.
+fig, ax = plt.subplots(figsize=(10, 6.2))
+# Las dos muestras son de 25.000; la fracturada se submuestrea a la proporción
+# real de las clases para que la nube no exagere su peso.
+_prop = S6["fracturada"]["n"] / S6["intacta"]["n"]
+for k, mk, c, et in (("intacta", "o", AZUL, f"DI ≤ {dec(UMB, 0)}, roca continua — dominio de entrenamiento"),
+                     ("fracturada", "x", ROJO, f"DI > {dec(UMB, 0)}, roca discontinua — EXTRAPOLACIÓN")):
+    d = S6[k]; pep = np.array(d["pep"]); u = np.array(d["ucs_ml"])
+    m = pep <= 1000
+    if k == "fracturada":
+        keep = np.zeros(pep.size, bool)
+        keep[np.random.default_rng(42).choice(pep.size, int(round(pep.size * _prop)), replace=False)] = True
+        m &= keep
+    ax.scatter(pep[m], u[m], s=5 if mk == "o" else 8, marker=mk, alpha=0.3 if mk == "o" else 0.5,
+               lw=0 if mk == "o" else 0.6, color=c, rasterized=True, label=f"{et} (n = {mil(d['n'])})")
+ax.set_xlim(-40, 1040)
+ax.set_xlabel("PEP = (PP + RP + FP) / PR [bar·min/m]  (PEP ≤ 1.000)"); ax.set_ylabel("UCS estimada por ML [MPa]")
+ax.grid(True, axis="both")
+h, l = ax.get_legend_handles_labels()
+lg = ax.legend(h[::-1], l[::-1], loc="upper right", fontsize=9, markerscale=2.5, frameon=True, framealpha=0.9)
+for hnd in lg.legend_handles: hnd.set_alpha(1)
+guardar(fig, "F6_06b_PEP_vs_UCS_extrapolacion.png")
+
+# ── 6.6c PEP vs UCS predicha: ajuste SOLO sobre roca continua ───────────────
+# La discontinua se dibuja en un solo color y no participa de ningún ajuste: el
+# modelo no se entrena con ella y su UCS predicha es extrapolación.
+from scipy.optimize import curve_fit
+
+
+def _ajustes_intacta(x, y):
+    sst = float(np.sum((y - y.mean()) ** 2)); out = {}
+    def r2(p): return 1 - float(np.sum((y - p) ** 2)) / sst
+    for g, nom in ((1, "lineal"), (2, "parabólico"), (3, "cúbico")):
+        c = np.polyfit(x, y, g); out[nom] = (r2(np.polyval(c, x)), lambda t, c=c: np.polyval(c, t), c)
+    k_, n_ = np.polyfit(np.log(x), np.log(y), 1)[::-1]; k_ = np.exp(k_)
+    out["potencial"] = (r2(k_ * x ** n_), lambda t, k=k_, n=n_: k * t ** n, (k_, n_))
+    a_, b_ = np.polyfit(np.log(x), y, 1)
+    out["logarítmico"] = (r2(a_ * np.log(x) + b_), lambda t, a=a_, b=b_: a * np.log(t) + b, (a_, b_))
+    f = lambda t, a, b, c: a - b * np.exp(-t / c)
+    try:
+        p_, _ = curve_fit(f, x, y, p0=(170.0, 80.0, 150.0), maxfev=20000)
+        out["saturación"] = (r2(f(x, *p_)), lambda t, p=p_: f(t, *p), tuple(p_))
+    except RuntimeError:
+        pass
+    return out
+
+
+def _ecuacion(nom, c):
+    if nom == "lineal": return f"UCS = {dec(c[0], 4)}·PEP + {dec(c[1], 1)}"
+    if nom == "parabólico": return f"UCS = {dec(c[0], 6)}·PEP² + {dec(c[1], 4)}·PEP + {dec(c[2], 1)}"
+    if nom == "cúbico": return f"UCS = {dec(c[0], 9)}·PEP³ {dec(c[1], 6)}·PEP² + {dec(c[2], 4)}·PEP + {dec(c[3], 1)}"
+    if nom == "potencial": return f"UCS = {dec(c[0], 3)}·PEP^{dec(c[1], 4)}"
+    if nom == "logarítmico": return f"UCS = {dec(c[0], 3)}·ln(PEP) + {dec(c[1], 1)}"
+    return f"UCS = {dec(c[0], 1)} − {dec(c[1], 1)}·e^(−PEP/{dec(c[2], 1)})"
+
+
+di_ = S6["intacta"]; pep_i = np.array(di_["pep"]); u_i = np.array(di_["ucs_ml"]); lit_i = np.array(di_["lito"])
+mi = (pep_i <= 1000) & (pep_i > 0)
+maj = mi & (pep_i >= 100) & (pep_i <= 600)   # el ajuste solo usa PEP 100–600
+AJ = _ajustes_intacta(pep_i[maj], u_i[maj])
+# Parsimonia: entre las formas a menos de 0,01 de R² del máximo, la de menos
+# coeficientes (el cúbico gana 0,005 al parabólico con un parámetro más).
+_NPAR = {"lineal": 2, "potencial": 2, "logarítmico": 2, "parabólico": 3, "saturación": 3, "cúbico": 4}
+_r2max = max(v[0] for v in AJ.values())
+mejor = min((k for k in AJ if AJ[k][0] >= _r2max - 0.01), key=lambda k: (_NPAR[k], -AJ[k][0]))
+R["ajuste_pep_ucs_intacta"] = {k: {"r2": round(v[0], 4), "coef": [float(t) for t in v[2]]} for k, v in AJ.items()}
+print("ajustes intacta:", {k: round(v[0], 4) for k, v in AJ.items()}, "→", mejor, flush=True)
+fig, ax = plt.subplots(figsize=(10, 6.2))
+for lito in sorted(set(lit_i[mi]), key=lambda l: {"Kpcls": 0, "Brecha_mixta": 1, "Bht": 2, "Kpcli": 3}.get(l, 9)):
+    m = mi & (lit_i == lito)
+    ax.scatter(pep_i[m], u_i[m], s=5, lw=0, alpha=0.35, color=COL_LITO.get(lito, GRIS), rasterized=True,
+               label=f"DI ≤ {dec(UMB, 0)} · {NOM_LITO.get(lito, lito)}")
+df_ = S6["fracturada"]; pep_f = np.array(df_["pep"]); u_f = np.array(df_["ucs_ml"])
+keep = np.zeros(pep_f.size, bool)
+keep[np.random.default_rng(42).choice(pep_f.size, int(round(pep_f.size * df_["n"] / di_["n"])), replace=False)] = True
+mf = keep & (pep_f <= 1000)
+ax.scatter(pep_f[mf], u_f[mf], s=8, marker="x", lw=0.6, alpha=0.45, color="#7F7F7F", rasterized=True,
+           label=f"DI > {dec(UMB, 0)}, roca discontinua — EXTRAPOLACIÓN, fuera del ajuste (n = {mil(df_['n'])})")
+xx = np.linspace(100, 600, 400)
+ax.plot(xx, AJ[mejor][1](xx), "-", color="#1a1a1a", lw=2,
+        label=f"Ajuste {mejor} (solo roca continua, PEP 100–600): {_ecuacion(mejor, AJ[mejor][2])} · R² = {dec(AJ[mejor][0], 3)}")
+ax.set_xlim(-40, 1040)
+ax.set_xlabel("PEP = (PP + RP + FP) / PR [bar·min/m]  (PEP ≤ 1.000)"); ax.set_ylabel("UCS estimada por ML [MPa]")
+ax.grid(True, axis="both")
+lg = ax.legend(loc="lower right", fontsize=8.5, markerscale=2.5, frameon=True, framealpha=0.92)
+for hnd in lg.legend_handles: hnd.set_alpha(1)
+guardar(fig, "F6_06c_PEP_vs_UCS_ajuste_intacta.png")
+
+# ── 6.7 UCS lab vs ML por litología ─────────────────────────────────────────
+U7 = R["ucs_por_litologia"]
+orden = sorted(U7, key=lambda k: U7[k]["ancla"] or 0)
+# Boxplot desde la curva de cuantiles guardada (400 registros ordenados):
+# caja P25–P75, mediana, bigotes P10–P90 (exactos en final.json). Sin atípicos:
+# con cientos de miles de registros por litología solo ensuciarían la vista.
+fig, ax = plt.subplots(figsize=(10, 5.6))
+stats = []
+for lito in orden:
+    d = U7[lito]; cv_ = np.array(d["curva"])
+    stats.append({"label": f"{NOM_LITO.get(lito, lito)}\nn = {mil(d['n'])}", "med": d["p50"],
+                  "q1": float(np.percentile(cv_, 25)), "q3": float(np.percentile(cv_, 75)),
+                  "whislo": d["p10"], "whishi": d["p90"], "fliers": []})
+bp = ax.bxp(stats, positions=range(len(orden)), widths=0.5, patch_artist=True, showfliers=False,
+            medianprops=dict(color="#1a1a1a", lw=1.8), whiskerprops=dict(color="#595959"), capprops=dict(color="#595959"))
+for caja, lito in zip(bp["boxes"], orden):
+    caja.set_facecolor(COL_LITO.get(lito, GRIS)); caja.set_alpha(0.75); caja.set_edgecolor("#404040")
+for k, lito in enumerate(orden):
+    d = U7[lito]
+    ax.plot(k, d["ancla"], marker="D", ms=9, color="white", mec="#C00000", mew=2, zorder=6)
+    ax.annotate(f"ref. {dec(d['ancla'], 1)}\np50 {dec(d['p50'], 1)}", (k + 0.28, d["ancla"]), va="center", fontsize=8.5)
+ax.set_ylim(0, 220); ax.set_ylabel("UCS [MPa]"); ax.set_xlim(-0.6, len(orden) - 0.2)
+ax.legend(handles=[Patch(facecolor="#BFBFBF", edgecolor="#404040", label="UCS estimada: caja P25–P75, línea mediana, bigotes P10–P90"),
+                   plt.Line2D([], [], ls="", marker="D", ms=8, color="white", mec="#C00000", mew=2, label="UCS de ensayo (referencial)")],
+          loc="lower right", fontsize=8.5, frameon=True, framealpha=0.9)
+fig.suptitle("UCS de ensayo y UCS estimada por litología")
+guardar(fig, "F6_07_UCS_lab_vs_ML.png")
+
+# ── 6.8 comparación de algoritmos ───────────────────────────────────────────
+C = R["comparacion"]; rows = [r for r in C.get("rows", []) if r.get("r2_mean") is not None]
+fig, ax = plt.subplots(figsize=(10, 5))
+xx = np.arange(len(rows)); wdt = 0.38
+tr = [r.get("r2_train_mean") for r in rows]; te = [r["r2_mean"] for r in rows]
+b1 = ax.bar(xx - wdt / 2, tr, wdt, color="#9DB6CF", label="Entrenamiento")
+b2 = ax.bar(xx + wdt / 2, te, wdt, color=AZUL, label="Prueba (barrenos no vistos)")
+for b_, x in list(zip(b1, tr)) + list(zip(b2, te)):
+    if x is None: continue
+    ax.annotate(("+" if x >= 0 else "") + dec(x, 3), (b_.get_x() + b_.get_width() / 2, x),
+                xytext=(0, 3 if x >= 0 else -12), textcoords="offset points", ha="center", fontsize=8.5)
+ax.set_xticks(xx); ax.set_xticklabels([r["modelo"] for r in rows]); ax.axhline(0, color="#333", lw=0.8)
+ax.set_ylabel("R²"); ax.legend(fontsize=9); ax.grid(axis="y", alpha=0.3)
+fig.suptitle("Comparación de algoritmos — GroupKFold por barreno")
+pie(fig, f"Mismos {mil(C.get('n_samples', 0))} registros para los cinco modelos (submuestreo por barreno completo, semilla 42), {C.get('n_grupos')} barrenos. "
+         "Random Forest evaluado con la mediana de sus árboles. Prueba = media de los pliegues.", y=-0.04); guardar(fig, "F6_08_comparacion_algoritmos.png")
+
+# ── Comparación de algoritmos: media de 6 sorteos de pozos ──────────────────
+_cs = os.path.join(os.path.dirname(SRC), "comparacion_sorteos.json")
+if os.path.exists(_cs):
+    CS = json.load(open(_cs, encoding="utf-8")); mods = list(CS["resumen"]); nS = len(CS["corridas"])
+    tr = np.array([[c["filas"][i]["r2_train_mean"] for c in CS["corridas"]] for i in range(len(mods))])
+    te = np.array([[c["filas"][i]["r2_mean"] for c in CS["corridas"]] for i in range(len(mods))])
+    fig, ax = plt.subplots(figsize=(12, 5.6)); xx = np.arange(len(mods)); wd = 0.38
+    b1 = ax.bar(xx - wd / 2, tr.mean(1), wd, color="#9DB6D3", label="Entrenamiento")
+    b2 = ax.bar(xx + wd / 2, te.mean(1), wd, color=AZUL, yerr=te.std(1), capsize=4,
+                error_kw=dict(ecolor="#404040", lw=1), label="Prueba (barrenos no vistos), media ± desv. est.")
+    for b_, v in zip(b1, tr.mean(1)):
+        ax.annotate(("+" if v >= 0 else "") + dec(v, 3), (b_.get_x() + b_.get_width() / 2, v), xytext=(0, 4), textcoords="offset points", ha="center", fontsize=9)
+    for b_, v, e in zip(b2, te.mean(1), te.std(1)):
+        ax.annotate(("+" if v >= 0 else "") + dec(v, 3), (b_.get_x() + b_.get_width() / 2, v + e if v >= 0 else v - e),
+                    xytext=(0, 5 if v >= 0 else -14), textcoords="offset points", ha="center", fontsize=9)
+    ax.axhline(0, color="#333", lw=0.8); ax.set_xticks(xx); ax.set_xticklabels(mods); ax.set_ylabel("R²")
+    ax.legend(loc="upper right", fontsize=9)
+    guardar(fig, "F5_08_comparacion_algoritmos_6_sorteos.png")
+    tabla_png("T5_08_comparacion_algoritmos_por_sorteo", "R² de prueba por algoritmo y sorteo de barrenos",
+              ["Algoritmo"] + [f"Sorteo {i + 1}" for i in range(nS)] + ["Media", "Desv. est."],
+              [[m] + [("+" if v >= 0 else "") + dec(v, 3) for v in te[i]] + [("+" if te[i].mean() >= 0 else "") + dec(te[i].mean(), 3), dec(te[i].std(), 3)]
+               for i, m in enumerate(mods)], ancho_fig=12)
+
+# ── 6.9 desfases y concordancia en PCC_1541 ─────────────────────────────────
+CO = R["concordancia_1541"]; dl = np.array(CO["desfases"]); PRr = CO["pr"]
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(13.5, 5.4))
+a1.hist(dl, bins=np.arange(-30, 30.5, 1.0), color=AZUL, alpha=0.85, edgecolor="white", lw=0.3)
+a1.axvline(0, color="#333", lw=0.9)
+a1.axvline(dl.mean(), color=ROJO, ls="--", lw=1.4, label=f"Media {dec(dl.mean(), 2)} m")
+a1.axvline(np.median(dl), color=VERDE, ls="--", lw=1.4, label=f"Mediana {dec(np.median(dl), 2)} m")
+a1.set_xlim(-25, 25); a1.set_xlabel("Zona de roca discontinua − cruce de malla más cercano [m]"); a1.set_ylabel("N° de zonas de roca discontinua")
+a1.legend(fontsize=8.5); a1.grid(alpha=0.25)
+a1.text(0.02, 0.97, f"σ = {dec(dl.std(), 2)} m\nn = {mil(dl.size)} zonas de roca discontinua", transform=a1.transAxes, va="top", fontsize=8.5)
+uu = [f["u"] for f in PRr]
+a2.plot(uu, [100 * f["P"] for f in PRr], "o-", color=AZUL, label="Precisión: zonas de roca discontinua a ≤ 3 m de un cruce")
+a2.plot(uu, [100 * f["R"] for f in PRr], "s-", color=ROJO, label="Recall: cruces con una zona de roca discontinua a ≤ 3 m")
+a2.plot(uu, [100 * f["azar"] for f in PRr], ":", color=GRIS, lw=2, label="Precisión esperada al azar")
+a2.axvline(UMB, color="#333", ls="--", lw=0.9)
+f1 = next(f for f in PRr if abs(f["u"] - UMB) < 1e-9)
+a2.annotate(f"umbral {dec(UMB, 1)}: precisión {dec(100*f1['P'], 1)}% · azar {dec(100*f1['azar'], 1)}%",
+            (UMB, 100 * f1["P"]), xytext=(10, 18), textcoords="offset points", fontsize=8.5, arrowprops=dict(arrowstyle="-", color="#555"))
+a2.set_xlabel("Umbral de DI"); a2.set_ylabel("%"); a2.set_ylim(0, 100); a2.legend(fontsize=8); a2.grid(alpha=0.3)
+fig.suptitle("Picos de DI y cruces de malla (litología y estructura) — PCC_1541")
+pie(fig, f"{CO['n_pozos']} barrenos con cruces; picos fusionados a < 0,5 m; radio de concordancia {dec(CO['radio_m'], 0)} m. "
+         "La malla es una interpolación, no verdad terreno. Azar: mismos picos recolocados al azar en su barreno (30 repeticiones). " + PIE_CFG, y=-0.04); guardar(fig, "F6_09_desfase_DI_mallas_PCC1541.png")
+
+# ── desfase y sensibilidad al umbral: 4 caserones, PCC_0042 y PCC_1541 ─────
+FCC = os.path.join(os.path.dirname(SRC), "concordancia_caserones.json")
+if os.path.exists(FCC):
+    CC = json.load(open(FCC, encoding="utf-8"))
+    ET = {"4 caserones": "Cuatro caserones", "PCC_0042": "PCC_0042 (calibración del DI)", "PCC_1541": "PCC_1541 (prueba)"}
+    fig, axs = plt.subplots(3, 2, figsize=(13.5, 13), gridspec_kw={"width_ratios": [1.1, 1]})
+    for fila, (nom, C) in zip(axs, CC["conjuntos"].items()):
+        a1, a2 = fila; dl = np.array(C["desfases"]); PRr = C["pr"]
+        a1.hist(dl, bins=np.arange(-30, 30.5, 1.0), color=AZUL, alpha=0.85, edgecolor="white", lw=0.3)
+        a1.axvline(0, color="#333", lw=0.9)
+        a1.axvline(dl.mean(), color=ROJO, ls="--", lw=1.4, label=f"Media {dec(dl.mean(), 2)} m")
+        a1.axvline(np.median(dl), color=VERDE, ls="--", lw=1.4, label=f"Mediana {dec(np.median(dl), 2)} m")
+        a1.set_xlim(-25, 25); a1.set_ylabel("N° de zonas de roca discontinua"); a1.legend(fontsize=8.5, loc="upper right")
+        a1.text(0.02, 0.97, f"σ = {dec(dl.std(), 2)} m\nn = {mil(dl.size)} zonas de roca discontinua\n{C['n_pozos_con_cruces']} barrenos con cruces",
+                transform=a1.transAxes, va="top", fontsize=8.5)
+        a1.set_title(f"{ET[nom]} — desfase pico–cruce", fontsize=10.5)
+        uu = [f["u"] for f in PRr]
+        a2.plot(uu, [100 * f["P"] for f in PRr], "o-", color=AZUL, label="Precisión: zonas de roca discontinua a ≤ 3 m de un cruce")
+        a2.plot(uu, [100 * f["R"] for f in PRr], "s-", color=ROJO, label="Recall: cruces con una zona de roca discontinua a ≤ 3 m")
+        a2.plot(uu, [100 * f["azar"] for f in PRr], ":", color=GRIS, lw=2, label="Precisión esperada al azar")
+        a2.axvline(UMB, color="#333", ls="--", lw=0.9)
+        f1 = next(f for f in PRr if abs(f["u"] - UMB) < 1e-9)
+        a2.annotate(f"umbral {dec(UMB, 1)}: precisión {dec(100 * f1['P'], 1)}% · azar {dec(100 * f1['azar'], 1)}%",
+                    (UMB, 100 * f1["P"]), xytext=(10, 18), textcoords="offset points", fontsize=8.5,
+                    arrowprops=dict(arrowstyle="-", color="#555"))
+        a2.set_ylabel("%"); a2.set_ylim(0, 100); a2.set_title(f"{ET[nom]} — sensibilidad al umbral", fontsize=10.5)
+    axs[-1][0].set_xlabel("Zona de roca discontinua − cruce de malla más cercano [m]"); axs[-1][1].set_xlabel("Umbral de DI")
+    h_, l_ = axs[0][1].get_legend_handles_labels()
+    fig.legend(h_, l_, fontsize=9.5, ncol=3, loc="outside lower center")
+    fig.suptitle("Picos de DI y cruces de malla (litología y estructura) por conjunto de caserones")
+    guardar(fig, "F6_09b_desfase_umbral_por_caseron.png")
+    SUF = {"4 caserones": "4caserones", "PCC_0042": "PCC0042", "PCC_1541": "PCC1541"}
+    for nom, C in CC["conjuntos"].items():
+        dl = np.array(C["desfases"]); PRr = C["pr"]
+        fig, a1 = plt.subplots(figsize=(8, 4.8))
+        a1.hist(dl, bins=np.arange(-30, 30.5, 1.0), color=AZUL, alpha=0.85, edgecolor="white", lw=0.3)
+        a1.axvline(0, color="#333", lw=0.9)
+        a1.axvline(dl.mean(), color=ROJO, ls="--", lw=1.4, label=f"Media {dec(dl.mean(), 2)} m")
+        a1.axvline(np.median(dl), color=VERDE, ls="--", lw=1.4, label=f"Mediana {dec(np.median(dl), 2)} m")
+        a1.set_xlim(-25, 25); a1.set_ylabel("N° de zonas de roca discontinua"); a1.set_xlabel("Zona de roca discontinua − cruce de malla más cercano [m]")
+        a1.legend(fontsize=9, loc="upper right")
+        a1.text(0.02, 0.97, f"σ = {dec(dl.std(), 2)} m\nn = {mil(dl.size)} zonas de roca discontinua\n{C['n_pozos_con_cruces']} barrenos con cruces",
+                transform=a1.transAxes, va="top", fontsize=9)
+        fig.suptitle(f"Desfase pico de DI – cruce de malla — {ET[nom]}")
+        guardar(fig, f"F6_09b_desfase_{SUF[nom]}.png")
+        fig, a2 = plt.subplots(figsize=(8, 4.8)); uu = [f["u"] for f in PRr]
+        a2.plot(uu, [100 * f["P"] for f in PRr], "o-", color=AZUL, label="Precisión: zonas de roca discontinua a ≤ 3 m de un cruce")
+        a2.plot(uu, [100 * f["R"] for f in PRr], "s-", color=ROJO, label="Recall: cruces con una zona de roca discontinua a ≤ 3 m")
+        a2.plot(uu, [100 * f["azar"] for f in PRr], ":", color=GRIS, lw=2, label="Precisión esperada al azar")
+        a2.axvline(UMB, color="#333", ls="--", lw=0.9)
+        f1 = next(f for f in PRr if abs(f["u"] - UMB) < 1e-9)
+        a2.annotate(f"umbral {dec(UMB, 1)}: precisión {dec(100 * f1['P'], 1)}% · azar {dec(100 * f1['azar'], 1)}%",
+                    (UMB, 100 * f1["P"]), xytext=(UMB + 0.3, 14), textcoords="data", fontsize=8.5,
+                    arrowprops=dict(arrowstyle="-", color="#555"))
+        a2.set_ylim(0, 100); a2.set_ylabel("%"); a2.set_xlabel("Umbral de DI")
+        fig.legend(*a2.get_legend_handles_labels(), fontsize=8.5, ncol=2, loc="outside lower center")
+        fig.suptitle(f"Sensibilidad al umbral de DI — {ET[nom]}")
+        guardar(fig, f"F6_09b_umbral_{SUF[nom]}.png")
+
+# ── 6.10 perfil PCS_1043_PR01_TH_P07_H4 ─────────────────────────────────────
+Q = R.get("pozo_P07_H4")
+if Q:
+    L = np.array(Q["largo"])
+
+    def med(a, k=5):
+        a = np.array([np.nan if v is None else v for v in a], float)
+        out = np.copy(a)
+        for i in range(a.size):
+            s_ = a[max(0, i - k // 2): i + k // 2 + 1]; out[i] = np.nanmedian(s_) if np.isfinite(s_).any() else np.nan
+        return out
+    series = [("PR [m/min]", med(Q["vel"]), "#333"), ("PP [bar]", med(Q["pp"]), AZUL), ("DP [bar]", med(Q["pd"]), MORADO),
+              ("RP [bar]", med(Q["pr"]), NARANJA), ("FLP [bar]", med(Q["pf"]), "#1F9E9E"), ("FP [bar]", med(Q["pa"]), GRIS),
+              ("PEP [bar·min/m]", med([v if (v is not None and v <= 1000) else None for v in Q["se"]]), ROJO)]
+    fig, axs = plt.subplots(len(series) + 3, 1, figsize=(13, 15), sharex=True,
+                            gridspec_kw={"height_ratios": [1] * len(series) + [1.3, 1.3, 0.45]})
+    for ax, (et, s_, c) in zip(axs, series):
+        ax.plot(L, s_, color=c, lw=0.8); ax.set_ylabel(et, fontsize=8.5); ax.grid(alpha=0.3)
+    axs[-3].plot(L, med(Q["ucs_ml"]), color=AZUL, lw=1)
+    axs[-3].fill_between(L, med(Q["ucs_ml_p10"]), med(Q["ucs_ml_p90"]), color=AZUL, alpha=0.18, label="P10–P90")
+    axs[-3].set_ylabel("UCS ML [MPa]", fontsize=8.5); axs[-3].grid(alpha=0.3); axs[-3].legend(fontsize=8, loc="upper left")
+    dd = np.array([np.nan if v is None else v for v in Q["di"]])
+    axs[-2].plot(L, dd, color="#1a1a1a", lw=0.7); axs[-2].axhline(UMB, color=ROJO, ls="--", lw=1)
+    axs[-2].fill_between(L, UMB, dd, where=dd > UMB, color=ROJO, alpha=0.25)
+    axs[-2].set_ylabel("DI", fontsize=8.5); axs[-2].grid(alpha=0.3)
+    ax = axs[-1]; ax.set_yticks([0.5, 1.5]); ax.set_yticklabels(["Estructura", "Litología"], fontsize=8); ax.set_ylim(0, 2)
+    PAL = ["#7B2D8E", "#D4A017", "#1F9E9E", "#B5446E"]; ests = sorted({e for e in Q["estructura"] if e})
+    for serie, y0, col in ((Q["lito"], 1, lambda v: COL_LITO.get(v, GRIS)), (Q["estructura"], 0, lambda v: PAL[ests.index(v) % 4])):
+        ini = 0
+        for i in range(1, len(serie) + 1):
+            if i == len(serie) or serie[i] != serie[ini]:
+                if serie[ini]: ax.axvspan(L[ini], L[i - 1], ymin=y0 / 2 + 0.05, ymax=y0 / 2 + 0.45, color=col(serie[ini]))
+                ini = i
+    hs = [Patch(color=COL_LITO.get(l, GRIS), label=NOM_LITO.get(l, l)) for l in sorted({l for l in Q["lito"] if l})]
+    hs += [Patch(color=PAL[i % 4], label=e) for i, e in enumerate(ests)]
+    fig.legend(handles=hs, fontsize=9, ncol=6, loc="outside lower center")
+    ax.set_xlabel("Profundidad a lo largo del barreno [m]")
+    fig.suptitle("Registros MWD, PEP, UCS estimada y DI — PCS_1043_PR01_TH_P07_H4")
+    pie(fig, "Series suavizadas con mediana móvil de 5 registros (≈ 10 cm). PEP ≤ 1.000 bar·min/m: con PR ≈ 0 la PEP no tiene sentido físico y se omite. " + PIE_CFG, y=-0.02); guardar(fig, "F6_10_perfil_PCS1043_P07_H4.png")
+
+# ── 6.11 sección de tronadura ───────────────────────────────────────────────
+B = R["bloques"]
+if B.get("status") == "ok" and B.get("seccion", {}).get("x"):
+    s_ = B["seccion"]; x = np.array(s_["x"]); z = np.array(s_["z"]); lado = B["bloque_m"]
+    fig, axs = plt.subplots(1, 2, figsize=(14, 5.6), sharey=True)
+    for ax, var, cmap, lab, vmin, vmax in ((axs[0], "di", "RdYlGn_r", "DI", 0, 2.5), (axs[1], "ucs", "viridis", "UCS [MPa]", 50, 250)):
+        vv = np.array([np.nan if v is None else v for v in s_[var]], float)
+        ix_ = np.round((x - x.min()) / lado).astype(int); iz_ = np.round((z - z.min()) / lado).astype(int)
+        G = np.full((iz_.max() + 1, ix_.max() + 1), np.nan); G[iz_, ix_] = vv
+        sc = ax.pcolormesh(x.min() - lado / 2 + lado * np.arange(ix_.max() + 2),
+                           z.min() - lado / 2 + lado * np.arange(iz_.max() + 2),
+                           np.ma.masked_invalid(G), cmap=cmap, vmin=vmin, vmax=vmax, edgecolors="white", linewidth=0.15)
+        ax.set_aspect("equal"); ax.set_xlabel("Este [m]"); ax.grid(alpha=0.2)
+        fig.colorbar(sc, ax=ax, shrink=0.8, label=lab)
+        ax.ticklabel_format(useOffset=False, style="plain")
+    axs[0].set_ylabel("Cota [m]")
+    axs[0].set_title("Índice de discontinuidad", fontsize=10.5); axs[1].set_title("UCS de matriz estimada", fontsize=10.5)
+    fig.suptitle(f"Sección vertical del caserón PCC_0042 — Norte ≈ {dec(s_['norte'], 0)} m (bloques de {dec(lado, 1)} m)")
+    pie(fig, f"IDW anisotrópico; un bloque sin soporte de datos no se dibuja. Apoyo a la tronadura, no modelo geológico validado. {PIE_CFG}", y=-0.04); guardar(fig, "F6_11_seccion_tronadura_PCC0042.png")
+
+    # ── 6.12 clasificación DI × UCS de bloques ──────────────────────────────
+    BJ = json.load(open(os.path.join(os.path.dirname(SRC), "bloques.json")))
+    cdi = ["roca continua (DI ≤ 1)", "roca discontinua (DI > 1)"]
+    CORTES = [(0, 125, "< 125 MPa"), (125, 150, "125–150 MPa"), (150, 175, "150–175 MPa"), (175, 451, "≥ 175 MPa")]
+    def _ci(d): return 0 if d <= 1.0 else 1
+    M = np.zeros((len(cdi), len(CORTES)))
+    for d, u in zip(BJ["di"], BJ["ucs"]):
+        if d is None or u is None: continue
+        j = next(k for k, (lo_, hi_, _) in enumerate(CORTES) if lo_ <= u < hi_)
+        M[_ci(d), j] += 1
+    N = M.sum()
+    fig, ax = plt.subplots(figsize=(9.6, 4.6))
+    im = ax.imshow(M / N * 100, cmap="Blues", aspect="auto")
+    ax.set_xticks(range(len(CORTES))); ax.set_xticklabels([c[2] for c in CORTES])
+    ax.set_xlabel("UCS de matriz estimada del bloque")
+    ax.set_yticks(range(len(cdi))); ax.set_yticklabels(cdi)
+    for i in range(len(cdi)):
+        for j in range(len(CORTES)):
+            ax.text(j, i, f"{mil(M[i, j])} bloque{'' if M[i, j] == 1 else 's'}\n{mil(round(M[i, j] * B['bloque_m'] ** 3))} m³\n{dec(100 * M[i, j] / N, 1)}%", ha="center", va="center", fontsize=9,
+                    color="white" if M[i, j] / N > 0.35 else "#222")
+    fig.colorbar(im, ax=ax, shrink=0.85, label="% de los bloques")
+    fig.suptitle(f"Clasificación de {mil(N)} bloques de {dec(B['bloque_m'], 1)} m ({mil(round(N * B['bloque_m'] ** 3))} m³) según DI y UCS")
+    pie(fig, "Clases de UCS cada 25 MPa (todos los bloques caen en la banda ISRM R5, 100–250 MPa). " + PIE_CFG, y=-0.05); guardar(fig, "F6_12_clasificacion_DI_UCS.png")
+
+# ── Tabla 6.3 dominios y 6.4 ranking ────────────────────────────────────────
+Dm = R["dominios"]
+tot = sum(g["count"] for g in Dm["grupos"])
+tabla_png("T6_03_dominios", "Agrupación de dominios geomecánicos (los de mayor muestra)",
+          ["Grupo", "Litología", "Estructura", "UCS ML media [MPa]", "DI medio", "Registros MWD"],
+          [[g["id"], g.get("lito") or "—", g.get("estructura") or "—", dec(g.get("ucsMean"), 1), dec(g.get("diMean"), 3), mil(g["count"])]
+           for g in Dm["grupos"][:10]], anchos=[0.1, 0.18, 0.14, 0.22, 0.14, 0.22], ancho_fig=10,
+          nota=(f"{Dm['n_grupos']} grupos. Tramos de {dec(Dm['tramo_m'], 0)} m; misma litología y estructura, "
+                f"UCS ML ± {dec(Dm['tol_ucs'], 0)} MPa y DI ± {dec(Dm['tol_di'], 1)}."))
+RK = R["ranking"]; CRIT = {"min_se_cv": "Mín. variación de PEP", "min_se": "Mínima PEP", "max_rop": "Máxima PR"}
+filas = []
+for k, lst in RK["criterios"].items():
+    for i, c in enumerate(lst[:5], 1):
+        filas.append([CRIT[k], str(i), dec(c["pp"], 0), dec(c["pr"], 0), dec(c["pa"], 0), dec(c["pd"], 0), dec(c["pf"], 0),
+                      dec(c["vel"], 2), dec(c["se"], 0), dec(c["se_cv"], 3), c["well"], dec(c["largo"], 1)])
+tabla_png("T6_04_ranking_recomendaciones", f"Ranking de 5 recomendaciones históricas — dominio {RK['grupo']}",
+          ["Criterio", "N°", "PP [bar]", "RP [bar]", "FP [bar]", "DP [bar]", "FLP [bar]", "PR [m/min]", "PEP", "CV PEP", "Barreno", "Prof. [m]"],
+          filas, nota="Segmentos continuos de ≥ 5 registros entrenables del mismo dominio, DI ≤ 1, en barrenos de ≥ 20 m. PEP en bar·min/m.",
+          anchos=[0.15, 0.035, 0.06, 0.06, 0.06, 0.06, 0.06, 0.075, 0.055, 0.065, 0.21, 0.07], fs=8, ancho_fig=15)
+
+# ── 6.13 PEP vs UCS lab, PR y PP ───────────────────────────────────────────
+E = R["pep_estratos"]
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(13.5, 5.2))
+for lito in sorted({e["lito"] for e in E}, key=lambda l: next(e["ucs_lab"] for e in E if e["lito"] == l)):
+    ee = [e for e in E if e["lito"] == lito]; c = COL_LITO.get(lito, GRIS)
+    nm = f"{NOM_LITO.get(lito, lito)} — {dec(ee[0]['ucs_lab'], 1)} MPa"
+    a1.plot([e["pp_bin"] + 5 for e in ee], [e["pep_mediana"] for e in ee], "o-", color=c, ms=4, label=nm)
+    a2.plot([e["pp_bin"] + 5 for e in ee], [e["rop_mediana"] for e in ee], "o-", color=c, ms=4, label=nm)
+a1.set_xlabel("PP [bar] (estratos de 10 bar)"); a1.set_ylabel("PEP mediana [bar·min/m]"); a1.grid(alpha=0.3); a1.legend(fontsize=8)
+a2.set_xlabel("PP [bar] (estratos de 10 bar)"); a2.set_ylabel("PR mediana [m/min]"); a2.grid(alpha=0.3)
+fig.suptitle("PEP y PR según la UCS de ensayo y la presión de percusión")
+pie(fig, "Registros entrenables de roca continua (DI ≤ 1), PR ≥ 0,2 m/min; estratos con ≥ 20 registros. " + PIE_CFG, y=-0.04); guardar(fig, "F6_13_PEP_UCS_ROP_PP_continua.png") if not os.path.exists(os.path.join(os.path.dirname(SRC), "pep_estratos_clases.json")) else plt.close(fig)
+
+# ── 6.13b PEP por registro: UCS referencial, PR y PP (pep_muestra.py) ─────
+FM = os.path.join(os.path.dirname(SRC), "pep_muestra.json")
+if os.path.exists(FM):
+    S = json.load(open(FM, encoding="utf-8")); rho = S["spearman_pep"]
+    pep = np.array(S["pep"]); ur = np.array(S["ucs_ref"]); rop = np.array(S["rop"]); ppm = np.array(S["pp"])
+    lit = np.array(S["lito"])
+    fig, axs = plt.subplots(1, 3, figsize=(16, 5.2), sharey=True)
+    jit = np.random.default_rng(42).uniform(-2.5, 2.5, ur.size)
+    for lito in sorted(set(lit), key=lambda l: S["anclas"][l]):
+        m = lit == lito
+        axs[0].scatter(ur[m] + jit[m], pep[m], s=2, alpha=0.2, color=COL_LITO.get(lito, GRIS), rasterized=True,
+                       label=f"{NOM_LITO.get(lito, lito)} — {dec(S['anclas'][lito], 1)} MPa")
+        axs[0].plot(S["anclas"][lito], np.median(pep[m]), "_", color="#1a1a1a", ms=26, mew=2.2, zorder=6)
+    axs[0].set_xlabel("UCS referencial [MPa]"); axs[0].set_ylabel("PEP [bar·min/m]")
+    lg = axs[0].legend(fontsize=7.8, markerscale=5, loc="upper right")
+    for hnd in lg.legend_handles: hnd.set_alpha(1)
+    axs[0].set_title(f"PEP vs. UCS referencial (— mediana) · ρ = {dec(rho['ucs_ref'], 3)}", fontsize=10.5)
+    for ax, x_, et, k in ((axs[1], rop, "PR [m/min]", "rop"), (axs[2], ppm, "PP [bar]", "pp")):
+        sc_ = ax.scatter(x_, pep, c=ppm, s=2, alpha=0.35, cmap="viridis", vmin=90, vmax=230, rasterized=True)
+        ax.set_xlabel(et); ax.set_title(f"PEP vs. {et.split(' ')[0]} (color = PP) · ρ = {dec(rho[k], 3)}", fontsize=10.5)
+    fig.colorbar(sc_, ax=list(axs[1:]), shrink=0.85, label="PP [bar]")
+    axs[0].set_ylim(0, S["pep_max"])
+    fig.suptitle(f"PEP = (PP + RP + FP) / PR — {mil(len(pep))} de {mil(S['n'])} registros entrenables de roca continua "
+                 f"(PEP ≤ {mil(S['pep_max'])})")
+    guardar(fig, "F6_13b_PEP_UCS_ROP_PP_registros.png")
+
+    # Los tres paneles por separado.
+    fig, ax = plt.subplots(figsize=(8, 5.6))
+    for lito in sorted(set(lit), key=lambda l: S["anclas"][l]):
+        m = lit == lito
+        ax.scatter(ur[m] + jit[m], pep[m], s=2, alpha=0.2, color=COL_LITO.get(lito, GRIS), rasterized=True,
+                   label=f"{NOM_LITO.get(lito, lito)} — {dec(S['anclas'][lito], 1)} MPa")
+        ax.plot(S["anclas"][lito], np.median(pep[m]), "_", color="#1a1a1a", ms=26, mew=2.2, zorder=6)
+    ax.set_xlabel("UCS referencial [MPa]"); ax.set_ylabel("PEP [bar·min/m]"); ax.set_ylim(0, S["pep_max"])
+    lg = ax.legend(fontsize=8.5, markerscale=5, loc="upper right")
+    for hnd in lg.legend_handles: hnd.set_alpha(1)
+    fig.suptitle(f"PEP vs. UCS referencial (— mediana) · ρ = {dec(rho['ucs_ref'], 3)}")
+    guardar(fig, "F6_13b1_PEP_vs_UCS_referencial.png")
+    for x_, et, k, nom in ((rop, "PR [m/min]", "rop", "F6_13b2_PEP_vs_ROP.png"), (ppm, "PP [bar]", "pp", "F6_13b3_PEP_vs_PP.png")):
+        fig, ax = plt.subplots(figsize=(8, 5.6))
+        sc_ = ax.scatter(x_, pep, c=ppm, s=2, alpha=0.35, cmap="viridis", vmin=90, vmax=230, rasterized=True)
+        fig.colorbar(sc_, ax=ax, shrink=0.85, label="PP [bar]")
+        ax.set_xlabel(et); ax.set_ylabel("PEP [bar·min/m]"); ax.set_ylim(0, S["pep_max"])
+        fig.suptitle(f"PEP vs. {et.split(' ')[0]} (color = PP) · ρ = {dec(rho[k], 3)}")
+        guardar(fig, nom)
+
+# ── ajuste UCS referencial ~ PEP agrupado por litología y caserón (pep_ajustes.py)
+FA = os.path.join(os.path.dirname(SRC), "pep_ajustes.json")
+if os.path.exists(FA):
+    PA = json.load(open(FA, encoding="utf-8")); G = PA["conjuntos"]["todo"]["litologia_caseron"]
+    aj = G["ajustes"]["parabolico"]; c2, c1, c0 = aj["coef"]
+    fig, ax = plt.subplots(figsize=(10, 6))
+    M = PA["conjuntos"]["todo"]["muestra"]
+    ax.scatter(M["pep"], M["ucs_ref"] + np.random.default_rng(42).uniform(-2, 2, len(M["pep"])), s=2, color=GRIS,
+               alpha=0.08, rasterized=True, label="Registros (muestra de 30.000)")
+    for j, p in enumerate(sorted(G["puntos"], key=lambda q: (q["ucs_ref"], q["pep_mediana"]))):
+        lito, cas = p["grupo"].split(" · ")
+        ax.plot(p["pep_mediana"], p["ucs_ref"], "o", ms=9, color=COL_LITO.get(lito, GRIS), mec="white", mew=1, zorder=5)
+        ax.annotate(cas, (p["pep_mediana"], p["ucs_ref"]), xytext=(4, 7 if j % 2 == 0 else -15), textcoords="offset points", fontsize=8.5)
+    xx = np.linspace(min(p["pep_mediana"] for p in G["puntos"]) - 20, max(p["pep_mediana"] for p in G["puntos"]) + 20, 200)
+    ax.plot(xx, c2 * xx ** 2 + c1 * xx + c0, "-", color="#1a1a1a", lw=1.8,
+            label=f"UCS = {dec(c2, 5)}·PEP² + {dec(c1, 3)}·PEP {'−' if c0 < 0 else '+'} {dec(abs(c0), 1)}   (R² = {dec(aj['r2'], 3)})")
+    hs, ls_ = ax.get_legend_handles_labels()
+    hs += [plt.Line2D([], [], ls="", marker="o", ms=8, color=COL_LITO[l]) for l in ("Kpcls", "Brecha_mixta", "Bht", "Kpcli")]
+    ls_ += [f"{NOM_LITO[l]} — {dec(PA['anclas'][l], 1)} MPa" for l in ("Kpcls", "Brecha_mixta", "Bht", "Kpcli")]
+    lg = ax.legend(hs, ls_, fontsize=8.5, loc="lower right", frameon=True, framealpha=0.9)
+    for hnd in lg.legend_handles: hnd.set_alpha(1)
+    ax.set_xlim(200, 600); ax.set_ylim(40, 200)
+    ax.set_xlabel("PEP mediana del grupo [bar·min/m]"); ax.set_ylabel("UCS referencial [MPa]"); ax.grid(True, axis="both")
+    fig.suptitle(f"Ajuste parabólico UCS–PEP por litología y caserón (ρ = {('+' if G['spearman'] >= 0 else '') + dec(G['spearman'], 3)}, n = {G['n_puntos']} grupos)")
+    guardar(fig, "F6_13c_ajuste_PEP_UCS_litologia_caseron.png")
+
+# ── PEP, PR y UCS modelada por intervalo de PP: continua vs discontinua ───
+FE = os.path.join(os.path.dirname(SRC), "pep_estratos_clases.json")
+if os.path.exists(FE):
+    EC = json.load(open(FE, encoding="utf-8")); FL_ = EC["filas"]
+    LITS = sorted(EC["anclas"], key=lambda l: EC["anclas"][l])
+    ETC = {"continua": f"Roca continua (DI ≤ {dec(UMB, 0)})", "fracturada": f"Roca discontinua (DI > {dec(UMB, 0)})"}
+
+    NMAX = max(f["n"] for f in FL_)
+
+    def _panel(ax, clase, campo, et, pp_min, con_n):
+        for lito in LITS:
+            ee = sorted([f for f in FL_ if f["clase"] == clase and f["lito"] == lito and f["pp_bin"] >= pp_min],
+                        key=lambda f: f["pp_bin"])
+            if not ee: continue
+            c = COL_LITO.get(lito, GRIS); x_ = [f["pp_bin"] + 5 for f in ee]; y_ = [f[campo] for f in ee]
+            ax.plot(x_, y_, "-", color=c, lw=1.4, label=f"{NOM_LITO.get(lito, lito)} — {dec(EC['anclas'][lito], 1)} MPa")
+            # Representatividad: el área del punto crece con log10 de los registros del intervalo.
+            ax.scatter(x_, y_, s=[(8 * np.log10(f["n"]) ** 2) if con_n else 18 for f in ee], color=c,
+                       edgecolor="white", lw=0.6, alpha=0.9, zorder=4)
+        ax.set_ylabel(et); ax.set_title(ETC[clase], fontsize=10.5)
+
+    for nombre, pp_min, con_n, sub in (("F6_13_PEP_UCS_ROP_PP.png", 90, True, "tamaño del punto = registros del intervalo"),
+                                       ("F6_13_PEP_UCS_ROP_PP_desde120.png", 120, False, "intervalos desde 120 bar")):
+        fig, axs = plt.subplots(2, 2, figsize=(13.5, 9.5), sharex=True)
+        for i, clase in enumerate(("continua", "fracturada")):
+            _panel(axs[i][0], clase, "pep_mediana", "PEP mediana [bar·min/m]", pp_min, con_n)
+            _panel(axs[i][1], clase, "rop_mediana", "PR mediana [m/min]", pp_min, con_n)
+        for k, campo in ((0, "pep_mediana"), (1, "rop_mediana")):
+            v_ = [f[campo] for f in FL_ if f["pp_bin"] >= pp_min]; pad = 0.05 * (max(v_) - min(v_))
+            for i in (0, 1): axs[i][k].set_ylim(min(v_) - pad, max(v_) + pad)
+            axs[1][k].set_xlabel("PP [bar] (intervalos de 10 bar)")
+        h_, l_ = axs[0][0].get_legend_handles_labels()
+        if con_n:
+            for nn in (100, 1000, 10000, 100000):
+                h_.append(plt.scatter([], [], s=8 * np.log10(nn) ** 2, color="#A5A5A5", edgecolor="white"))
+                l_.append(f"{mil(nn)} registros")
+        fig.legend(h_, l_, fontsize=9.5, ncol=4 if not con_n else 4, loc="outside lower center")
+        fig.suptitle(f"PEP y PR según la UCS de ensayo y la presión de percusión ({sub})")
+        guardar(fig, nombre)
+
+    # Una figura por clase de roca (versión con representatividad).
+    for clase, suf in (("continua", "intacta"), ("fracturada", "fracturada")):
+        fig, (b1, b2) = plt.subplots(1, 2, figsize=(13.5, 5.2))
+        _panel(b1, clase, "pep_mediana", "PEP mediana [bar·min/m]", 90, True)
+        _panel(b2, clase, "rop_mediana", "PR mediana [m/min]", 90, True)
+        for ax, campo in ((b1, "pep_mediana"), (b2, "rop_mediana")):
+            v_ = [f[campo] for f in FL_]; pad = 0.05 * (max(v_) - min(v_))
+            ax.set_ylim(min(v_) - pad, max(v_) + pad); ax.set_xlabel("PP [bar] (intervalos de 10 bar)"); ax.set_title("")
+        h_, l_ = b1.get_legend_handles_labels()
+        for nn in (100, 1000, 10000, 100000):
+            h_.append(plt.scatter([], [], s=8 * np.log10(nn) ** 2, color="#A5A5A5", edgecolor="white")); l_.append(f"{mil(nn)} registros")
+        fig.legend(h_, l_, fontsize=9, ncol=4, loc="outside lower center")
+        fig.suptitle(f"PEP y PR por intervalo de PP — {ETC[clase]} (tamaño del punto = registros del intervalo)")
+        guardar(fig, f"F6_13_PEP_ROP_PP_{suf}.png")
+
+    fig, axs = plt.subplots(1, 2, figsize=(13.5, 5.4), sharey=True)
+    for ax, clase in zip(axs, ("continua", "fracturada")):
+        for lito in LITS:
+            ee = sorted([f for f in FL_ if f["clase"] == clase and f["lito"] == lito], key=lambda f: f["pp_bin"])
+            if not ee: continue
+            r_ = EC["rho_pp_ucs"].get(clase, {}).get(lito, {}).get("rho")
+            ax.plot([f["pp_bin"] + 5 for f in ee], [f["ucs_ml_mediana"] for f in ee], "o-", color=COL_LITO.get(lito, GRIS), ms=4,
+                    label=f"{NOM_LITO.get(lito, lito)} (ρ = {('+' if r_ >= 0 else '') + dec(r_, 2)})")
+            ax.axhline(EC["anclas"][lito], color=COL_LITO.get(lito, GRIS), ls=":", lw=1)
+        ax.set_title(ETC[clase] + (" — extrapolación" if clase == "fracturada" else ""), fontsize=10.5)
+        ax.set_xlabel("PP [bar] (intervalos de 10 bar)"); ax.legend(fontsize=8.5, loc="lower right")
+    axs[0].set_ylabel("UCS modelada (mediana) [MPa]")
+    fig.suptitle("UCS modelada por el Random Forest según la presión de percusión (punteado: UCS referencial)")
+    guardar(fig, "F6_13e_UCS_modelada_vs_PP.png")
+
+# ── PR frente a las cuatro presiones (rop_presiones.py) ──────────────────
+FRP = os.path.join(os.path.dirname(SRC), "rop_presiones.json")
+if os.path.exists(FRP):
+    RPJ = json.load(open(FRP, encoding="utf-8")); G0 = RPJ["grupos"]["Todas las litologías"]; PS = list(G0["presiones"])
+    FRC = os.path.join(os.path.dirname(SRC), "rop_presiones_clases.json")
+    RC = json.load(open(FRC, encoding="utf-8")) if os.path.exists(FRC) else {"continua": {"n": G0["n"], "n_pozos": G0["n_pozos"],
+         "rho": {p: G0["presiones"][p]["rho_simple"] for p in PS}}}
+    PS = list(RC["continua"]["rho"])     # siglas del JSON de clases (XML si se recalculó)
+    fig, a1 = plt.subplots(figsize=(9.5, 5))
+    xx = np.arange(len(PS)); clases = ["continua"]; wd = 0.55
+    for k, (cl, col_) in enumerate(zip(clases, (AZUL, "#A5A5A5"))):
+        v = [RC[cl]["rho"][p] for p in PS]
+        et = (f"Roca continua (DI ≤ {dec(UMB, 0)})" if cl == "continua" else f"Roca discontinua (DI > {dec(UMB, 0)})") + \
+             f" — {mil(RC[cl]['n'])} registros"
+        bb = a1.bar(xx + (k - (len(clases) - 1) / 2) * wd, v, wd, color=col_, label=et)
+        for b_, x in zip(bb, v):
+            a1.annotate(("+" if x >= 0 else "") + dec(x, 3), (b_.get_x() + b_.get_width() / 2, x),
+                        xytext=(0, 4 if x >= 0 else -13), textcoords="offset points", ha="center", fontsize=9)
+    a1.axhline(0, color="#333", lw=0.8); a1.set_ylim(-0.3, 0.3); a1.set_xticks(xx); a1.set_xticklabels(siglas_xml(PS))
+    a1.set_ylabel("ρ de Spearman con la PR"); a1.legend(fontsize=9, loc="upper right")
+    fig.suptitle("Correlación de la PR con las presiones de percusión, avance, rotación y dámper")
+    guardar(fig, "F6_14_ROP_vs_presiones.png")
+
+json.dump(hechas, open(f"{OUT}/_hechas.json", "w"))
+print(len(hechas), "archivos")
