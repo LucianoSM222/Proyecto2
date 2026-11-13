@@ -1,0 +1,13 @@
+﻿Tratamiento;Condición;Registros
+Sale del DI y del entrenamiento;PR = 0 fuera de la grilla de barra;5.997
+;PP < 90 bar;5.246
+;FP < 20 bar;164
+;FLP > 10 bar;2.642
+;PR > 10 m/min;65
+Solo sale del entrenamiento;PR < 0,1 m/min;106
+;PR > 1,5 m/min;23.217
+;RP < 30 bar;1.090
+;RP > 80 bar;518
+;DP < 25 bar;2
+;DP > 150 bar;69
+;PP > 230 bar;4

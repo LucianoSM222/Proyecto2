@@ -5,9 +5,9 @@ durante la semana, y dice qué hay que tocar en la memoria: texto, cifras,
 figuras y tablas. La numeración de figuras y tablas es la del cuerpo de la
 última versión en PDF (Capítulo 5, Figuras 5.1 a 5.19 y Tablas 5.1 a 5.5).
 
-- **Figuras y tablas de reemplazo:** `figuras/tesis_2026-11-11/reemplazo/`,
+- **Figuras y tablas de reemplazo:** `figuras/tesis_2026-11-13/reemplazo/`,
   con el número de la memoria en el nombre del archivo.
-- **Tablas en Excel:** `figuras/tesis_2026-11-11/reemplazo/tablas_capitulo5.xlsx`.
+- **Tablas en Excel:** `figuras/tesis_2026-11-13/reemplazo/tablas_capitulo5.xlsx`.
 - **Corrida:** `memoria_final/final/final_calc.py`, 11 de noviembre de 2026,
   sobre los cuatro caserones (928 barrenos, 982.420 registros).
 
@@ -101,10 +101,11 @@ se mantiene al menos 5 m es de 225,1 bar en la PP y de 81,0 bar en la RP.
 | | Equipo sin perforar | 14.114 | 861.947 |
 | | Continuidad del registro | 1.123 | 860.824 |
 | | Registros sin DI calculable | 3 | **860.821** (serie filtrada) |
-| Solo entrenamiento | PR, RP, DP o PP fuera del rango del equipo | 24.939 | **835.882** (entrenables) |
-| Discontinuidad | DI > 1 | 145.462 | **690.420** (entrenamiento) |
+| Solo entrenamiento | PR, RP, DP o PP fuera del rango del equipo | 24.939 | **835.885** (entrenables) |
+| Discontinuidad | DI > 1 | 145.465 | **690.420** (entrenamiento) |
 
-Cada registro se cuenta en un solo filtro, en el orden de la tabla.
+Cada registro se cuenta en un solo filtro, en el orden de la tabla. Los 3 registros sin DI calculable siguen siendo entrenables (el filtro de
+discontinuidad solo excluye DI > 1), por eso los entrenables son 835.885.
 
 Cifras del texto que cambian:
 
@@ -115,8 +116,8 @@ Cifras del texto que cambian:
 | 65 registros sin DI calculable | 3 |
 | Serie filtrada 886.659 | 860.821 |
 | Rango de PP y continuidad: 17.200 | Límites del equipo (roca): 24.939 |
-| Entrenables 869.459 | 835.882 |
-| Total excluido 112.961 | 146.538 |
+| Entrenables 869.459 | 835.885 |
+| Total excluido 112.961 | 146.535 |
 | Roca intacta 723.601 | Roca continua 690.420 |
 
 Detalle para el texto (`Tabla_5.1b_NUEVA_detalle_limites_equipo_roca`):
@@ -466,7 +467,7 @@ Sobre **690.420** registros de roca continua de **920** barrenos (el texto dice
 
 ## 7. Archivos de reemplazo
 
-| En la memoria | Archivo en `figuras/tesis_2026-11-11/reemplazo/` |
+| En la memoria | Archivo en `figuras/tesis_2026-11-13/reemplazo/` |
 |---|---|
 | Tabla 5.1 | `Tabla_5.1_resumen_filtros` |
 | (nueva) | `Tabla_5.1b_NUEVA_detalle_limites_equipo_roca` |

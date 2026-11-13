@@ -76,6 +76,14 @@ def guardar(fig, nombre):
         for eje in (ax.xaxis, ax.yaxis):
             if type(eje.get_major_formatter()) is ScalarFormatter:
                 eje.set_major_formatter(FuncFormatter(_coma))
+    # Sin títulos (pedido del autor, 2026-11-13): fuera el título general y,
+    # si la figura tiene un solo gráfico, también el de su eje. Los rótulos de
+    # panel de las figuras de varios gráficos se conservan.
+    if fig._suptitle is not None:
+        fig._suptitle.remove(); fig._suptitle = None
+    ejes = [a for a in fig.axes if not hasattr(a, "_colorbar") and a.get_label() != "<colorbar>"]
+    if len(ejes) == 1:
+        for loc in ("center", "left", "right"): ejes[0].set_title("", loc=loc)
     fig.savefig(f"{OUT}/{nombre}", dpi=300, bbox_inches="tight", facecolor="white")
     plt.close(fig); hechas.append(nombre); print("OK", nombre, flush=True)
 
@@ -100,7 +108,6 @@ def tabla_png(nombre, titulo, cab, filas, anchos=None, nota=None, fs=9, ancho_fi
             c.set_facecolor("#B4C6E7" if i % 2 else "#D9E1F2")
         if alinear_izq and j in alinear_izq and i > 0:
             c.set_text_props(ha="left"); c._loc = "left"; c.PAD = 0.03
-    ax.set_title(titulo, fontsize=13, pad=6, loc="center", color="#404040")
     guardar(fig, nombre + ".png")
 
 
@@ -119,7 +126,9 @@ if RFIL:
     C = RFIL["conteo"]; tot = RFIL["total"]; em = RFIL["emboquillado"]
     r1 = tot - C["emboquillado"]; r2 = r1 - C["barra_detencion"] - C["barra_margen"]
     r3 = r2 - C["equipo"]; r4 = r3 - C["continuidad"]; r5 = r4 - C.get("sin_di", 0)
-    ent = r5 - C["roca"]; emb_f = R["embudo"]
+    # Los registros sin DI calculable no salen del entrenamiento (el filtro de
+    # discontinuidad solo excluye DI > 1): los entrenables se cuentan desde r4.
+    ent = r4 - C["roca"]; emb_f = R["embudo"]
     n_ent = R["entrenamiento"]["n"]
     filas = [["Carga", f"Registros MWD de {len(R.get('pozos', [])) or 928} barrenos", "—", mil(tot)],
              ["Antes del DI", "Emboquillado (meseta de PP)", mil(C["emboquillado"]), mil(r1)],
@@ -128,7 +137,7 @@ if RFIL:
              ["", "Continuidad del registro (salto > 2,95 cm)", mil(C["continuidad"]), mil(r4)],
              ["", "Registros sin DI calculable", mil(C.get("sin_di", 0)), f"{mil(r5)} (serie filtrada)"],
              ["Solo entrenamiento", "PR, RP, DP o PP fuera del rango del equipo", mil(C["roca"]), f"{mil(ent)} (entrenables)"],
-             ["Discontinuidad", f"DI > {dec(UMB, 1)} y registros sin etiqueta de UCS", mil(ent - n_ent), f"{mil(n_ent)} (entrenamiento)"]]
+             ["Discontinuidad", f"DI > {dec(UMB, 1)}", mil(ent - n_ent), f"{mil(n_ent)} (entrenamiento)"]]
     tabla_png("T5_01_resumen_filtros", "Resumen de filtros y registros por etapa",
               ["Etapa", "Filtro", "Registros excluidos", "Registros restantes"], filas,
               anchos=[0.16, 0.46, 0.16, 0.22], ancho_fig=11, alinear_izq=(1,))
@@ -791,7 +800,7 @@ for k, lst in RK["criterios"].items():
         filas.append([CRIT[k], str(i), dec(c["pp"], 0), dec(c["pr"], 0), dec(c["pa"], 0), dec(c["pd"], 0), dec(c["pf"], 0),
                       dec(c["vel"], 2), dec(c["se"], 0), dec(c["se_cv"], 3), c["well"], dec(c["largo"], 1)])
 tabla_png("T6_04_ranking_recomendaciones", f"Ranking de 5 recomendaciones históricas — dominio {RK['grupo']}",
-          ["Criterio", "N°", "PP [bar]", "RP [bar]", "FP [bar]", "DP [bar]", "FLP [bar]", "PR [m/min]", "PEP", "CV PEP", "Pozo", "Prof. [m]"],
+          ["Criterio", "N°", "PP [bar]", "RP [bar]", "FP [bar]", "DP [bar]", "FLP [bar]", "PR [m/min]", "PEP", "CV PEP", "Barreno", "Prof. [m]"],
           filas, nota="Segmentos continuos de ≥ 5 registros entrenables del mismo dominio, DI ≤ 1, en barrenos de ≥ 20 m. PEP en bar·min/m.",
           anchos=[0.15, 0.035, 0.06, 0.06, 0.06, 0.06, 0.06, 0.075, 0.055, 0.065, 0.21, 0.07], fs=8, ancho_fig=15)
 

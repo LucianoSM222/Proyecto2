@@ -15805,7 +15805,7 @@ def do_topn(n, group_id, method):
                           color="warning", style={"fontSize":"11px","padding":"6px 10px"})
     method_labels = {"min_se_cv":"Mínima variación interna de SE","min_se":"Mínima SE","max_rop":"Máxima PR"}
     header = dbc.Row([
-        dbc.Col(html.Small("Pozo", style={"color":"#888","fontWeight":700}), width=2),
+        dbc.Col(html.Small("Barreno", style={"color":"#888","fontWeight":700}), width=2),
         dbc.Col(html.Small("Prof. [m]", style={"color":"#888","fontWeight":700}), width=1),
         dbc.Col(html.Small("PR", style={"color":"#888","fontWeight":700}), width=1),
         dbc.Col(html.Small("SE", style={"color":"#888","fontWeight":700}), width=1),

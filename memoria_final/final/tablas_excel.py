@@ -108,14 +108,17 @@ _et = [("Carga", "Registros MWD de 928 barrenos", None),
        ("Solo entrenamiento", "PR, RP, DP o PP fuera del rango del equipo", _C["roca"])]
 _r0 = ws._fila + 1
 _fil = [[e, f_, 0 if n_ is None else n_, RFIL["total"] if k == 0 else f"=D{_r0 + k - 1}-C{_r0 + k}"] for k, (e, f_, n_) in enumerate(_et)]
-_fil.append(["Discontinuidad", "DI > 1 y registros sin etiqueta de UCS", f"=D{_r0 + len(_et) - 1}-D{_r0 + len(_et)}", _n_ent])
+# Los registros sin DI calculable siguen siendo entrenables: «solo entrenamiento»
+# se resta desde la fila de continuidad, no desde la de sin DI.
+_fil[-1][3] = f"=D{_r0 + len(_et) - 3}-C{_r0 + len(_et) - 1}"
+_fil.append(["Discontinuidad", "DI > 1", f"=D{_r0 + len(_et) - 1}-D{_r0 + len(_et)}", _n_ent])
 tabla(ws, ["Etapa", "Filtro", "Registros excluidos", "Registros restantes"], _fil, fmt=[None, None, "#,##0", "#,##0"])
 titulo(ws, "Registros fuera de los límites del equipo, según su tratamiento")
 tabla(ws, ["Tratamiento", "Condición", "Registros"],
       [["Sale del DI y del entrenamiento", k, v] for k, v in RFIL["equipo_detalle"].items()] +
       [["Solo sale del entrenamiento", k, v] for k, v in RFIL["roca_detalle"].items()], fmt=[None, None, "#,##0"])
 titulo(ws, "Emboquillado por meseta de PP: largo del corte por barreno")
-tabla(ws, ["Corte [m]", "Pozos"], [[k, v] for k, v in RFIL["emboquillado"]["histograma_m"].items()], fmt=[None, "#,##0"])
+tabla(ws, ["Corte [m]", "Barrenos"], [[k, v] for k, v in RFIL["emboquillado"]["histograma_m"].items()], fmt=[None, "#,##0"])
 VB = json.load(open(os.path.join(_pb, "validacion_barra.json"), encoding="utf-8"))
 ws = hoja("Barra"); titulo(ws, "Validación del largo de barra con los registros")
 _dd = VB["diferencias_entre_detenciones"]; _bl = VB["barrido_L"]; _lp = VB["L_por_pozo"]
@@ -139,7 +142,7 @@ tabla(ws, ["Etapa", "Quedan", "Perdidos"], [[e["label"], e["quedan"], e["perdido
       fmt=[None, "#,##0", "#,##0"])
 E = R["entrenamiento"]
 titulo(ws, "Entrenamiento por caserón")
-_, a, b = tabla(ws, ["Caserón", "Registros", "Pozos"],
+_, a, b = tabla(ws, ["Caserón", "Registros", "Barrenos"],
                 [[k, v["n_puntos"], v["n_pozos"]] for k, v in E["por_caseron"].items()], fmt=[None, "#,##0", "#,##0"])
 ws.cell(b + 1, 1, "Total").font = Font(name=FUENTE, bold=True)
 ws.cell(b + 1, 2, f"=SUM(B{a}:B{b})").number_format = "#,##0"; ws.cell(b + 1, 3, f"=SUM(C{a}:C{b})").number_format = "#,##0"
@@ -184,7 +187,7 @@ if os.path.exists(FV):
     for et, bloque in [("Cuatro caserones", {"TOTAL": DV["global"]})] + [(f"Caserón {k}", {k: v}) for k, v in sorted(DV["por_caseron"].items())]:
         titulo(ws, et)
         (k, d), = bloque.items()
-        tabla(ws, ["Ventana [muestras]", "Ventana [cm]", "Pozos", "Barrenos sin DI (cortos)", "Registros con DI", "Picos",
+        tabla(ws, ["Ventana [muestras]", "Ventana [cm]", "Barrenos", "Barrenos sin DI (cortos)", "Registros con DI", "Picos",
                    "Picos por 100 m", "% sobre umbral"],
               [[d[str(v)]["ventana"], d[str(v)]["ventana_cm"], d[str(v)]["pozos"], d[str(v)]["pozos_sin_di"],
                 d[str(v)]["registros_con_di"], d[str(v)]["picos"], d[str(v)]["picos_por_100m"],
@@ -345,7 +348,7 @@ FRP = os.path.join(os.path.dirname(SRC), "rop_presiones.json")
 if os.path.exists(FRP):
     RPJ = json.load(open(FRP, encoding="utf-8")); ws = hoja("PR vs presiones")
     titulo(ws, "Relación de la PR con PP, FP, RP y DP (roca continua entrenable; FLP excluida por criterio físico)")
-    tabla(ws, ["Grupo", "Presión", "Registros", "Pozos", "ρ simple", "ρ parcial", "ρ dentro del barreno", "R² sola (rangos)", "R² las 4 (rangos)", "Mediana [bar]"],
+    tabla(ws, ["Grupo", "Presión", "Registros", "Barrenos", "ρ simple", "ρ parcial", "ρ dentro del barreno", "R² sola (rangos)", "R² las 4 (rangos)", "Mediana [bar]"],
           [[NOM_LITO.get(g, g), p, d["n"], d["n_pozos"], v["rho_simple"], v["rho_parcial"], v["rho_intra_pozo"], v["r2_sola"], d["r2_rangos_las_4"], v["mediana"]]
            for g, d in RPJ["grupos"].items() for p, v in zip(siglas_xml(d["presiones"]), d["presiones"].values())],
           fmt=[None, None, "#,##0", "#,##0", "+0.000;-0.000", "+0.000;-0.000", "+0.000;-0.000", "0.000", "0.000", "0.0"])
@@ -374,7 +377,7 @@ FCC = os.path.join(os.path.dirname(SRC), "concordancia_caserones.json")
 if os.path.exists(FCC):
     CC = json.load(open(FCC, encoding="utf-8")); ws = hoja("Concordancia caserones")
     titulo(ws, "Picos de DI y cruces de malla: 4 caserones, PCC_0042 (calibración) y PCC_1541 (prueba)")
-    tabla(ws, ["Conjunto", "Pozos", "Barrenos con cruces", "Picos (umbral 1)", "Desfase medio [m]", "Desfase mediano [m]", "σ desfase [m]"],
+    tabla(ws, ["Conjunto", "Barrenos", "Barrenos con cruces", "Picos (umbral 1)", "Desfase medio [m]", "Desfase mediano [m]", "σ desfase [m]"],
           [[k, C["n_pozos"], C["n_pozos_con_cruces"], C["desfase"]["n"], C["desfase"]["media"], C["desfase"]["mediana"], C["desfase"]["sd"]]
            for k, C in CC["conjuntos"].items()], fmt=[None, "#,##0", "#,##0", "#,##0", "0.00", "0.00", "0.00"])
     for k, C in CC["conjuntos"].items():
