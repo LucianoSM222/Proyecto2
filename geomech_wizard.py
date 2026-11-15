@@ -2720,6 +2720,36 @@ def _plan_prefix_sim(pid_a, pid_b):
         else: break
     return s
 
+def _candidatos_propios(dq_results, pid, hid):
+    """Revisiones del barreno `hid` en su propio plan, la más reciente primero y
+    sin repetir coordenadas idénticas."""
+    plan = dq_results.get(pid) or {}
+    revs = list((plan.get("revisiones") or {}).get(hid) or [])
+    if not revs and hid in plan.get("tiros", {}):
+        revs = [plan["tiros"][hid]]
+    out, vistos = [], set()
+    for t in reversed(revs):
+        firma = tuple(round(t[k][c], 3) for k in ("collar", "final_pt") for c in ("este", "norte", "cota"))
+        if firma in vistos: continue
+        vistos.add(firma); out.append((pid, t))
+    return out
+
+
+def _elegir_registro_mwd(mw_list, dq_results):
+    """Con varios registros MWD del mismo barreno (reperforación, registro
+    retomado), se usa el que tiene una posición coherente en su propio plan y,
+    entre esos, el de más muestras. Sin ninguno coherente, el de mayor largo
+    (regla anterior). P07_H13: 1.043 muestras desde 0 m contra 256 desde 11,3 m."""
+    if len(mw_list) == 1:
+        return mw_list[0]
+    coherentes = [m for m in mw_list
+                  if any(_coherence_err(m["largo_max"], t["collar"], t["final_pt"]) < COHERENCE_TOL
+                         for _, t in _candidatos_propios(dq_results, m["plan_id"], m["hole_id"]))]
+    if coherentes:
+        return max(coherentes, key=lambda m: (len(m.get("puntos") or []), m["largo_max"]))
+    return max(mw_list, key=lambda m: m["largo_max"])
+
+
 def match_and_place_wells(dq_results, mw_by_hole,
                           asignar_por_tolerancia: bool = False,
                           tolerancia_err_pct: float = 0.0):
@@ -2760,18 +2790,15 @@ def match_and_place_wells(dq_results, mw_by_hole,
               "descartados_sin_registro": 0, "descartados": []}
     largo_min = get_param("carga.largo_min_m")
     for key, mw_list in mw_by_hole.items():
-        best = max(mw_list, key=lambda m: m["largo_max"])
+        best = _elegir_registro_mwd(mw_list, dq_results)
         pid = best["plan_id"]; hid = best["hole_id"]; largo_max = best["largo_max"]
 
         # ── Lista ORDENADA de candidatos DQ para este hole_id ──
         # 1º el match exacto de plan_id (si existe), luego los DQ hermanos
         # ordenados por similitud de prefijo de plan_id (descendente). Se
         # deduplica por plan_id (cada plan aporta a lo más un tiro por hole).
-        candidates = []  # [(pid_dq, tiro)]
-        seen_pids = set()
-        if pid in dq_results and hid in dq_results[pid].get("tiros", {}):
-            candidates.append((pid, dq_results[pid]["tiros"][hid]))
-            seen_pids.add(pid)
+        candidates = _candidatos_propios(dq_results, pid, hid)  # [(pid_dq, tiro)]
+        seen_pids = {pid} if candidates else set()
         if hid in all_holes:
             for pid_dq, tiro in sorted(all_holes[hid],
                                        key=lambda x: -_plan_prefix_sim(pid, x[0])):
@@ -3175,6 +3202,11 @@ def merge_dq_siblings(dq_list: List[Dict]) -> Tuple[Dict[str, Dict], Dict]:
                         "pierde": f'{antes.get("fname","?")} ({antes.get("fecha","sin fecha")})',
                     })
             destino["tiros"][hid] = t
+            # Todas las revisiones del barreno, de la más antigua a la más
+            # reciente: la vigente no siempre es la que corresponde a lo
+            # perforado, y el matching las prueba todas antes de ir a un plan
+            # hermano (P07 de PCS_1043, 2026-11-15).
+            destino.setdefault("revisiones", {}).setdefault(hid, []).append(t)
             procedencia[(pid, hid)] = dq
         # El plan hereda la fecha/archivo de la revisión más reciente que lo tocó.
         destino["fecha"] = dq.get("fecha", "")

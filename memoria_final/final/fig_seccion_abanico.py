@@ -15,7 +15,29 @@ GWZ, CAS, AB, VAR, OUT = sys.argv[1:6]
 with open(cc.VOCABULARIO, encoding="utf-8") as f: gw.import_vocabulary(f.read())
 gw.seed_param_registry()
 with open(cc.PERFIL, encoding="utf-8") as f: gw.import_site_profile(f.read())
-gw.load_project(GWZ)
+import glob, os
+APROX = set()
+if GWZ == "fresco":
+    # Carga directa del caserón con el cargador vigente; los barrenos del
+    # abanico que no cumplen la coherencia estricta se agregan por tolerancia
+    # (7 %) y quedan marcados como posición aproximada.
+    cc.asegurar_datos_extraidos(); cc.cargar_caseron(CAS, verbose=False)
+    carpeta = cc._carpeta_mwd(CAS)
+    plan = next(gw.wells[w].plan_id for w in gw.wells if gw._abanico_de_pozo(gw.wells[w]) == AB and (gw.wells[w].caseron == CAS))
+    dqs = [gw.parse_dq(p, os.path.basename(p)) for p in glob.glob(os.path.join(carpeta, f"DQ{plan}_*.xml"))]
+    dq_res, _ = gw.merge_dq_siblings(dqs)
+    cargados = {gw.wells[w].hole_id for w in gw.wells if gw.wells[w].plan_id == plan}
+    faltan = {}
+    for p in glob.glob(os.path.join(carpeta, f"MW{plan.replace('_P', '_P')}H*_*.xml")):
+        mw = gw.parse_mw(p, os.path.basename(p))
+        if mw["puntos"] and mw["hole_id"] not in cargados:
+            faltan.setdefault(f"{mw['plan_id']}_H{mw['hole_id']}", []).append(mw)
+    antes = set(gw.wells)
+    gw.match_and_place_wells(dq_res, faltan, asignar_por_tolerancia=True, tolerancia_err_pct=7.0)
+    for wn in set(gw.wells) - antes:
+        gw.wells[wn].caseron = CAS; APROX.add(gw.wells[wn].hole_id)
+else:
+    gw.load_project(GWZ)
 plt.rcParams.update({"font.family": "Carlito", "font.size": 11, "axes.edgecolor": "#BFBFBF",
                      "axes.labelcolor": "#404040", "xtick.color": "#595959", "ytick.color": "#595959",
                      "legend.frameon": False})
@@ -25,7 +47,9 @@ _col = np.array([[min(w.points, key=lambda p: p.largo).este, min(w.points, key=l
                   min(w.points, key=lambda p: p.largo).cota] for w in ws])
 _med = np.median(_col, 0)
 fuera = [w.hole_id for w, cc_ in zip(ws, _col) if np.linalg.norm(cc_ - _med) > 4.0]
-ws = [w for w, cc_ in zip(ws, _col) if np.linalg.norm(cc_ - _med) <= 4.0]
+SIN_FILTRO = len(sys.argv) > 6 and sys.argv[6] == "todo"
+if not SIN_FILTRO:
+    ws = [w for w, cc_ in zip(ws, _col) if np.linalg.norm(cc_ - _med) <= 4.0]
 P = np.array([[p.este, p.norte, p.cota] for w in ws for p in w.points])
 c = P.mean(0); _, _, vt = np.linalg.svd(P - c, full_matrices=False); n = vt[2]
 h = np.cross(n, [0, 0, 1.0]); h /= np.linalg.norm(h)
@@ -112,19 +136,22 @@ for w in ws:
     Q = uv(np.array([[p.este, p.norte, p.cota] for p in pts]))
     ax.plot(Q[:, 0], Q[:, 1], "-", color="#BFBFBF", lw=0.8, zorder=1)
     for q, p, ok in zip(Q, pts, m):
-        if ok: xs.append(q[0]); ys.append(q[1]); vs.append(getattr(p, cfg[0]))
+        if ok or SIN_FILTRO:
+            v = getattr(p, cfg[0])
+            xs.append(q[0]); ys.append(q[1]); vs.append(v if np.isfinite(v) else cfg[3] * 10)
     ax.plot(Q[0, 0], Q[0, 1], "s", color="#404040", ms=4, zorder=5)
-    ax.text(Q[-1, 0], Q[-1, 1], " " + w.hole_id.replace(w.plan_id, "").strip("_") if w.hole_id else "", fontsize=8,
+    ax.text(Q[-1, 0], Q[-1, 1], " " + w.hole_id + ("*" if w.hole_id in APROX else "") + " ", fontsize=8.5,
             color="#404040", ha="left" if Q[-1, 0] >= Q[0, 0] else "right", va="center", zorder=6)
 sc = ax.scatter(xs, ys, c=vs, s=7, cmap=cfg[4], vmin=cfg[2], vmax=cfg[3], zorder=4, lw=0)
 cb = fig.colorbar(sc, ax=ax, shrink=0.75, pad=0.015, extend="both"); cb.set_label(cfg[1])
 ax.set_xlim(umin - M, umax + M); ax.set_ylim(zmin - M, zmax + M); ax.set_aspect("equal", adjustable="box")
 ax.set_xlabel("Distancia a lo largo de la sección [m]"); ax.set_ylabel("Cota [m]")
 ax.grid(True, color="#E6E6E6", lw=0.6); ax.set_axisbelow(True)
-ax.legend(handles=leg + [Line2D([], [], marker="s", color="#404040", ls="", ms=5, label="Collar del barreno")],
+ax.legend(handles=leg + [Line2D([], [], marker="s", color="#404040", ls="", ms=5, label="Collar del barreno")]
+          + ([Line2D([], [], ls="", label="* posición aproximada (largo a 6 % del DQ)")] if APROX else []),
           loc="upper center", bbox_to_anchor=(0.5, -0.09), ncol=3, fontsize=9.5)
 c_ = lambda v, _p=None: (f"{v:.6f}".rstrip("0").rstrip(".") or "0").replace(".", ",")
 ax.xaxis.set_major_formatter(FuncFormatter(c_)); ax.yaxis.set_major_formatter(FuncFormatter(c_))
 fig.tight_layout(); fig.savefig(OUT, dpi=300, bbox_inches="tight", facecolor="white")
 az = np.degrees(np.arctan2(h[0], h[1])) % 180
-print("OK", OUT, f"fuera del collar principal: {fuera};", f"{len(ws)} barrenos, rumbo de la sección {az:.0f}°, normal {n.round(3)}, buzamiento normal {np.degrees(np.arcsin(abs(n[2]))):.1f}°")
+print("OK", OUT, f"aprox: {sorted(APROX)}; barrenos: {sorted(int(w.hole_id) for w in ws)}; fuera del collar principal: {fuera};", f"{len(ws)} barrenos, rumbo de la sección {az:.0f}°, normal {n.round(3)}, buzamiento normal {np.degrees(np.arcsin(abs(n[2]))):.1f}°")

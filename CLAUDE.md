@@ -272,6 +272,7 @@ Mantener al día. Evita releer la hoja de ruta completa para saber dónde vamos.
 | E3 | DI en dos clases: continua (≤ 1) / discontinua (> 1) | — | ✅ — figuras sin regenerar |
 | E4 | Barra validada (1,755 m) · margen tras la detención · límites del equipo (equipo sale del DI, roca se queda) · sin regulación | — | ✅ |
 | E5 | Corrida final con la limpieza nueva · figuras y tablas de reemplazo de la memoria · `docs/cambios_tesis_2026-11-11.md` | — | ✅ `figuras/tesis_2026-11-11/reemplazo/` |
+| E6 | Cargador: revisiones del DQ y registros MWD repetidos (`_candidatos_propios`, `_elegir_registro_mwd`) | — | ✅ — +9 barrenos, 14 reubicados, 3 con registro completo (937 barrenos, 989.368 registros); **falta re-correr `final_calc.py`**: las cifras de la memoria siguen siendo las de 928/982.420 |
 
 Hallazgos que condicionan la interpretación, no defectos pendientes:
 
