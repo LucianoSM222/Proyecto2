@@ -43,6 +43,9 @@ plt.rcParams.update({"font.family": "Carlito", "font.size": 11, "axes.edgecolor"
                      "legend.frameon": False})
 ws = [w for w in gw.wells.values() if (w.caseron or gw.caseron_de_pozo(w)) == CAS and gw._abanico_de_pozo(w) == AB]
 ws.sort(key=lambda w: w.hole_id)
+# Barrenos que se omiten del dibujo, a pedido (p. ej. EXCLUIR=17,18).
+_excl = {x.strip() for x in os.environ.get("EXCLUIR", "").split(",") if x.strip()}
+ws = [w for w in ws if str(w.hole_id) not in _excl]
 _col = np.array([[min(w.points, key=lambda p: p.largo).este, min(w.points, key=lambda p: p.largo).norte,
                   min(w.points, key=lambda p: p.largo).cota] for w in ws])
 _med = np.median(_col, 0)
