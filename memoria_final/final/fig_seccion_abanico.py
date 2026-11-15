@@ -159,7 +159,12 @@ if VAR == "di":
     from matplotlib.colors import TwoSlopeNorm
     if sin_di:
         SD = np.array(sin_di); ax.scatter(SD[:, 0], SD[:, 1], s=4, color="#D0D0D0", zorder=3, lw=0)
-    sc = ax.scatter(xs, ys, c=vs, s=7, cmap=cfg[4], norm=TwoSlopeNorm(vmin=0.0, vcenter=1.0, vmax=3.0), zorder=4, lw=0)
+    # Dos clases con corte nítido en DI = 1: azules para la roca continua
+    # (≤ 1) y naranjo a rojo para la discontinua (> 1), sin tono intermedio.
+    from matplotlib.colors import ListedColormap
+    _azul = plt.cm.Blues(np.linspace(0.95, 0.45, 128)); _rojo = plt.cm.YlOrRd(np.linspace(0.45, 1.0, 128))
+    cmap_di = ListedColormap(np.vstack([_azul, _rojo]))
+    sc = ax.scatter(xs, ys, c=vs, s=7, cmap=cmap_di, norm=TwoSlopeNorm(vmin=0.0, vcenter=1.0, vmax=3.0), zorder=4, lw=0)
     cb = fig.colorbar(sc, ax=ax, shrink=0.75, pad=0.015, extend="max", ticks=[0, 0.5, 1, 1.5, 2, 2.5, 3])
     cb.set_label("DI  (≤ 1 roca continua · > 1 roca discontinua)")
     cb.ax.axhline(1.0, color="black", lw=1.2)
