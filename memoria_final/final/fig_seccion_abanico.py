@@ -1,7 +1,7 @@
 """Sección 2D en el plano de un abanico: corte de las mallas DXF (litología y
 estructuras) con el plano del abanico y los barrenos coloreados por PEP o por
 PR (serie filtrada del DI).
-Uso: python3 fig_seccion_abanico.py proyecto_final.gwz CASERON ABANICO {pep|pr} salida.png [json]"""
+Uso: python3 fig_seccion_abanico.py proyecto_final.gwz CASERON ABANICO {pep|pr|di} salida.png [todo]"""
 import sys, json
 sys.path.insert(0, "/home/user/Proyecto2")
 import numpy as np
@@ -38,6 +38,11 @@ if GWZ == "fresco":
         gw.wells[wn].caseron = CAS; APROX.add(gw.wells[wn].hole_id)
 else:
     gw.load_project(GWZ)
+if VAR == "di" and GWZ == "fresco":
+    _fin = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "final.json"), encoding="utf-8"))["di_vigente"]
+    gw.aplicar_limpieza_estandar()
+    gw.create_di_variant("calibrada_RQD_5m", _fin["pesos"], window=_fin["window"], threshold=_fin["umbral"])
+    gw.activar_di("calibrada_RQD_5m"); gw.compute_di()
 plt.rcParams.update({"font.family": "Carlito", "font.size": 11, "axes.edgecolor": "#BFBFBF",
                      "axes.labelcolor": "#404040", "xtick.color": "#595959", "ytick.color": "#595959",
                      "legend.frameon": False})
@@ -132,26 +137,42 @@ for nm, L in gw.layers.items():
         if ("l", "contacto") not in vistas:
             vistas.add(("l", "contacto")); leg.append(Line2D([], [], color="#595959", lw=1, label="Contacto litológico (malla)"))
 # barrenos
-cfg = {"pep": ("se", "PEP [bar·min/m]", 150, 650, "viridis"), "pr": ("vel", "PR [m/min]", 0.3, 1.5, "plasma")}[VAR]
+cfg = {"pep": ("se", "PEP [bar·min/m]", 150, 650, "viridis"), "pr": ("vel", "PR [m/min]", 0.3, 1.5, "plasma"),
+       "di": ("di", "Índice de discontinuidad (DI)", 0.0, 3.0, "RdYlBu_r")}[VAR]
+sin_di = []
 xs, ys, vs = [], [], []
 for w in ws:
     pts = sorted(w.points, key=lambda p: p.largo); m = gw.mascara_serie_di(pts)
     Q = uv(np.array([[p.este, p.norte, p.cota] for p in pts]))
     ax.plot(Q[:, 0], Q[:, 1], "-", color="#BFBFBF", lw=0.8, zorder=1)
     for q, p, ok in zip(Q, pts, m):
+        if VAR == "di":
+            if p.di is None or not np.isfinite(p.di): sin_di.append(q); continue
+            xs.append(q[0]); ys.append(q[1]); vs.append(p.di); continue
         if ok or SIN_FILTRO:
             v = getattr(p, cfg[0])
             xs.append(q[0]); ys.append(q[1]); vs.append(v if np.isfinite(v) else cfg[3] * 10)
     ax.plot(Q[0, 0], Q[0, 1], "s", color="#404040", ms=4, zorder=5)
     ax.text(Q[-1, 0], Q[-1, 1], " " + w.hole_id + ("*" if w.hole_id in APROX else "") + " ", fontsize=8.5,
             color="#404040", ha="left" if Q[-1, 0] >= Q[0, 0] else "right", va="center", zorder=6)
-sc = ax.scatter(xs, ys, c=vs, s=7, cmap=cfg[4], vmin=cfg[2], vmax=cfg[3], zorder=4, lw=0)
-cb = fig.colorbar(sc, ax=ax, shrink=0.75, pad=0.015, extend="both"); cb.set_label(cfg[1])
+if VAR == "di":
+    from matplotlib.colors import TwoSlopeNorm
+    if sin_di:
+        SD = np.array(sin_di); ax.scatter(SD[:, 0], SD[:, 1], s=4, color="#D0D0D0", zorder=3, lw=0)
+    sc = ax.scatter(xs, ys, c=vs, s=7, cmap=cfg[4], norm=TwoSlopeNorm(vmin=0.0, vcenter=1.0, vmax=3.0), zorder=4, lw=0)
+    cb = fig.colorbar(sc, ax=ax, shrink=0.75, pad=0.015, extend="max", ticks=[0, 0.5, 1, 1.5, 2, 2.5, 3])
+    cb.set_label("DI  (≤ 1 roca continua · > 1 roca discontinua)")
+    cb.ax.axhline(1.0, color="black", lw=1.2)
+    cb.ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _p=None: (f"{v:.1f}").replace(".", ",")))
+else:
+    sc = ax.scatter(xs, ys, c=vs, s=7, cmap=cfg[4], vmin=cfg[2], vmax=cfg[3], zorder=4, lw=0)
+    cb = fig.colorbar(sc, ax=ax, shrink=0.75, pad=0.015, extend="both"); cb.set_label(cfg[1])
 ax.set_xlim(umin - M, umax + M); ax.set_ylim(zmin - M, zmax + M); ax.set_aspect("equal", adjustable="box")
 ax.set_xlabel("Distancia a lo largo de la sección [m]"); ax.set_ylabel("Cota [m]")
 ax.grid(True, color="#E6E6E6", lw=0.6); ax.set_axisbelow(True)
 ax.legend(handles=leg + [Line2D([], [], marker="s", color="#404040", ls="", ms=5, label="Collar del barreno")]
-          + ([Line2D([], [], ls="", label="* posición aproximada (largo a 6 % del DQ)")] if APROX else []),
+          + ([Line2D([], [], ls="", label="* posición aproximada (largo a 6 % del DQ)")] if APROX else [])
+          + ([Line2D([], [], marker="o", color="#D0D0D0", ls="", ms=4, label="Sin DI (registro filtrado)")] if VAR == "di" else []),
           loc="upper center", bbox_to_anchor=(0.5, -0.09), ncol=3, fontsize=9.5)
 c_ = lambda v, _p=None: (f"{v:.6f}".rstrip("0").rstrip(".") or "0").replace(".", ",")
 ax.xaxis.set_major_formatter(FuncFormatter(c_)); ax.yaxis.set_major_formatter(FuncFormatter(c_))
