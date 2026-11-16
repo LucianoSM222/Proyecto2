@@ -14,22 +14,27 @@ with open(cc.VOCABULARIO, encoding="utf-8") as f: gw.import_vocabulary(f.read())
 gw.seed_param_registry()
 with open(cc.PERFIL, encoding="utf-8") as f: gw.import_site_profile(f.read())
 gw.load_project(sys.argv[1])
-PR_LO, PR_HI, BIN, NMIN, TRAMO = 1.0, 1.2, 5.0, 200, 5.0
+PR_LO, PR_HI, BIN, NMIN, NMIN_FALLA, TRAMO = 1.0, 1.2, 5.0, 200, 50, 5.0
+# Dominio: la litología, o «litología::estructura» si el registro está en una falla de la malla.
+dom = lambda p: (f"{p.lito}::{p.estructura}" if p.estructura else p.lito) if p.lito else None
+es_falla = lambda d: "::" in d
 acc = defaultdict(lambda: defaultdict(lambda: {"pr": [], "pep": []}))
 tramos = defaultdict(list)
 for wn, w in gw.wells.items():
     ps = sorted(w.points, key=lambda p: p.largo)
-    ok = [p.entrenable and p.di is not None and p.di <= 1.0 and p.lito and np.isfinite(p.se) for p in ps]
+    # roca continua (DI ≤ 1) en la litología; en falla se usa todo registro con DI
+    ok = [p.entrenable and p.di is not None and dom(p) is not None and np.isfinite(p.se)
+          and (p.di <= 1.0 or es_falla(dom(p))) for p in ps]
     for p, k in zip(ps, ok):
         if k:
-            d = acc[p.lito][float(np.floor(p.pp / BIN) * BIN + BIN / 2)]
+            d = acc[dom(p)][float(np.floor(p.pp / BIN) * BIN + BIN / 2)]
             d["pr"].append(p.vel); d["pep"].append(p.se)
     if not ps: continue
     L = np.array([p.largo for p in ps])
     for a in np.arange(0, L[-1], TRAMO):
         idx = [i for i in np.flatnonzero((L >= a) & (L < a + TRAMO))]
         if len(idx) < 150: continue
-        lit = {ps[i].lito for i in idx}
+        lit = {dom(ps[i]) for i in idx}
         if len(lit) != 1 or None in lit: continue
         sel = [i for i in idx if ok[i]]
         if len(sel) < 0.8 * len(idx): continue
@@ -38,13 +43,13 @@ for wn, w in gw.wells.items():
         tramos[lit.pop()].append({"barreno": wn, "caseron": gw.caseron_de_pozo(w), "desde_m": round(float(a), 1),
                                   "pp": round(float(pp.mean()), 1), "pr": round(float(pr.mean()), 3),
                                   "pep": round(float(pep.mean()), 1), "cv_pep": round(float(pep.std() / pep.mean()), 4)})
-R = {"criterio": {"pr_objetivo": [PR_LO, PR_HI], "bin_pp_bar": BIN, "n_min_bin": NMIN,
-                  "datos": "4 caserones, registros entrenables con DI ≤ 1"}, "litologias": {}}
+R = {"criterio": {"pr_objetivo": [PR_LO, PR_HI], "bin_pp_bar": BIN, "n_min_bin": NMIN, "n_min_bin_falla": NMIN_FALLA,
+                  "datos": "4 caserones, registros entrenables; litología con DI ≤ 1, falla (litología::estructura) con todo DI"}, "litologias": {}}
 for lit, bins in acc.items():
     curva = []
     for pp in sorted(bins):
         pr = np.array(bins[pp]["pr"]); pep = np.array(bins[pp]["pep"])
-        if pr.size < NMIN: continue
+        if pr.size < (NMIN_FALLA if es_falla(lit) else NMIN): continue
         curva.append({"pp": pp, "n": int(pr.size), "pr_mediana": round(float(np.median(pr)), 3),
                       "pep_mediana": round(float(np.median(pep)), 1), "pep_sd": round(float(pep.std()), 1),
                       "pep_var": round(float(pep.var()), 0)})
