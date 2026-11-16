@@ -6,7 +6,7 @@ Uso: python3 cartilla_percusion.py CASERON ABANICO percusion_recomendada.json sa
 Variables: EXCLUIR=17,18  FUENTE=1.2"""
 import sys, os, json
 AQUI = os.path.dirname(os.path.abspath(__file__))
-CAS, AB, RJ, OUT = sys.argv[1:5]; SIN_B = len(sys.argv) > 5 and sys.argv[5] == "sin_barrenos"
+CAS, AB, RJ, OUT = sys.argv[1:5]; MODO = sys.argv[5] if len(sys.argv) > 5 else ""; SIN_B = MODO in ("sin_barrenos", "limpia"); LIMPIA = MODO == "limpia"
 os.environ.setdefault("FUENTE", "1.2")
 src = open(os.path.join(AQUI, "fig_seccion_abanico.py"), encoding="utf-8").read()
 sys.argv = ["fig_seccion_abanico.py", "fresco", CAS, AB, "pep", OUT, "todo"]
@@ -53,9 +53,9 @@ else:
         vis = (X > umin - M + 2) & (X < umax + M - 2) & (Z > zmin - M + 2) & (Z < zmax + M - 2)
         if not vis.any(): continue
         X, Z = X[vis], Z[vis]; j = np.argmin((X - X.mean()) ** 2 + (Z - Z.mean()) ** 2)
-        ax.text(X[j], Z[j], f"{NOM_L.get(l, l).split(' (')[0]}\nPP {dec(PPREC[l])} bar", ha="center", va="center",
+        ax.text(X[j], Z[j], NOM_L.get(l, l) if LIMPIA else f"{NOM_L.get(l, l).split(' (')[0]}\nPP {dec(PPREC[l])} bar", ha="center", va="center",
                 fontsize=10.5 * K, weight="bold", color="#262626", zorder=7,
-                bbox=dict(fc="white", ec=COLPP[PPREC[l]], lw=2, alpha=0.9, pad=0.4))
+                bbox=dict(fc="white", ec="#404040" if LIMPIA else COLPP[PPREC[l]], lw=1.5 if LIMPIA else 2, alpha=0.9, pad=0.4))
 ax.set_xlim(umin - M, umax + M); ax.set_ylim(zmin - M, zmax + M); ax.set_aspect("equal", adjustable="box")
 ax.set_xlabel("Distancia [m]"); ax.set_ylabel("Cota [m]"); ax.grid(True, color="#E6E6E6", lw=0.6); ax.set_axisbelow(True)
 _pts = ["Norte", "Noreste", "Este", "Sureste", "Sur", "Suroeste", "Oeste", "Noroeste"]
@@ -71,10 +71,12 @@ if not SIN_B:
     hand += [Line2D([], [], marker="o", ls="", mfc="white", mec="#262626", label="Tramo con más de un dominio (PP más baja)"),
              Line2D([], [], marker="s", color="#404040", ls="", label="Collar del barreno")]
 ax.legend(handles=hand, loc="upper center", bbox_to_anchor=(0.5, -0.11), ncol=2, fontsize=9 * K)
-ax.set_title(("PP recomendada por tramo de 5 m" if not SIN_B else "PP recomendada por dominio") + f" · {CAS} · abanico {AB}",
+if not LIMPIA: ax.set_title(("PP recomendada por tramo de 5 m" if not SIN_B else "PP recomendada por dominio") + f" · {CAS} · abanico {AB}",
              loc="left", fontsize=12 * K, color="#262626", weight="bold")
 
 # ── panel derecho ──
+if LIMPIA:
+    fig.savefig(OUT, dpi=250, bbox_inches="tight", facecolor="white"); print("OK", OUT); sys.exit(0)
 fig.set_size_inches(22, 12.5)
 ax.set_position([0.04, 0.22, 0.50, 0.72])
 a1 = fig.add_axes([0.62, 0.69, 0.35, 0.25]); a2 = fig.add_axes([0.62, 0.43, 0.35, 0.20]); at = fig.add_axes([0.58, 0.02, 0.41, 0.36]); at.axis("off")
