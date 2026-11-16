@@ -6,7 +6,7 @@ Uso: python3 cartilla_percusion.py CASERON ABANICO percusion_recomendada.json sa
 Variables: EXCLUIR=17,18  FUENTE=1.2"""
 import sys, os, json
 AQUI = os.path.dirname(os.path.abspath(__file__))
-CAS, AB, RJ, OUT = sys.argv[1:5]; MODO = sys.argv[5] if len(sys.argv) > 5 else ""; SIN_B = MODO in ("sin_barrenos", "limpia"); LIMPIA = MODO == "limpia"
+CAS, AB, RJ, OUT = sys.argv[1:5]; MODO = sys.argv[5] if len(sys.argv) > 5 else ""; SIN_B = MODO in ("sin_barrenos", "limpia"); LIMPIA = MODO == "limpia"; SECCION = MODO == "seccion"
 os.environ.setdefault("FUENTE", "1.2")
 src = open(os.path.join(AQUI, "fig_seccion_abanico.py"), encoding="utf-8").read()
 sys.argv = ["fig_seccion_abanico.py", "fresco", CAS, AB, "pep", OUT, "todo"]
@@ -31,7 +31,7 @@ COLPP = {v: PAL[i % len(PAL)] for i, v in enumerate(vals)}
 quien = {v: ", ".join(nom(l) for l in lit_sec if PPREC[l] == v) for v in vals}
 
 # ── tramos de 5 m: PP recomendada = la más baja entre los dominios del tramo ──
-mixtos = []
+mixtos = []; TR = {}
 if not SIN_B:
     for w in ws:
         pts = sorted(w.points, key=lambda p: p.largo)
@@ -45,6 +45,7 @@ if not SIN_B:
             pp = min(PPREC[l] for l in lits)
             seg = Q[k[0]:k[-1] + 2] if k[-1] + 1 < len(Q) else Q[k[0]:k[-1] + 1]
             ax.plot(seg[:, 0], seg[:, 1], "-", color=COLPP.get(pp, "#808080"), lw=3.2 * K, solid_capstyle="butt", zorder=4)
+            TR.setdefault(pp, []).append(seg.mean(0))
             if len(lits) > 1:
                 mid = Q[k[len(k) // 2]]; mixtos.append(mid)
         ax.plot(Q[0, 0], Q[0, 1], "s", color="#404040", ms=4, zorder=5)
@@ -74,7 +75,7 @@ c_ = lambda v, _p=None: (f"{v:.6f}".rstrip("0").rstrip(".") or "0").replace(".",
 ax.xaxis.set_major_formatter(FuncFormatter(c_)); ax.yaxis.set_major_formatter(FuncFormatter(c_))
 hand = list(leg)
 if not SIN_B:
-    hand += [Line2D([], [], color=COLPP[v], lw=5, label=f"PP {dec(v)} bar ({quien[v]})") for v in vals]
+    if not SECCION: hand += [Line2D([], [], color=COLPP[v], lw=5, label=f"PP {dec(v)} bar ({quien[v]})") for v in vals]
     hand += [Line2D([], [], marker="o", ls="", mfc="white", mec="#262626", label="Tramo con más de un dominio (PP más baja)"),
              Line2D([], [], marker="s", color="#404040", ls="", label="Collar del barreno")]
 ax.legend(handles=hand, loc="upper center", bbox_to_anchor=(0.5, -0.11), ncol=2, fontsize=9 * K)
@@ -82,6 +83,17 @@ if not LIMPIA: ax.set_title(("PP recomendada por tramo de 5 m" if not SIN_B else
              loc="left", fontsize=12 * K, color="#262626", weight="bold")
 
 # ── panel derecho ──
+if SECCION:
+    # leyenda interna de la PP recomendada, en la zona vacía bajo los collares
+    ax.set_title("", loc="left")
+    ext = ax.get_legend()
+    ax.set_ylim(zmin - M - 14, zmax + M)              # espacio libre bajo los collares para la leyenda
+    hpp = [Line2D([], [], color=COLPP[v], lw=6, label=f"PP {dec(v)} bar — " + quien[v].replace(", ", "\n" + " " * 26)) for v in vals]
+    lg = ax.legend(handles=hpp, loc="lower right", fontsize=9 * K, frameon=True, framealpha=0.95, edgecolor="#404040",
+                   title="PP recomendada (tramos de 5 m)", title_fontproperties={"weight": "bold", "size": 9.5 * K})
+    ax.add_artist(lg)
+    if ext is not None: ax.add_artist(ext)
+    fig.savefig(OUT, dpi=250, bbox_inches="tight", facecolor="white"); print("OK", OUT); sys.exit(0)
 if LIMPIA:
     fig.savefig(OUT, dpi=250, bbox_inches="tight", facecolor="white"); print("OK", OUT); sys.exit(0)
 fig.set_size_inches(22, 15)
