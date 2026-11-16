@@ -43,7 +43,8 @@ if VAR == "di" and GWZ == "fresco":
     gw.aplicar_limpieza_estandar()
     gw.create_di_variant("calibrada_RQD_5m", _fin["pesos"], window=_fin["window"], threshold=_fin["umbral"])
     gw.activar_di("calibrada_RQD_5m"); gw.compute_di()
-plt.rcParams.update({"font.family": "Carlito", "font.size": 11, "axes.edgecolor": "#BFBFBF",
+K = float(os.environ.get("FUENTE", "1"))   # 1 = tesis; 1,5 = presentación
+plt.rcParams.update({"font.family": "Carlito", "font.size": 11 * K, "axes.edgecolor": "#BFBFBF",
                      "axes.labelcolor": "#404040", "xtick.color": "#595959", "ytick.color": "#595959",
                      "legend.frameon": False})
 ws = [w for w in gw.wells.values() if (w.caseron or gw.caseron_de_pozo(w)) == CAS and gw._abanico_de_pozo(w) == AB]
@@ -127,7 +128,7 @@ for nm, L in gw.layers.items():
         mm = S.mean(1); vis = (mm[:, 0] > umin - M + 1) & (mm[:, 0] < umax + M - 1) & (mm[:, 1] < zmax + M - 2) & (mm[:, 1] > zmin - M + 1)
         if not vis.any(): continue
         p = mm[vis][np.argmax(mm[vis][:, 1])]
-        ax.text(p[0], p[1] + 1.2, nom, color=col, fontsize=9, ha="center", va="bottom", weight="bold", zorder=6,
+        ax.text(p[0], p[1] + 1.2, nom, color=col, fontsize=9 * K, ha="center", va="bottom", weight="bold", zorder=6,
                 bbox=dict(fc="white", ec="none", alpha=0.75, pad=0.6))
         key = ("e", e)
         if key not in vistas:
@@ -153,7 +154,7 @@ for w in ws:
             v = getattr(p, cfg[0])
             xs.append(q[0]); ys.append(q[1]); vs.append(v if np.isfinite(v) else cfg[3] * 10)
     ax.plot(Q[0, 0], Q[0, 1], "s", color="#404040", ms=4, zorder=5)
-    ax.text(Q[-1, 0], Q[-1, 1], " " + w.hole_id + ("*" if w.hole_id in APROX else "") + " ", fontsize=8.5,
+    ax.text(Q[-1, 0], Q[-1, 1], " " + w.hole_id + ("*" if w.hole_id in APROX else "") + " ", fontsize=8.5 * K,
             color="#404040", ha="left" if Q[-1, 0] >= Q[0, 0] else "right", va="center", zorder=6)
 if VAR == "di":
     from matplotlib.colors import TwoSlopeNorm
@@ -173,21 +174,21 @@ else:
     sc = ax.scatter(xs, ys, c=vs, s=7, cmap=cfg[4], vmin=cfg[2], vmax=cfg[3], zorder=4, lw=0)
     cb = fig.colorbar(sc, ax=ax, shrink=0.75, pad=0.015, extend="both"); cb.set_label(cfg[1])
 ax.set_xlim(umin - M, umax + M); ax.set_ylim(zmin - M, zmax + M); ax.set_aspect("equal", adjustable="box")
-ax.set_xlabel("Distancia a lo largo de la sección [m]"); ax.set_ylabel("Cota [m]")
+ax.set_xlabel("Distancia a lo largo de la sección [m]" if K <= 1 else "Distancia [m]"); ax.set_ylabel("Cota [m]")
 # Dirección de cada extremo de la sección: el eje horizontal crece hacia h
 # (con componente Este ≥ 0); el extremo izquierdo mira hacia el lado opuesto.
 _pts = ["Norte", "Noreste", "Este", "Sureste", "Sur", "Suroeste", "Oeste", "Noroeste"]
 _dir = lambda az_: _pts[int(((az_ + 22.5) % 360) // 45)]
 _az_der = np.degrees(np.arctan2(h[0], h[1])) % 360
-ax.annotate("← " + _dir(_az_der + 180), xy=(0.0, -0.062), xycoords="axes fraction", ha="left", va="top",
-            fontsize=11, fontweight="bold", color="#404040")
-ax.annotate(_dir(_az_der) + " →", xy=(1.0, -0.062), xycoords="axes fraction", ha="right", va="top",
-            fontsize=11, fontweight="bold", color="#404040")
+ax.annotate("← " + _dir(_az_der + 180), xy=(0.0, -0.062 - 0.03 * (K - 1)), xycoords="axes fraction", ha="left", va="top",
+            fontsize=11 * K, fontweight="bold", color="#404040")
+ax.annotate(_dir(_az_der) + " →", xy=(1.0, -0.062 - 0.03 * (K - 1)), xycoords="axes fraction", ha="right", va="top",
+            fontsize=11 * K, fontweight="bold", color="#404040")
 ax.grid(True, color="#E6E6E6", lw=0.6); ax.set_axisbelow(True)
 ax.legend(handles=leg + [Line2D([], [], marker="s", color="#404040", ls="", ms=5, label="Collar del barreno")]
           + ([Line2D([], [], ls="", label="* posición aproximada (largo a 6 % del DQ)")] if APROX else [])
           + ([Line2D([], [], marker="o", color="#D0D0D0", ls="", ms=4, label="Sin DI (registro filtrado)")] if VAR == "di" else []),
-          loc="upper center", bbox_to_anchor=(0.5, -0.09), ncol=3, fontsize=9.5)
+          loc="upper center", bbox_to_anchor=(0.5, -0.09 - 0.045 * (K - 1)), ncol=3 if K <= 1 else 2, fontsize=9.5 * (K if K <= 1 else 0.9 * K))
 c_ = lambda v, _p=None: (f"{v:.6f}".rstrip("0").rstrip(".") or "0").replace(".", ",")
 ax.xaxis.set_major_formatter(FuncFormatter(c_)); ax.yaxis.set_major_formatter(FuncFormatter(c_))
 fig.tight_layout(); fig.savefig(OUT, dpi=300, bbox_inches="tight", facecolor="white")
