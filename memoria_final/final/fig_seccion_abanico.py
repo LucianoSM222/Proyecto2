@@ -174,6 +174,15 @@ else:
     cb = fig.colorbar(sc, ax=ax, shrink=0.75, pad=0.015, extend="both"); cb.set_label(cfg[1])
 ax.set_xlim(umin - M, umax + M); ax.set_ylim(zmin - M, zmax + M); ax.set_aspect("equal", adjustable="box")
 ax.set_xlabel("Distancia a lo largo de la sección [m]"); ax.set_ylabel("Cota [m]")
+# Dirección de cada extremo de la sección: el eje horizontal crece hacia h
+# (con componente Este ≥ 0); el extremo izquierdo mira hacia el lado opuesto.
+_pts = ["Norte", "Noreste", "Este", "Sureste", "Sur", "Suroeste", "Oeste", "Noroeste"]
+_dir = lambda az_: _pts[int(((az_ + 22.5) % 360) // 45)]
+_az_der = np.degrees(np.arctan2(h[0], h[1])) % 360
+ax.annotate("← " + _dir(_az_der + 180), xy=(0.0, -0.062), xycoords="axes fraction", ha="left", va="top",
+            fontsize=11, fontweight="bold", color="#404040")
+ax.annotate(_dir(_az_der) + " →", xy=(1.0, -0.062), xycoords="axes fraction", ha="right", va="top",
+            fontsize=11, fontweight="bold", color="#404040")
 ax.grid(True, color="#E6E6E6", lw=0.6); ax.set_axisbelow(True)
 ax.legend(handles=leg + [Line2D([], [], marker="s", color="#404040", ls="", ms=5, label="Collar del barreno")]
           + ([Line2D([], [], ls="", label="* posición aproximada (largo a 6 % del DQ)")] if APROX else [])
