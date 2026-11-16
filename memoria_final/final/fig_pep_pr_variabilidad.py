@@ -41,16 +41,14 @@ NOM = {"Kpcls": "Lavas superiores (Kpcls)", "Brecha_mixta": "Brecha mixta", "Bht
 dec = lambda x, n=1: f"{x:.{n}f}".replace(".", ","); mil = lambda n: f"{int(n):,}".replace(",", ".")
 c_ = FuncFormatter(lambda v, _p=None: (f"{v:.6f}".rstrip("0").rstrip(".") or "0").replace(".", ","))
 LITS = sorted(ANC, key=lambda l: ANC[l]); sz = lambda n: 8 * np.log10(n) ** 2
-lim = {k: (min(f[k2] for f in F), max(f[k3] for f in F)) for k, k2, k3 in (("pep", "q1", "q3"), ("pr", "pr", "pr"), ("cv", "cv", "cv"))}
+lim = {k: (min(f[k2] for f in F), max(f[k3] for f in F)) for k, k2, k3 in (("pep", "pep", "pep"), ("pr", "pr", "pr"), ("cv", "cv", "cv"))}
 for clase, nom_c in (("continua", f"Roca continua (DI ≤ {dec(UMB, 0)})"), ("discontinua", f"Roca discontinua (DI > {dec(UMB, 0)})")):
     fig, (a1, a2, a3) = plt.subplots(1, 3, figsize=(19, 5.8))
-    a2.axhspan(PR_LO, PR_HI, color="#70AD47", alpha=0.15, lw=0)
     resumen = []
     for li in LITS:
         ee = sorted([f for f in F if f["clase"] == clase and f["lito"] == li], key=lambda f: f["pp"])
         if not ee: continue
         c = COL[li]; x = [f["pp"] for f in ee]; s = [sz(f["n"]) for f in ee]
-        a1.fill_between(x, [f["q1"] for f in ee], [f["q3"] for f in ee], color=c, alpha=0.12, lw=0)
         for ax, k in ((a1, "pep"), (a2, "pr"), (a3, "cv")):
             ax.plot(x, [f[k] for f in ee], "-", color=c, lw=1.4, label=f"{NOM[li]} — {dec(ANC[li])} MPa" if ax is a1 else None)
             ax.scatter(x, [f[k] for f in ee], s=s, color=c, edgecolor="white", lw=0.6, alpha=0.9, zorder=4)
@@ -58,18 +56,15 @@ for clase, nom_c in (("continua", f"Roca continua (DI ≤ {dec(UMB, 0)})"), ("di
         if cand:
             b = min(cand, key=lambda f: f["cv"])
             for ax, k in ((a1, "pep"), (a2, "pr"), (a3, "cv")):
-                ax.scatter([b["pp"]], [b[k]], marker="*", s=420, color=c, edgecolor="black", lw=1, zorder=6)
+                pass
             resumen.append(f"{NOM[li].split(' (')[0]}: {mil(b['pp'])} bar (CV {dec(b['cv'])} %)")
         else:
             resumen.append(f"{NOM[li].split(' (')[0]}: sin intervalo con PR 1,0–1,2")
-    a1.set_ylabel("PEP mediana [bar·min/m]\n(banda: rango intercuartil)"); a2.set_ylabel("PR mediana [m/min]")
+    a1.set_ylabel("PEP mediana [bar·min/m]"); a2.set_ylabel("PR mediana [m/min]")
     a3.set_ylabel("Variabilidad interna de la PEP\nCV = desv. est. / media [%]")
     for ax, k in ((a1, "pep"), (a2, "pr"), (a3, "cv")):
         lo, hi = lim[k]; pad = 0.05 * (hi - lo); ax.set_ylim(lo - pad, hi + pad)
         ax.set_xlabel("PP [bar] (intervalos de 10 bar)"); ax.xaxis.set_major_formatter(c_); ax.yaxis.set_major_formatter(c_)
-    a2.text(0.02, 0.97, "PR objetivo 1,0–1,2 m/min", transform=a2.transAxes, va="top", fontsize=9.5, color="#38761D")
-    a3.text(0.98, 0.97, "Estrella = PP óptima: PR en 1,0–1,2 y menor CV de PEP\n" + "\n".join(resumen), transform=a3.transAxes,
-            ha="right", va="top", fontsize=9, color="#262626", bbox=dict(fc="white", ec="#BFBFBF", alpha=0.9))
     h_, l_ = a1.get_legend_handles_labels()
     for nn in (100, 1000, 10000, 100000):
         h_.append(plt.scatter([], [], s=sz(nn), color="#A5A5A5", edgecolor="white")); l_.append(f"{mil(nn)} registros")
