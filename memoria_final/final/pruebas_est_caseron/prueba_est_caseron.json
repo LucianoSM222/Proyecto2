@@ -1,0 +1,132 @@
+{
+ "por_barreno_vigente": {
+  "pesos": {
+   "pp": 0.22117940867896185,
+   "pr": 0.20950564789787324,
+   "pd": 0.02053799012498788,
+   "pf": 0.548776953298177
+  },
+  "pr": {
+   "PCC_0042": {
+    "precision": 35.1,
+    "recall": 92.4,
+    "zonas": 1438,
+    "cruces": 327
+   },
+   "PCC_1541": {
+    "precision": 57.2,
+    "recall": 91.3,
+    "zonas": 1200,
+    "cruces": 415
+   },
+   "PCS_1043": {
+    "precision": 56.2,
+    "recall": 84.4,
+    "zonas": 1221,
+    "cruces": 591
+   }
+  },
+  "pct_discontinua": 18.12,
+  "pct_por_barreno": {
+   "p10": 10.8,
+   "mediana": 17.5,
+   "p90": 29.0,
+   "min": 3.5,
+   "max": 43.0
+  },
+  "pct_por_caseron": {
+   "PCC_0042": 15.2,
+   "PCC_1541": 27.5,
+   "PCS_1043": 15.0,
+   "PCS_1059": 18.4
+  }
+ },
+ "caseron_pesos_vigentes": {
+  "pesos": {
+   "pp": 0.22117940867896185,
+   "pr": 0.20950564789787324,
+   "pd": 0.02053799012498788,
+   "pf": 0.548776953298177
+  },
+  "pr": {
+   "PCC_0042": {
+    "precision": 35.1,
+    "recall": 79.2,
+    "zonas": 1069,
+    "cruces": 327
+   },
+   "PCC_1541": {
+    "precision": 52.1,
+    "recall": 77.3,
+    "zonas": 899,
+    "cruces": 415
+   },
+   "PCS_1043": {
+    "precision": 56.0,
+    "recall": 75.1,
+    "zonas": 984,
+    "cruces": 591
+   }
+  },
+  "pct_discontinua": 16.02,
+  "pct_por_barreno": {
+   "p10": 3.0,
+   "mediana": 12.7,
+   "p90": 36.9,
+   "min": 0.0,
+   "max": 81.9
+  },
+  "pct_por_caseron": {
+   "PCC_0042": 14.1,
+   "PCC_1541": 21.4,
+   "PCS_1043": 12.9,
+   "PCS_1059": 18.5
+  }
+ },
+ "caseron_recalibrado": {
+  "pesos": {
+   "pp": 0.11,
+   "pr": 0.0409,
+   "pd": 0.0193,
+   "pf": 0.8298
+  },
+  "rho_ajuste": 0.2059,
+  "rho_validacion": 0.1568,
+  "n_pares": 33,
+  "veredicto": "GENERALIZA DÉBILMENTE: ajuste +0.206, validación +0.157. Hay señal que sobrevive al sondaje dejado fuera, pero no alcanza para usar el DI calibrado como estimador de RQD.",
+  "pr": {
+   "PCC_0042": {
+    "precision": 37.4,
+    "recall": 66.7,
+    "zonas": 886,
+    "cruces": 327
+   },
+   "PCC_1541": {
+    "precision": 51.2,
+    "recall": 65.5,
+    "zonas": 764,
+    "cruces": 415
+   },
+   "PCS_1043": {
+    "precision": 58.3,
+    "recall": 70.9,
+    "zonas": 876,
+    "cruces": 591
+   }
+  },
+  "pct_discontinua": 15.72,
+  "pct_por_barreno": {
+   "p10": 1.5,
+   "mediana": 11.0,
+   "p90": 40.6,
+   "min": 0.0,
+   "max": 85.0
+  },
+  "pct_por_caseron": {
+   "PCC_0042": 11.4,
+   "PCC_1541": 29.2,
+   "PCS_1043": 9.9,
+   "PCS_1059": 18.1
+  }
+ }
+}

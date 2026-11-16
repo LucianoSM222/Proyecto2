@@ -1,0 +1,19 @@
+# ANÁLISIS DE CONCORDANCIA, NO VALIDACIÓN. La malla no es verdad terreno: es una interpolación construida desde los sondajes, restringida junto al sondaje e hipótesis progresivamente más débil al alejarse. Un desacuerdo no es un error del MWD hasta demostrar cuál de los dos falla. Terminología: modelo geológico informado por MWD.
+# fuente de contraste: sondajes
+# generado: 2026-08-26 00:17
+seccion,clave,valor,n
+C.3 concordancia vs distancia,0.06-0.65 m,0.0,79
+C.3 concordancia vs distancia,0.65-1.23 m,0.0,789
+C.3 concordancia vs distancia,1.23-1.82 m,0.0,1700
+C.3 concordancia vs distancia,1.82-2.41 m,0.0043,2540
+C.3 concordancia vs distancia,2.41-3.0 m,0.023,3699
+C.3 concordancia vs distancia,pendiente,0.017375,8807
+C.4 desacuerdo,cerca del borde,0.0,8
+C.4 desacuerdo,interior macizo,8.0,8
+C.5 desfase de contactos,media,-0.174,410
+C.5 desfase de contactos,mediana,-0.193,410
+C.5 desfase de contactos,desviacion,3.049,410
+C.5 desfase de contactos,sesgo,0.009,410
+C.6 confusión,concordancia global,0.0109,8807
+C.6 confusión,concordancia Bht,1.0,96
+C.6 confusión,concordancia Kfa,0.0,8711

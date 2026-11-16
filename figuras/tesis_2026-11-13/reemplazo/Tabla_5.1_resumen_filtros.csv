@@ -1,0 +1,9 @@
+﻿Etapa;Filtro;Registros excluidos;Registros restantes
+Carga;Registros MWD de 928 barrenos;—;982.420
+Antes del DI;Emboquillado (meseta de PP);75.104;907.316
+;Cambio de barra (detención y 2 registros siguientes);31.255;876.061
+;Equipo sin perforar (PR = 0, PP < 90, FP < 20, FLP > 10, PR > 10);14.114;861.947
+;Continuidad del registro (salto > 2,95 cm);1.123;860.824
+;Registros sin DI calculable;3;860.821 (serie filtrada)
+Solo entrenamiento;PR, RP, DP o PP fuera del rango del equipo;24.939;835.885 (entrenables)
+Discontinuidad;DI > 1,0;145.465;690.420 (entrenamiento)

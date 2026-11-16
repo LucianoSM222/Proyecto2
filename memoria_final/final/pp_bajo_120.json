@@ -1,0 +1,165 @@
+{
+ "grupos": {
+  "normal": {
+   "n": 177312,
+   "n_pozos": 887,
+   "pct_top10_pozos": 7.4,
+   "por_caseron": {
+    "PCC_0042": 52.2,
+    "PCC_1541": 15.2,
+    "PCS_1043": 27.5,
+    "PCS_1059": 5.0
+   },
+   "por_litologia": {
+    "Bht": 36.4,
+    "Brecha_mixta": 6.9,
+    "Kpcli": 49.7,
+    "Kpcls": 7.0
+   },
+   "largo_mediana_m": 11.511,
+   "pct_2_a_4m": 13.9,
+   "pct_ultimo_metro": 4.6,
+   "pos_relativa_mediana": 0.502,
+   "pct_ascendentes": 97.2,
+   "inclinacion_mediana_deg": 73.051,
+   "medianas": {
+    "pp": 179.118,
+    "pa": 69.229,
+    "pr": 49.969,
+    "pd": 99.403,
+    "pf": 7.412,
+    "rop": 0.832,
+    "pep": 353.886
+   },
+   "pct_con_DI_alto_a_0_5m": 52.3,
+   "top_pozos": [
+    [
+     "PCC_0042_PR03_TH_P55_H10",
+     1411
+    ],
+    [
+     "PCC_0042_PR01_TH_P20_H16",
+     1331
+    ],
+    [
+     "PCC_0042_PR01_TH_P20_H19",
+     1315
+    ],
+    [
+     "PCC_0042_PR01_TH_P20_H15",
+     1312
+    ],
+    [
+     "PCS_1043_AUX2_HU9",
+     1300
+    ],
+    [
+     "PCC_0042_PR01_TH_P20_H12",
+     1296
+    ],
+    [
+     "PCS_1043_PR01_TH_P07_H4",
+     1290
+    ],
+    [
+     "PCS_1043_AUX1_HU6",
+     1272
+    ],
+    [
+     "PCC_0042_PR01_TH_P20_H11",
+     1272
+    ],
+    [
+     "PCC_0042_PR01_TH_P20_H14",
+     1271
+    ]
+   ]
+  },
+  "bajo": {
+   "n": 3767,
+   "n_pozos": 428,
+   "pct_top10_pozos": 32.2,
+   "por_caseron": {
+    "PCC_0042": 25.9,
+    "PCC_1541": 22.9,
+    "PCS_1043": 48.7,
+    "PCS_1059": 2.5
+   },
+   "por_litologia": {
+    "Bht": 51.0,
+    "Brecha_mixta": 5.3,
+    "Kpcli": 30.4,
+    "Kpcls": 13.2
+   },
+   "largo_mediana_m": 9.868,
+   "pct_2_a_4m": 19.9,
+   "pct_ultimo_metro": 4.3,
+   "pos_relativa_mediana": 0.448,
+   "pct_ascendentes": 98.2,
+   "inclinacion_mediana_deg": 77.781,
+   "medianas": {
+    "pp": 114.383,
+    "pa": 57.352,
+    "pr": 47.401,
+    "pd": 73.509,
+    "pf": 7.071,
+    "rop": 0.705,
+    "pep": 312.746
+   },
+   "pct_con_DI_alto_a_0_5m": 60.3,
+   "top_pozos": [
+    [
+     "PCS_1043_PR01_TH_P01_H8",
+     177
+    ],
+    [
+     "PCC_1541_PR01_TH_P30_H10",
+     176
+    ],
+    [
+     "PCC_0042_PR04_TH_P356_H8",
+     166
+    ],
+    [
+     "PCS_1043_PR01_TH_P24_H9",
+     162
+    ],
+    [
+     "PCS_1043_AUX1_H4",
+     131
+    ],
+    [
+     "PCC_0042_PR01_TH_P29_H9",
+     105
+    ],
+    [
+     "PCS_1043_CL01_TH_P105_H12",
+     101
+    ],
+    [
+     "PCS_1043_PR01_TH_P01_H13",
+     69
+    ],
+    [
+     "PCS_1043_CL01_TH_P105_HU21",
+     64
+    ],
+    [
+     "PCS_1043_PR01_TH_P01_HU9",
+     61
+    ]
+   ]
+  }
+ },
+ "rachas": {
+  "n_rachas": 2875,
+  "mediana_registros": 1.0,
+  "pct_registros_en_rachas_ge_50": 0.0,
+  "pct_registros_en_rachas_le_3": 90.1
+ },
+ "pozos": {
+  "pozos_con_bajo": 428,
+  "pozos_mayoria_bajo_(>50%)": 0,
+  "registros_bajo_en_pozos_mayoria_bajo_pct": 0.0
+ }
+}

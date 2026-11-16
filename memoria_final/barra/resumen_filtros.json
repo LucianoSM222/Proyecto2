@@ -1,0 +1,89 @@
+{
+ "total": 982420,
+ "conteo": {
+  "emboquillado": 75104,
+  "serie_di": 860821,
+  "entrenable": 835882,
+  "continuidad": 1123,
+  "equipo": 14114,
+  "barra_detencion": 11070,
+  "barra_margen": 20185,
+  "roca": 24939,
+  "sin_di": 3
+ },
+ "equipo_detalle": {
+  "PR > 10": 65,
+  "PP < 90": 5246,
+  "PR = 0": 5997,
+  "FLP > 10": 2642,
+  "FP < 20": 164
+ },
+ "roca_detalle": {
+  "PR sobre": 23217,
+  "RP sobre": 518,
+  "PR bajo": 106,
+  "DP sobre": 69,
+  "RP bajo": 1090,
+  "PP sobre": 4,
+  "DP bajo": 2
+ },
+ "pozos_cortos": [
+  "PCS_1043_AUX2_HU8",
+  "PCC_0042_PR01_TH_P26_H8",
+  "PCC_0042_PR01_TH_P27_H7",
+  "PCC_0042_PR01_TH_P50_H3",
+  "PCC_0042_PR04_TH_P354_H2",
+  "PCS_1059_PR01_P201_HU20",
+  "PCS_1059_PR01_P204_H8",
+  "PCS_1059_PR01_P204_H9",
+  "PCC_1541_PR01_TH_P09_HU5"
+ ],
+ "emboquillado": {
+  "corte_mediano_m": 1.496,
+  "corte_medio_m": 1.922462377317339,
+  "corte_p_max_m": 30.333,
+  "pozos_meseta": 917,
+  "pozos_respaldo": 11,
+  "histograma_m": {
+   "0.0-0.5": 275,
+   "0.5-1.0": 99,
+   "1.0-1.5": 85,
+   "1.5-2.0": 93,
+   "2.0-2.5": 225,
+   "2.5-3.0": 33,
+   "3.0-3.5": 20,
+   "3.5-4.0": 25,
+   "4.0-4.5": 8,
+   "4.5-5.0": 3,
+   "5.0-5.5": 8,
+   "5.5-6.0": 8
+  }
+ },
+ "limites": {
+  "PR": [
+   0.1,
+   1.5
+  ],
+  "PP": [
+   90.0,
+   230.0
+  ],
+  "FP": [
+   20.0,
+   150.0
+  ],
+  "DP": [
+   25.0,
+   150.0
+  ],
+  "RP": [
+   30.0,
+   80.0
+  ],
+  "FLP": [
+   2.0,
+   10.0
+  ]
+ },
+ "entrenables_app": 835885
+}

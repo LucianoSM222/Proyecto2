@@ -1,0 +1,46 @@
+{
+ "status": "ok",
+ "metodo": "ml",
+ "mae_mpa": 58.6,
+ "rmse_mpa": 62.7,
+ "mae_interpolacion": 58.6,
+ "n_extrapolados": 0,
+ "n_litologias": 4,
+ "pliegues": [
+  {
+   "litologia": "Bht",
+   "ucs_real": 128.1,
+   "ucs_predicho": 159.3,
+   "error_mpa": 31.2,
+   "motivo": "entrenado sobre 60.000 de 477.545 filas"
+  },
+  {
+   "litologia": "Brecha_mixta",
+   "ucs_real": 111.5,
+   "ucs_predicho": 167.1,
+   "error_mpa": 55.6,
+   "motivo": "entrenado sobre 60.000 de 674.306 filas"
+  },
+  {
+   "litologia": "Kpcli",
+   "ucs_real": 180.0,
+   "ucs_predicho": 125.7,
+   "error_mpa": 54.3,
+   "motivo": "entrenado sobre 60.000 de 277.860 filas"
+  },
+  {
+   "litologia": "Kpcls",
+   "ucs_real": 60.0,
+   "ucs_predicho": 153.4,
+   "error_mpa": 93.4,
+   "motivo": "entrenado sobre 60.000 de 641.219 filas"
+  }
+ ],
+ "anclas": {
+  "Bht": 128.1,
+  "Brecha_mixta": 111.5,
+  "Kpcli": 180.0,
+  "Kpcls": 60.0
+ },
+ "spearman": -0.4
+}

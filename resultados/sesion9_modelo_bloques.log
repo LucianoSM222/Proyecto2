@@ -1,0 +1,787 @@
+
+========================================================================
+  PCS_1043
+========================================================================
+  archivos: 54 DQ · 477 MW · 13 DXF
+  — mallas —
+  — pozos —
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro 1: el collar se desplaza 755089 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18), se descarta DQPCS_1043_CL01_TH_P103_260203_0530.xml (2026-02-03T05:30:05). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro 2: el collar se desplaza 755089 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18), se descarta DQPCS_1043_CL01_TH_P103_260203_0530.xml (2026-02-03T05:30:05). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro 3: el collar se desplaza 755090 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18), se descarta DQPCS_1043_CL01_TH_P103_260203_0530.xml (2026-02-03T05:30:05). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro 4: el collar se desplaza 755091 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18), se descarta DQPCS_1043_CL01_TH_P103_260203_0530.xml (2026-02-03T05:30:05). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro 5: el collar se desplaza 755091 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18), se descarta DQPCS_1043_CL01_TH_P103_260203_0530.xml (2026-02-03T05:30:05). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro 6: el collar se desplaza 755091 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18), se descarta DQPCS_1043_CL01_TH_P103_260203_0530.xml (2026-02-03T05:30:05). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro 7: el collar se desplaza 755090 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18), se descarta DQPCS_1043_CL01_TH_P103_260203_0530.xml (2026-02-03T05:30:05). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro 8: el collar se desplaza 755091 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18), se descarta DQPCS_1043_CL01_TH_P103_260203_0530.xml (2026-02-03T05:30:05). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro 9: el collar se desplaza 755091 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18), se descarta DQPCS_1043_CL01_TH_P103_260203_0530.xml (2026-02-03T05:30:05). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro 10: el collar se desplaza 755092 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18), se descarta DQPCS_1043_CL01_TH_P103_260203_0530.xml (2026-02-03T05:30:05). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro 11: el collar se desplaza 755092 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18), se descarta DQPCS_1043_CL01_TH_P103_260203_0530.xml (2026-02-03T05:30:05). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro 12: el collar se desplaza 755099 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18), se descarta DQPCS_1043_CL01_TH_P103_260203_0530.xml (2026-02-03T05:30:05). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro 13: el collar se desplaza 755100 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18), se descarta DQPCS_1043_CL01_TH_P103_260203_0530.xml (2026-02-03T05:30:05). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro 14: el collar se desplaza 755100 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18), se descarta DQPCS_1043_CL01_TH_P103_260203_0530.xml (2026-02-03T05:30:05). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro 15: el collar se desplaza 755100 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18), se descarta DQPCS_1043_CL01_TH_P103_260203_0530.xml (2026-02-03T05:30:05). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro 16: el collar se desplaza 755100 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18), se descarta DQPCS_1043_CL01_TH_P103_260203_0530.xml (2026-02-03T05:30:05). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro 17: el collar se desplaza 755101 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18), se descarta DQPCS_1043_CL01_TH_P103_260203_0530.xml (2026-02-03T05:30:05). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro U5: el collar se desplaza 755091 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18), se descarta DQPCS_1043_CL01_TH_P103_260203_0530.xml (2026-02-03T05:30:05). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro 1: el collar se desplaza 755089 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260209_0038.xml (2026-02-09T00:38:41), se descarta DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCS_1043_CL01_TH_P103" tiro 2: el collar se desplaza 755090 m entre revisiones. Se usa DQPCS_1043_CL01_TH_P103_260209_0038.xml (2026-02-09T00:38:41), se descarta DQPCS_1043_CL01_TH_P103_260208_1636.xml (2026-02-08T16:36:18). Verifica cuál corresponde al pozo perforado.
+⚠  DQ: 32 desplazamiento(s) grande(s) más, no listados.
+⚠  DQ: 159 tiro(s) con coordenadas distintas entre revisiones del mismo plan (52 sobre 5 m). Gana siempre la revisión más reciente.
+⚠  MWD "MWPCS_1043_AUX1H1_260317_0331.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_AUX1H3_260317_0333.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_AUX1H4_260317_1026.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_AUX1H5_260317_1552.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_AUX1HU6_260317_0832.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_AUX2H1_260316_0233.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_AUX2H2_260316_0829.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_AUX2H4_260316_1135.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_AUX2HU6_260316_1102.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_AUX2HU7_260316_1643.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_AUX2HU8_260316_2249.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_AUX2HU9_260317_0044.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_AUX3H1_260315_0737.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_AUX3H2_260315_1240.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_AUX3H3_260315_1350.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_AUX3H4_260315_1756.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_AUX3H5_260316_0058.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_AUX3HU6_260315_2054.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_CL01_TH_P101H1_260123_1142.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_CL01_TH_P105H10_260125_0339.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_CL01_TH_P105H11_260125_1415.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_CL01_TH_P105H12_260126_0058.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_CL01_TH_P105H16_260125_0435.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_CL01_TH_P105H17_260125_0403.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_CL01_TH_P105H1_260124_1324.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_CL01_TH_P105H2_260125_1635.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_CL01_TH_P105H3_260125_1817.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_CL01_TH_P105H4_260124_1520.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_CL01_TH_P105H5_260124_1725.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_CL01_TH_P105H6_260124_1907.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_CL01_TH_P105H7_260124_2129.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_CL01_TH_P105H8_260124_2313.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_CL01_TH_P105H9_260125_0153.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_CL01_TH_P105HU18_260126_0243.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_CL01_TH_P105HU19_260126_0420.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_CL01_TH_P105HU20_260126_0539.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_CL01_TH_P105HU21_260127_1127.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P01H11_260124_0245.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P01H12_260124_0416.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P01H13_260124_0703.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P01H14_260124_0704.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P01H15_260124_0928.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P01H16_260124_1051.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P01H6_260123_1342.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P01H7_260123_1536.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P01H8_260123_1744.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P01HU17_260123_2253.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P01HU18_260124_0727.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P01HU18_260124_0833.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P01HU9_260123_2029.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P07H10_260314_0227.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P07H11_260314_0524.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P07H12_260314_0759.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P07H13_260314_1119.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P07H13_260323_1810.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P07H14_260318_0957.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P07H15_260318_1101.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P07H16_260313_1927.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P07H17_260312_1839.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P07H18_260313_0956.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P07H1_260318_0715.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P07H2_260313_1112.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P07H3_260313_1228.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P07H4_260313_1402.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P07H5_260313_1527.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P07H6_260313_1722.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P07H7_260313_1907.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P07H8_260313_2103.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P07H9_260314_0048.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P22H10_260620_1612.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P22H11_260620_1754.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P22H12_260620_2232.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P22H12_260620_2351.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P22H13_260621_0550.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P22H14_260621_0047.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P22H15_260620_1848.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P22H16_260620_1816.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P22H1_260620_0054.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P22H2_260620_0203.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P22H3_260620_0315.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P22H4_260620_0457.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P22H5_260620_0632.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P22H6_260620_0758.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P22H7_260620_0933.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P22H8_260620_1210.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P22H9_260620_1344.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P23H10_260622_0652.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P23H11_260622_0835.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P23H12_260622_1602.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P23H13_260622_1737.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P23H14_260622_1835.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P23H15_260622_1923.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P23H16_260622_2115.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P23H1_260621_0923.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P23H2_260621_1125.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P23H3_260621_1724.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P23H4_260621_1910.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P23H5_260621_2128.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P23H6_260621_2248.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P23H7_260622_0211.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P23H8_260622_0343.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P23H9_260622_0513.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P24H11_260623_1928.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P24H12_260623_2109.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P24H13_260623_2222.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P24H14_260623_2309.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P24H15_260623_2346.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P24H1_260622_2233.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P24H2_260623_0004.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P24H3_260623_0239.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P24H4_260623_0412.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P24H5_260623_0553.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P24H6_260623_0732.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P24H7_260623_1004.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P24H8_260623_1254.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P24H9_260623_1519.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P24HU10_260623_1750.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25H10_260624_1604.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25H11_260624_1735.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25H12_260624_1904.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25H13_260625_1018.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25H14_260624_2012.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25H1_260624_0128.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25H2_260624_0233.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25H3_260624_0351.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25H4_260624_0538.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25H5_260624_0705.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25H6_260624_0844.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25H7_260624_1113.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25H8_260624_1249.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25H9_260624_1423.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25HU15_260625_1108.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25HU16_260625_1332.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25HU17_260625_1756.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25HU18_260625_2125.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25HU19_260625_2234.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCS_1043_PR01_TH_P25HU20_260626_0019.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  globalCenter fijado: N=6958022.8 E=377541.6 Z=331.7
+⚠  MW "PCS_1043_AUX1_H3" plan="PCS_1043_AUX1" hole=3: AMBIGUO, ningún DQ cumple coherencia <5%. Descartados: PCS_1043_AUX1 (err 4393.9%), PCS_1043_AUX3 (err 1909.3%), PCS_1043_AUX2 (err 4301.3%), P101 (err 3569.6%), P01 (err 3705.7%), P105 (err 3526.3%), P103 (err 3918.7%), P104 (err 4345.9%), P107 (err 3770.2%), P02 (err 3704.8%), P03 (err 3860.1%), P06 (err 3705.0%), P07 (err 3705.7%), P08 (err 3667.3%), P09 (err 3864.4%), P10 (err 3843.6%), P11 (err 3899.9%), P12 (err 3922.2%), P13 (err 3858.6%), P14 (err 3831.9%), P15 (err 3712.3%), P16 (err 3709.9%), P17 (err 3715.3%), P18 (err 3689.0%), P19 (err 3740.7%), P20 (err 3705.7%), P21 (err 3705.7%), P22 (err 3778.3%), P23 (err 3834.9%), P24 (err 3748.4%), P25 (err 3796.1%). Posición ficticia; reasignar manualmente en el árbol de capas.
+⚠  MW "PCS_1043_AUX2_H4" plan="PCS_1043_AUX2" hole=4: AMBIGUO, ningún DQ cumple coherencia <5%. Descartados: PCS_1043_AUX2 (err 21385.8%), PCS_1043_AUX3 (err 21259.0%), PCS_1043_AUX1 (err 21348.5%), P101 (err 21312.1%), P01 (err 22432.6%), P105 (err 21169.1%), P103 (err 19921.0%), P107 (err 22254.4%), P02 (err 22546.4%), P03 (err 22386.6%), P06 (err 22429.3%), P07 (err 22432.3%), P08 (err 22165.1%), P09 (err 22442.4%), P10 (err 23082.3%), P11 (err 22663.2%), P12 (err 23380.4%), P13 (err 23111.3%), P14 (err 22463.8%), P15 (err 22463.8%), P16 (err 22394.2%), P17 (err 22356.3%), P18 (err 20646.9%), P19 (err 20768.3%), P20 (err 20210.3%), P21 (err 22065.2%), P22 (err 22683.3%), P23 (err 19685.5%), P24 (err 19078.5%), P25 (err 20216.8%). Posición ficticia; reasignar manualmente en el árbol de capas.
+⚠  MW "PCS_1043_AUX3_H1" plan="PCS_1043_AUX3" hole=1: AMBIGUO, ningún DQ cumple coherencia <5%. Descartados: PCS_1043_AUX3 (err 5.9%), PCS_1043_AUX2 (err 10.0%), PCS_1043_AUX1 (err 6.1%), P101 (err 28.7%), P01 (err 30.2%), P105 (err 30.4%), P102 (err 9.6%), P103 (err 24.4%), P104 (err 9.2%), P106 (err 9.8%), P107 (err 27.2%), P02 (err 25.4%), P03 (err 25.9%), P06 (err 30.2%), P07 (err 30.4%), P08 (err 18.1%), P09 (err 25.6%), P10 (err 30.1%), P11 (err 23.7%), P12 (err 23.2%), P13 (err 25.0%), P14 (err 25.9%), P15 (err 30.0%), P16 (err 29.2%), P17 (err 30.4%), P18 (err 29.1%), P19 (err 25.4%), P20 (err 30.2%), P21 (err 26.2%), P22 (err 26.4%), P23 (err 24.8%), P24 (err 23.5%), P25 (err 24.7%). Posición ficticia; reasignar manualmente en el árbol de capas.
+⚠  MW "PCS_1043_CL01_TH_P101_H1" plan="PCS_1043_CL01_TH_P101" hole=1: AMBIGUO, ningún DQ cumple coherencia <5%. Descartados: P101 (err 1309.6%), P105 (err 1276.3%), P102 (err 2067.0%), P103 (err 1394.6%), P104 (err 2058.4%), P106 (err 2071.5%), P107 (err 1340.1%), P01 (err 1280.1%), P02 (err 1374.9%), P03 (err 1365.6%), P06 (err 1279.6%), P07 (err 1275.4%), PCS_1043_AUX3 (err 1993.8%), PCS_1043_AUX2 (err 2075.0%), PCS_1043_AUX1 (err 1998.8%), P08 (err 1519.4%), P09 (err 1370.5%), P10 (err 1281.2%), P11 (err 1409.6%), P12 (err 1419.5%), P13 (err 1383.6%), P14 (err 1364.3%), P15 (err 1283.9%), P16 (err 1299.3%), P17 (err 1276.7%), P18 (err 1301.3%), P19 (err 1375.4%), P20 (err 1280.1%), P21 (err 1360.1%), P22 (err 1355.9%), P23 (err 1386.6%), P24 (err 1412.3%), P25 (err 1389.7%). Posición ficticia; reasignar manualmente en el árbol de capas.
+⚠  MW "PCS_1043_CL01_TH_P105_H1" plan="PCS_1043_CL01_TH_P105" hole=1: AMBIGUO, ningún DQ cumple coherencia <5%. Descartados: P105 (err 3546.6%), P101 (err 3634.8%), P102 (err 5641.9%), P103 (err 3860.2%), P104 (err 5619.1%), P106 (err 5653.8%), P107 (err 3715.6%), P01 (err 3556.7%), P02 (err 3808.0%), P03 (err 3783.2%), P06 (err 3555.4%), P07 (err 3544.3%), PCS_1043_AUX3 (err 5447.9%), PCS_1043_AUX2 (err 5662.9%), PCS_1043_AUX1 (err 5461.1%), P08 (err 4191.0%), P09 (err 3796.2%), P10 (err 3559.8%), P11 (err 3899.9%), P12 (err 3926.0%), P13 (err 3831.0%), P14 (err 3779.8%), P15 (err 3566.8%), P16 (err 3607.7%), P17 (err 3547.7%), P18 (err 3612.9%), P19 (err 3809.2%), P20 (err 3556.7%), P21 (err 3768.7%), P22 (err 3757.5%), P23 (err 3838.9%), P24 (err 3906.9%), P25 (err 3847.1%). Posición ficticia; reasignar manualmente en el árbol de capas.
+⚠  MW "PCS_1043_PR01_TH_P01_H14" plan="PCS_1043_PR01_TH_P01" hole=14: AMBIGUO, ningún DQ cumple coherencia <5%. Descartados: P01 (err 25573.5%), P02 (err 26767.0%), P03 (err 26938.1%), P06 (err 25566.4%), P07 (err 25568.0%), P08 (err 25117.2%), P09 (err 25572.6%), P10 (err 25590.2%), P11 (err 26439.0%), P12 (err 26585.6%), P13 (err 26704.6%), P14 (err 26930.8%), P15 (err 24615.0%), P16 (err 24186.8%), P17 (err 24454.5%), P18 (err 25669.9%), P19 (err 25821.5%), P20 (err 25790.2%), P21 (err 27677.5%), P22 (err 25410.6%), P23 (err 25718.8%), P24 (err 24605.4%), P25 (err 26819.5%), P101 (err 43993.1%), P105 (err 38599.0%), P103 (err 38809.8%), P107 (err 46497.2%). Posición ficticia; reasignar manualmente en el árbol de capas.
+⚠  MW "PCS_1043_PR01_TH_P07_H11" plan="PCS_1043_PR01_TH_P07" hole=11: AMBIGUO, ningún DQ cumple coherencia <5%. Descartados: P07 (err 9.9%), P01 (err 9.9%), P02 (err 12.2%), P03 (err 13.2%), P06 (err 9.9%), P08 (err 7.5%), P09 (err 11.9%), P10 (err 10.0%), P11 (err 12.3%), P12 (err 13.5%), P13 (err 13.0%), P14 (err 10.7%), P15 (err 10.1%), P16 (err 7.5%), P17 (err 7.5%), P18 (err 10.1%), P19 (err 8.0%), P20 (err 9.6%), P21 (err 9.9%), P22 (err 10.0%), P23 (err 7.6%), P24 (err 9.9%), P25 (err 9.2%), P101 (err 15.9%), P105 (err 16.2%), P103 (err 19.9%), P107 (err 18.4%). Posición ficticia; reasignar manualmente en el árbol de capas.
+⚠  MW "PCS_1043_PR01_TH_P07_H12" plan="PCS_1043_PR01_TH_P07" hole=12: usado DQ hermano "PCS_1043_PR01_TH_P18" (coherencia OK).
+⚠  MW "PCS_1043_PR01_TH_P07_H17" plan="PCS_1043_PR01_TH_P07" hole=17: AMBIGUO, ningún DQ cumple coherencia <5%. Descartados: P07 (err 416.1%), P101 (err 175.4%), P105 (err 14.3%), P103 (err 5.1%), P107 (err 188.0%). Posición ficticia; reasignar manualmente en el árbol de capas.
+⚠  MW "PCS_1043_PR01_TH_P07_H5" plan="PCS_1043_PR01_TH_P07" hole=5: usado DQ hermano "PCS_1043_PR01_TH_P16" (coherencia OK).
+⚠  MW "PCS_1043_PR01_TH_P25_H14" plan="PCS_1043_PR01_TH_P25" hole=14: usado DQ hermano "PCS_1043_PR01_TH_P20" (coherencia OK).
+⚠  MW "PCS_1043_PR01_TH_P25_HU15" plan="PCS_1043_PR01_TH_P25" hole=U15: AMBIGUO, ningún DQ cumple coherencia <5%. Descartados: P25 (err 73.9%). Posición ficticia; reasignar manualmente en el árbol de capas.
+     DQ: 54 archivos → 33 planes, 498 tiros · 159 con coordenadas distintas entre revisiones ⚠
+     MW: 134 pozos. 162.882 puntos
+     match: {'matched': 122, 'fallback': 3, 'ambiguous': 9, 'no_dq': 0}
+     (0.3s mallas + 3.8s XML)
+
+========================================================================
+  PCC_0042
+========================================================================
+  archivos: 107 DQ · 454 MW · 3 DXF
+  — mallas —
+  — pozos —
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 1: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52), se descarta DQPCC_0042_PR01_TH_P51_260710_0934.xml (2026-07-10T09:34:40). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 2: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52), se descarta DQPCC_0042_PR01_TH_P51_260710_0934.xml (2026-07-10T09:34:40). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 3: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52), se descarta DQPCC_0042_PR01_TH_P51_260710_0934.xml (2026-07-10T09:34:40). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 4: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52), se descarta DQPCC_0042_PR01_TH_P51_260710_0934.xml (2026-07-10T09:34:40). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 5: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52), se descarta DQPCC_0042_PR01_TH_P51_260710_0934.xml (2026-07-10T09:34:40). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 6: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52), se descarta DQPCC_0042_PR01_TH_P51_260710_0934.xml (2026-07-10T09:34:40). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 7: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52), se descarta DQPCC_0042_PR01_TH_P51_260710_0934.xml (2026-07-10T09:34:40). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 8: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52), se descarta DQPCC_0042_PR01_TH_P51_260710_0934.xml (2026-07-10T09:34:40). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 9: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52), se descarta DQPCC_0042_PR01_TH_P51_260710_0934.xml (2026-07-10T09:34:40). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 10: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52), se descarta DQPCC_0042_PR01_TH_P51_260710_0934.xml (2026-07-10T09:34:40). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 11: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52), se descarta DQPCC_0042_PR01_TH_P51_260710_0934.xml (2026-07-10T09:34:40). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 12: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52), se descarta DQPCC_0042_PR01_TH_P51_260710_0934.xml (2026-07-10T09:34:40). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 13: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52), se descarta DQPCC_0042_PR01_TH_P51_260710_0934.xml (2026-07-10T09:34:40). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 14: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52), se descarta DQPCC_0042_PR01_TH_P51_260710_0934.xml (2026-07-10T09:34:40). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 15: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52), se descarta DQPCC_0042_PR01_TH_P51_260710_0934.xml (2026-07-10T09:34:40). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 16: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52), se descarta DQPCC_0042_PR01_TH_P51_260710_0934.xml (2026-07-10T09:34:40). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 17: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52), se descarta DQPCC_0042_PR01_TH_P51_260710_0934.xml (2026-07-10T09:34:40). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 18: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52), se descarta DQPCC_0042_PR01_TH_P51_260710_0934.xml (2026-07-10T09:34:40). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 19: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52), se descarta DQPCC_0042_PR01_TH_P51_260710_0934.xml (2026-07-10T09:34:40). Verifica cuál corresponde al pozo perforado.
+⚠  DQ "PCC_0042_PR01_TH_P51" tiro 1: el collar se desplaza 34.897 m entre revisiones. Se usa DQPCC_0042_PR01_TH_P51_260710_1026.xml (2026-07-10T10:26:21), se descarta DQPCC_0042_PR01_TH_P51_260710_1008.xml (2026-07-10T10:08:52). Verifica cuál corresponde al pozo perforado.
+⚠  DQ: 18 desplazamiento(s) grande(s) más, no listados.
+⚠  DQ: 214 tiro(s) con coordenadas distintas entre revisiones del mismo plan (38 sobre 5 m). Gana siempre la revisión más reciente.
+⚠  MWD "MWPCC_0042_PR01_TH_P20H10_260302_0403.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P20H11_260302_0549.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P20H12_260302_0806.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P20H13_260302_0954.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P20H14_260302_1204.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P20H15_260302_1401.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P20H16_260302_1614.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P20H17_260302_1858.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P20H18_260302_2333.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P20H19_260303_0130.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P20H20_260303_0256.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P20H21_260303_1819.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P20H22_260303_2113.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P20H8_260302_0136.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P20H9_260302_0243.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P21H10_260304_0503.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P21H11_260304_0735.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P21H12_260304_1019.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P21H13_260304_1205.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P21H14_260304_1424.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P21H15_260304_1644.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P21H16_260304_1850.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P21H17_260304_2102.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P21H18_260305_0244.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P21H19_260305_0426.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P21H20_260305_0556.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P21H21_260305_0044.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P21H22_260304_2342.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P21H9_260304_0341.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P22H10_260305_1743.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P22H11_260305_1932.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P22H12_260305_2112.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P22H13_260305_2324.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P22H14_260306_0132.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P22H15_260306_0742.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P22H16_260306_0916.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P22H17_260306_1234.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P22H18_260306_1409.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P22H19_260306_1545.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P22H20_260306_1711.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P22H22_260306_1922.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P22H8_260305_1453.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P22H9_260305_1602.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P22HU24_260306_2111.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P23H11_260307_0451.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P23H12_260307_0630.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P23H13_260307_0856.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P23H14_260307_1139.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P23H16_260307_1618.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P23H17_260307_1750.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P23H18_260307_1924.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P23H19_260307_2114.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P23H20_260307_2230.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P23H21_260307_2333.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P23H22_260308_0035.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P23H8_260307_0058.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P23H9_260307_0150.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P23HU24_260307_0318.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P24H10_260308_0857.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P24H11_260308_1048.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P24H12_260308_1439.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P24H13_260308_2258.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P24H14_260309_0247.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P24H15_260309_0421.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P24H16_260309_0600.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P24H18_260309_1110.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P24H19_260309_1649.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P24H21_260308_0741.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P24H22_260308_0639.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P24H8_260308_0214.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P24H9_260308_0359.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P24HU24_260308_1307.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P24HU25_260309_0111.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P25H10_260604_0640.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P25H11_260604_0512.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P25H12_260604_0344.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P25H15_260604_0019.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P25H2_260604_1201.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P25H3_260604_1310.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P25H4_260604_1441.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P25H5_260604_1616.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P25H6_260604_1809.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P25H7_260604_2139.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P25H8_260604_1116.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P25H9_260604_0846.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P25HU17_260603_2337.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P25HU18_260604_0216.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P26H1_260605_0032.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P26H2_260605_0224.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P26H3_260605_0442.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P26H4_260605_0639.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P26H6_260606_0244.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P26H7_260606_0432.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P26H9_260605_1637.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P27H2_260606_0955.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P27H3_260607_0239.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P27H4_260607_0614.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P27H5_260606_2356.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P27H7_260606_1339.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P27HU10_260606_0724.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P28H10_260608_1127.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P28H11_260608_1256.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P28H12_260608_1433.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P28H13_260608_1646.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P28H14_260608_1744.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P28H15_260607_1944.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P28H2_260607_0830.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P28H3_260607_1855.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P28H4_260607_2336.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P28H6_260608_0453.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P28H7_260608_0650.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P28H8_260607_1737.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P28HU17_260608_0149.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P28HU18_260608_0909.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P29H10_260609_1349.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P29H11_260609_1528.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P29H12_260609_1707.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P29H14_260612_0522.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P29H15_260612_0649.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P29H2_260608_2352.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P29H3_260609_0112.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P29H4_260609_0240.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P29H5_260609_0522.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P29H7_260609_0833.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P29H8_260314_2140.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P29H9_260315_0341.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P29HU17_260609_0655.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P31H10_260610_1344.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P31H11_260610_2247.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P31H12_260611_0109.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P31H13_260610_2108.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P31H14_260610_1744.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P31H15_260610_1613.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P31H16_260610_1515.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P31H3_260609_2240.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P31H4_260610_0030.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P31H5_260610_0207.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P31H6_260610_0340.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P31H7_260610_0532.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P31H8_260610_0735.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P31H9_260610_1147.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P32H10_260611_1810.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P32H11_260611_1937.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P32H12_260612_0409.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P32H13_260612_0221.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P32H14_260612_0044.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P32H15_260611_2325.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P32H16_260611_2108.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P32H2_260611_0448.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P32H3_260611_0645.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P32H4_260611_0826.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P32H5_260611_1028.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P32H7_260611_1354.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P32H8_260611_1516.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P32H9_260611_1642.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P32HU18_260611_1208.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P33H10_260612_1947.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P33H11_260612_2326.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P33H12_260613_0124.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P33H13_260613_0348.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P33H14_260613_1105.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P33H15_260613_0611.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P33H16_260613_0510.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P33H2_260612_0810.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P33H3_260612_0905.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P33H4_260612_1017.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P33H5_260612_1159.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P33H6_260612_1350.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P33H7_260612_1519.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P33H8_260612_1642.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P33H9_260612_1818.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P34H1_260817_1432.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P34H3_260817_2023.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P34H4_260817_2247.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P34H5_260818_0034.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P34H6_260818_0214.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P34H7_260818_0326.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P34H8_260818_0414.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P34H9_260818_0457.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P34HU11_260817_1806.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P35H1_260818_2347.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P35H2_260818_2117.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P35H3_260818_1906.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P35H4_260818_1710.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P35H5_260818_1541.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P35H6_260818_1359.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P35H7_260818_1002.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P35H8_260818_0907.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P35H9_260818_0725.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P35HU11_260818_1223.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P36H1_260819_0152.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P36H2_260819_0314.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P36H3_260819_0458.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P36H4_260819_0623.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P36H5_260819_1002.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P36H6_260819_1218.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P36H7_260819_1343.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P36H8_260819_1542.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P36H9_260819_1638.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR02_TH_P276H1_260613_1251.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR02_TH_P276H2_260614_0345.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR02_TH_P276HU5_260613_1557.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR02_TH_P276HU6_260613_2333.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR02_TH_P277H1_260614_0621.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR02_TH_P277H2_260614_1116.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P55H10_260311_1726.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P55H10_260312_0356.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P55H11_260311_2313.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P55H14_260311_1857.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P55H15_260311_2006.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P55H16_260311_2106.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P55H2_260311_0136.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P55H3_260311_0530.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P55H4_260311_0434.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P55H5_260311_0319.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P55H6_260311_0704.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P55H7_260311_0833.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P55H8_260311_1054.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P55H9_260311_1323.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P55HU17_260312_0101.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P55HU18_260312_0600.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P55HU19_260312_1341.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P56H10_260310_0453.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P56H11_260310_0706.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P56H12_260310_1426.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P56H13_260310_2011.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P56H14_260310_2140.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P56H15_260310_2253.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P56H16_260311_0007.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P56H5_260309_1912.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P56H6_260309_2055.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P56H7_260309_2257.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P56H8_260310_0057.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR03_TH_P56H9_260310_0254.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P351H3_260814_0156.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P351H4_260814_0343.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P351H5_260814_0536.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P352H3_260814_1701.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P352H4_260814_1852.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P352H5_260814_2143.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P353H3_260815_0458.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P353H4_260815_0748.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P353H5_260815_0936.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P354H6_260815_1349.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P354H7_260815_1643.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P354H7_260817_1021.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P354H8_260815_1850.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P355H6_260816_0052.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P355H7_260816_0216.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P355H8_260816_0335.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P356H6_260816_0608.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P356H7_260816_0804.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P356H8_260816_1036.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P357H6_260816_1405.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P357H7_260816_1540.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P357H8_260816_1730.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P358H2_260816_1911.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P358H3_260816_2031.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P358H4_260816_2213.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P359H1_260817_0035.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P359H2_260817_0149.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P360H1_260817_0304.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR04_TH_P360H2_260817_0405.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P43HU20_260711_0432.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P47H14_260710_1650.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P47H15_260711_0306.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P47H16_260711_0210.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P47H18_260710_1840.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P47HU17_260711_0111.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P48H10_260710_0622.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P48H11_260710_0531.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P48H12_260710_0452.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P48H13_260710_0410.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P48H14_260710_0333.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P48H15_260710_0253.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P48H16_260710_0208.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P48H17_260710_0122.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P48H18_260710_0031.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P48H19_260709_2358.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P48H1_260709_0130.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P48H2_260709_0218.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P48H3_260709_0438.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P48H6_260709_1604.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P48H7_260709_1915.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P48H8_260709_2346.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P48H9_260710_0934.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P48HU4_260709_0620.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P48HU5_260709_1040.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P49H10_260707_2159.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P49H11_260707_1854.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P49H12_260707_1651.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P49H13_260707_1605.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P49H14_260707_1508.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P49H15_260707_1410.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P49H16_260707_1310.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P49H17_260707_1214.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P49H18_260707_1105.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P49H19_260707_1034.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P49H1_260709_0108.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P49H3_260708_2351.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P49H4_260708_2156.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P49H6_260708_0523.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P49H7_260708_0315.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P49H8_260708_0107.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P49H9_260707_2320.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P49HU2_260709_0045.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P49HU5_260708_1743.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P50H10_260705_2254.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P50H11_260705_1908.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P50H12_260705_1826.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P50H13_260705_1751.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P50H14_260705_1713.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P50H15_260705_1634.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P50H16_260705_1407.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P50H17_260705_1315.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P50H18_260705_1219.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P50H19_260705_1154.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P50H2_260706_1412.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P50H3_260707_0919.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P50H4_260706_2218.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P50H5_260706_0820.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P50H6_260706_0617.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P50H7_260706_0343.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P50H8_260706_0141.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P50H9_260705_2355.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P51H10_260705_0441.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P51H11_260705_0547.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P51H12_260705_0634.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P51H13_260705_0757.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P51H17_260705_0912.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P51H18_260705_1104.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P51H19_260705_1036.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P51H2_260704_0332.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P51H3_260704_0459.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P51H4_260704_0728.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P51H5_260704_1204.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P51H6_260704_1538.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P51H7_260705_0025.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P51H8_260705_0221.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P51H9_260705_0344.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P51_1H1_260710_1142.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P51_1H2_260710_1231.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P51_1H3_260710_1547.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P52H1_260703_2144.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P52H2_260703_2252.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P52H3_260704_0013.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_0042_PR01_TH_P52H4_260704_0222.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MW "PCC_0042_PR01_TH_P20_H20" plan="PCC_0042_PR01_TH_P20" hole=20: AMBIGUO, ningún DQ cumple coherencia <5%. Descartados: P20 (err 82.6%), P21 (err 82.4%), P22 (err 83.5%), P23 (err 82.8%), P24 (err 79.4%). Posición ficticia; reasignar manualmente en el árbol de capas.
+⚠  MW "PCC_0042_PR01_TH_P21_H14" plan="PCC_0042_PR01_TH_P21" hole=14: usado DQ hermano "PCC_0042_PR01_TH_P32" (coherencia OK).
+⚠  MW "PCC_0042_PR01_TH_P22_H14" plan="PCC_0042_PR01_TH_P22" hole=14: usado DQ hermano "PCC_0042_PR01_TH_P21" (coherencia OK).
+⚠  MW "PCC_0042_PR01_TH_P26_H3" plan="PCC_0042_PR01_TH_P26" hole=3: usado DQ hermano "PCC_0042_PR01_TH_P27" (coherencia OK).
+⚠  MW "PCC_0042_PR01_TH_P26_H4" plan="PCC_0042_PR01_TH_P26" hole=4: usado DQ hermano "PCC_0042_PR01_TH_P28" (coherencia OK).
+⚠  MW "PCC_0042_PR01_TH_P26_H6" plan="PCC_0042_PR01_TH_P26" hole=6: usado DQ hermano "PCC_0042_PR01_TH_P25" (coherencia OK).
+⚠  MW "PCC_0042_PR01_TH_P26_H9" plan="PCC_0042_PR01_TH_P26" hole=9: usado DQ hermano "PCC_0042_PR01_TH_P35" (coherencia OK).
+⚠  MW "PCC_0042_PR01_TH_P27_H3" plan="PCC_0042_PR01_TH_P27" hole=3: AMBIGUO, ningún DQ cumple coherencia <5%. Descartados: P27 (err 5.9%), P20 (err 72.1%), P21 (err 71.0%), P22 (err 70.1%), P23 (err 71.2%), P24 (err 71.8%), P29 (err 21.4%), P25 (err 15.3%), P26 (err 10.8%), P28 (err 23.6%), P31 (err 31.7%), P32 (err 27.3%), P33 (err 26.7%), P51 (err 35.4%), P50 (err 34.1%), P49 (err 31.6%), P48 (err 32.1%), P51 (err 50.8%), P47 (err 32.6%), P43 (err 33.3%), P34 (err 16.9%), P35 (err 17.0%), P36 (err 17.2%), P57 (err 16.4%), P56 (err 16.4%), P55 (err 21.3%), P276 (err 84.9%), P277 (err 93.3%), P351 (err 17.3%), P352 (err 9.9%), P353 (err 17.1%), P354 (err 94.2%), P355 (err 94.9%), P356 (err 94.8%), P357 (err 95.6%), P358 (err 19.5%), P101 (err 23.4%), P105 (err 20.6%), P19 (err 24.7%), P01 (err 24.7%), P02 (err 24.9%), P03 (err 92.7%), P04 (err 26.3%), P05 (err 27.6%), P07 (err 27.5%), P17 (err 12.6%), P08 (err 27.5%), P10 (err 23.1%), P11 (err 21.6%), P12 (err 17.9%), P13 (err 7.4%), P18 (err 24.2%), P09 (err 25.8%), P14 (err 6.1%). Posición ficticia; reasignar manualmente en el árbol de capas.
+⚠  MW "PCC_0042_PR01_TH_P27_HU10" plan="PCC_0042_PR01_TH_P27" hole=U10: AMBIGUO, ningún DQ cumple coherencia <5%. Descartados: P27 (err 5.7%). Posición ficticia; reasignar manualmente en el árbol de capas.
+⚠  MW "PCC_0042_PR01_TH_P29_H5" plan="PCC_0042_PR01_TH_P29" hole=5: usado DQ hermano "PCC_0042_PR01_TH_P27" (coherencia OK).
+⚠  MW "PCC_0042_PR01_TH_P29_H8" plan="PCC_0042_PR01_TH_P29" hole=8: AMBIGUO, ningún DQ cumple coherencia <5%. Descartados: P29 (err 28.0%), P20 (err 34.4%), P21 (err 34.0%), P22 (err 34.1%), P23 (err 34.7%), P24 (err 37.2%), P25 (err 20.6%), P26 (err 27.3%), P27 (err 29.0%), P28 (err 23.9%), P31 (err 31.4%), P32 (err 32.8%), P33 (err 33.1%), P51 (err 15.7%), P50 (err 18.8%), P49 (err 18.4%), P48 (err 20.7%), P47 (err 21.8%), P43 (err 22.0%), P34 (err 11.9%), P35 (err 12.2%), P36 (err 12.1%), P57 (err 33.8%), P56 (err 33.8%), P55 (err 33.4%), P354 (err 23.3%), P355 (err 21.9%), P356 (err 15.0%), P357 (err 7.4%). Posición ficticia; reasignar manualmente en el árbol de capas.
+⚠  MW "PCC_0042_PR01_TH_P29_H9" plan="PCC_0042_PR01_TH_P29" hole=9: usado DQ hermano "PCC_0042_PR01_TH_P23" (coherencia OK).
+⚠  MW "PCC_0042_PR01_TH_P29_HU17" plan="PCC_0042_PR01_TH_P29" hole=U17: usado DQ hermano "PCC_0042_PR01_TH_P28" (coherencia OK).
+⚠  MW "PCC_0042_PR01_TH_P31_H4" plan="PCC_0042_PR01_TH_P31" hole=4: usado DQ hermano "PCC_0042_PR01_TH_P32" (coherencia OK).
+⚠  MW "PCC_0042_PR01_TH_P31_H5" plan="PCC_0042_PR01_TH_P31" hole=5: usado DQ hermano "PCC_0042_PR01_TH_P29" (coherencia OK).
+⚠  MW "PCC_0042_PR01_TH_P33_H5" plan="PCC_0042_PR01_TH_P33" hole=5: usado DQ hermano "PCC_0042_PR01_TH_P31" (coherencia OK).
+⚠  MW "PCC_0042_PR02_TH_P276_H1" plan="PCC_0042_PR02_TH_P276" hole=1: usado DQ hermano "PCC_0042_CL01_TH_P19" (coherencia OK).
+⚠  MW "PCC_0042_PR03_TH_P55_H11" plan="PCC_0042_PR03_TH_P55" hole=11: AMBIGUO, ningún DQ cumple coherencia <5%. Descartados: P55 (err 43.7%), P57 (err 29.7%), P56 (err 41.6%), P20 (err 46.4%), P21 (err 46.5%), P22 (err 45.8%), P23 (err 43.0%), P24 (err 19.4%), P29 (err 38.2%), P25 (err 34.5%), P28 (err 32.3%), P31 (err 41.6%), P32 (err 40.7%), P33 (err 41.3%), P51 (err 40.5%), P50 (err 38.9%), P49 (err 37.0%), P48 (err 37.5%), P47 (err 36.7%), P43 (err 37.1%). Posición ficticia; reasignar manualmente en el árbol de capas.
+⚠  MW "PCC_0042_PR03_TH_P56_H10" plan="PCC_0042_PR03_TH_P56" hole=10: usado DQ hermano "PCC_0042_PR03_TH_P55" (coherencia OK).
+⚠  MW "PCC_0042_PR04_TH_P359_H1" plan="PCC_0042_PR04_TH_P359" hole=1: usado DQ hermano "PCC_0042_CL01_TH_P17" (coherencia OK).
+⚠  MW "PCC_0042_PR04_TH_P359_H2" plan="PCC_0042_PR04_TH_P359" hole=2: usado DQ hermano "PCC_0042_PR04_TH_P358" (coherencia OK).
+⚠  MW "PCC_0042_PR04_TH_P360_H1" plan="PCC_0042_PR04_TH_P360" hole=1: usado DQ hermano "PCC_0042_CL01_TH_P19" (coherencia OK).
+⚠  MW "PCC_0042_PR04_TH_P360_H2" plan="PCC_0042_PR04_TH_P360" hole=2: usado DQ hermano "PCC_0042_CL01_TH_P19" (coherencia OK).
+⚠  MW "PCC_0042_PR01_TH_P48_HU5" plan="PCC_0042_PR01_TH_P48" hole=U5: AMBIGUO, ningún DQ cumple coherencia <5%. Descartados: P48 (err 55.4%), P49 (err 61.3%), P276 (err 113.5%), P03 (err 144.1%), P05 (err 139.9%), P17 (err 64.1%), P10 (err 8.5%), P12 (err 124.1%). Posición ficticia; reasignar manualmente en el árbol de capas.
+⚠  MW "PCC_0042_PR01_TH_P50_H5" plan="PCC_0042_PR01_TH_P50" hole=5: usado DQ hermano "PCC_0042_PR01_TH_P51" (coherencia OK).
+⚠  MW "PCC_0042_PR01_TH_P52_H1" plan="PCC_0042_PR01_TH_P52" hole=1: AMBIGUO, ningún DQ cumple coherencia <5%. Descartados: P51 (err 49.8%), P50 (err 36.0%), P51 (err 265.0%), P20 (err 46.8%), P21 (err 42.9%), P22 (err 42.7%), P23 (err 45.6%), P24 (err 47.6%), P29 (err 169.4%), P25 (err 162.5%), P26 (err 598.5%), P27 (err 603.7%), P28 (err 141.6%), P31 (err 190.4%), P32 (err 179.6%), P33 (err 188.6%), P49 (err 31.1%), P48 (err 28.7%), P47 (err 26.4%), P43 (err 35.8%), P34 (err 655.9%), P35 (err 649.8%), P36 (err 648.8%), P57 (err 224.6%), P56 (err 224.4%), P55 (err 224.9%), P276 (err 549.8%), P277 (err 604.0%), P351 (err 40.4%), P352 (err 44.1%), P353 (err 41.2%), P354 (err 58.2%), P355 (err 61.0%), P356 (err 55.7%), P357 (err 65.3%), P358 (err 17.0%), P101 (err 705.2%), P102 (err 704.7%), P103 (err 53.5%), P104 (err 697.6%), P105 (err 690.8%), P19 (err 339.9%), P01 (err 710.9%), P02 (err 715.3%), P03 (err 670.1%), P04 (err 695.8%), P05 (err 699.9%), P07 (err 710.7%), P17 (err 394.0%), P08 (err 700.6%), P10 (err 717.5%), P11 (err 684.1%), P12 (err 670.1%), P13 (err 593.1%), P18 (err 370.2%), P09 (err 643.0%), P14 (err 576.4%). Posición ficticia; reasignar manualmente en el árbol de capas.
+⚠  MW "PCC_0042_PR01_TH_P52_H2" plan="PCC_0042_PR01_TH_P52" hole=2: usado DQ hermano "PCC_0042_PR01_TH_P29" (coherencia OK).
+⚠  MW "PCC_0042_PR01_TH_P52_H3" plan="PCC_0042_PR01_TH_P52" hole=3: usado DQ hermano "PCC_0042_PR01_TH_P31" (coherencia OK).
+⚠  MW "PCC_0042_PR01_TH_P52_H4" plan="PCC_0042_PR01_TH_P52" hole=4: usado DQ hermano "PCC_0042_PR01_TH_P49" (coherencia OK).
+     DQ: 107 archivos → 57 planes, 604 tiros · 214 con coordenadas distintas entre revisiones ⚠
+     MW: 345 pozos. 454.471 puntos
+     match: {'matched': 316, 'fallback': 22, 'ambiguous': 7, 'no_dq': 0}
+     (0.2s mallas + 13.8s XML)
+
+========================================================================
+  PCC_1541
+========================================================================
+  archivos: 37 DQ · 140 MW · 7 DXF
+  — mallas —
+  — pozos —
+⚠  DQ: 33 tiro(s) con coordenadas distintas entre revisiones del mismo plan (0 sobre 5 m). Gana siempre la revisión más reciente.
+⚠  MWD "MWPCC_1541_CL01_TH_P101H1_260713_1043.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P101H2_260713_1151.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P101H3_260713_1304.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P102H1_260713_1801.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P102H2_260713_1640.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P103H1_260713_1417.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P103H2_260713_1530.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P104H1_260714_0148.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P104H2_260714_0324.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P105H1_260713_2038.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P105H2_260713_2152.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P105H3_260714_0030.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P11H1_260725_0457.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P11H2_260725_0602.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P11H3_260725_1126.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P11H4_260725_1719.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P11H5_260725_1830.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P11H6_260726_0123.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P11H7_260726_0240.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P11H8_260726_0410.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P12H1_260726_0514.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P12H2_260726_0616.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P12H3_260726_0714.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_CL01_TH_P12H4_260726_1233.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P01H1_260713_0931.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P01H2_260713_0542.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P01H3_260713_0436.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P01H4_260713_0330.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P02H1_260713_0217.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P02H2_260713_0040.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P02H3_260712_2334.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P02H4_260712_2226.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P03H1_260712_1634.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P03H2_260712_1737.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P03H3_260712_2113.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P04H1_260712_1524.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P04H2_260712_1418.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P04H3_260712_1316.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P04H4_260712_1212.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P05H1_260712_0656.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P05H2_260712_0811.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P05H3_260712_0949.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P05H4_260712_1101.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P06H1_260712_0150.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P06H2_260712_0253.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P06H3_260712_0355.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P06H4_260712_0530.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P07H1_260710_1925.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P07H2_260710_2038.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P07H3_260710_2350.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P07H4_260710_2245.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P08H1_260711_1352.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P08H2_260711_1218.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P08HU5_260711_0947.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P09H2_260711_1615.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P09H3_260711_1726.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P09HU6_260711_1848.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P10H1_260711_2016.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P10H2_260711_2144.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P10H3_260711_2320.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P10H4_260712_0038.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P28H10_260714_1331.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P28H11_260714_1450.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P28H12_260714_1603.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P28H13_260714_1734.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P28H1_260714_0424.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P28H2_260714_0509.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P28H3_260714_0600.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P28H4_260714_0647.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P28H5_260714_0736.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P28H6_260714_0824.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P28H7_260714_0945.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P28H8_260714_1051.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P28H9_260714_1156.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P29H10_260715_0612.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P29H11_260715_0716.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P29H13_260715_1218.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P29H3_260714_1912.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P29H4_260714_1954.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P29H6_260714_2136.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P29H7_260714_2235.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P29H9_260715_0508.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P29HU20_260715_0410.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P29HU21_260715_1041.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P30H10_260715_2337.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P30H12_260716_0032.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P30H5_260715_1523.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P30H6_260715_1610.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P30H7_260715_1659.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P30H8_260715_1749.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P30H9_260715_1852.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P31H10_260717_0625.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P31H11_260717_1106.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P31H7_260716_0522.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P31H8_260716_0622.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P31H9_260716_1644.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P33H10_260722_1625.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P33H7_260722_1325.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P33H8_260722_1415.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_PR01_TH_P33H9_260722_1538.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P17H10_260725_0036.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P17H2_260724_1402.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P17H3_260724_1652.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P17H4_260724_1801.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P17H5_260724_1912.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P17H6_260724_2023.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P17H7_260724_2146.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P17H8_260725_0305.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P17H9_260725_0201.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P18H10_260724_0452.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P18H2_260723_2341.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P18H3_260724_0242.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P18H4_260724_0351.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P18H5_260724_0558.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P18H6_260724_0723.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P18H7_260724_0841.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P18H8_260724_0930.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P18H9_260724_1217.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P19H10_260723_2101.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P19H2_260723_0103.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P19H4_260723_0342.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P19H5_260723_0456.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P19H6_260723_0609.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P19H7_260723_0845.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P19H8_260723_1020.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P19H9_260723_1655.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P19HU17_260723_0236.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P21H1_260721_0453.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P21H2_260721_0153.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P22H1_260720_2002.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P22H2_260720_2158.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P22H3_260720_2255.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P23H1_260720_1552.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P23H2_260720_1655.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P24H1_260721_0611.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P24H2_260721_0919.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P25H1_260721_1232.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P25H2_260721_1316.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P26H1_260721_1624.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MWD "MWPCC_1541_TH_P26H2_260721_1711.xml": 1 campo(s) excedente(s) declarado(s) y descartado(s): OPT1. Se usan los 7 de la convención (LT | ROP | PP | FP | DP | RP | FLP).
+⚠  MW "PCC_1541_CL01_TH_P102_H1" plan="PCC_1541_CL01_TH_P102" hole=1: usado DQ hermano "PCC_1541_CL01_TH_P101" (coherencia OK).
+⚠  MW "PCC_1541_CL01_TH_P102_H2" plan="PCC_1541_CL01_TH_P102" hole=2: usado DQ hermano "PCC_1541_CL01_TH_P101" (coherencia OK).
+⚠  MW "PCC_1541_CL01_TH_P103_H1" plan="PCC_1541_CL01_TH_P103" hole=1: usado DQ hermano "PCC_1541_CL01_TH_P101" (coherencia OK).
+⚠  MW "PCC_1541_CL01_TH_P103_H2" plan="PCC_1541_CL01_TH_P103" hole=2: usado DQ hermano "PCC_1541_CL01_TH_P101" (coherencia OK).
+⚠  MW "PCC_1541_CL01_TH_P104_H1" plan="PCC_1541_CL01_TH_P104" hole=1: usado DQ hermano "PCC_1541_CL01_TH_P101" (coherencia OK).
+⚠  MW "PCC_1541_CL01_TH_P104_H2" plan="PCC_1541_CL01_TH_P104" hole=2: usado DQ hermano "PCC_1541_CL01_TH_P101" (coherencia OK).
+⚠  MW "PCC_1541_CL01_TH_P105_H1" plan="PCC_1541_CL01_TH_P105" hole=1: usado DQ hermano "PCC_1541_CL01_TH_P101" (coherencia OK).
+⚠  MW "PCC_1541_CL01_TH_P105_H2" plan="PCC_1541_CL01_TH_P105" hole=2: usado DQ hermano "PCC_1541_CL01_TH_P101" (coherencia OK).
+⚠  MW "PCC_1541_CL01_TH_P105_H3" plan="PCC_1541_CL01_TH_P105" hole=3: usado DQ hermano "PCC_1541_CL01_TH_P101" (coherencia OK).
+⚠  MW "PCC_1541_PR01_TH_P33_H10" plan="PCC_1541_PR01_TH_P33" hole=10: usado DQ hermano "PCC_1541_TH_P18" (coherencia OK).
+⚠  MW "PCC_1541_TH_P17_H4" plan="PCC_1541_TH_P17" hole=4: usado DQ hermano "PCC_1541_TH_P19" (coherencia OK).
+⚠  MW "PCC_1541_TH_P17_H6" plan="PCC_1541_TH_P17" hole=6: usado DQ hermano "PCC_1541_TH_P19" (coherencia OK).
+⚠  MW "PCC_1541_TH_P18_H8" plan="PCC_1541_TH_P18" hole=8: usado DQ hermano "PCC_1541_PR01_TH_P28" (coherencia OK).
+     DQ: 37 archivos → 29 planes, 255 tiros · 33 con coordenadas distintas entre revisiones ⚠
+     MW: 140 pozos. 164.524 puntos
+     match: {'matched': 127, 'fallback': 13, 'ambiguous': 0, 'no_dq': 0}
+     (0.1s mallas + 6.2s XML)
+⚠  DI "PCS_1043_AUX1_H3": 13 pts, mín=14.
+⚠  DI "PCS_1043_AUX2_H4": 9 pts, mín=14.
+⚠  DI "PCS_1043_PR01_TH_P01_H14": 3 pts, mín=14.
+pozos=619  mallas=23  (42.9s)
+entrenamiento: {'n_train': 399262, 'n_excl_disc': 31502, 'funnel': [{'etapa': 'total', 'label': 'Total de puntos MWD', 'quedan': 777126, 'perdidos': 0}, {'etapa': 'entrenable', 'label': 'Entrenable (emboquillado <2 m + filtros de limpieza)', 'quedan': 777126, 'perdidos': 0}, {'etapa': 'caseron_entrena', 'label': 'En un caserón que ENTRENA (todos los cargados)', 'quedan': 777126, 'perdidos': 0}, {'etapa': 'con_dominio', 'label': 'Con dominio asignado (dentro de alguna malla)', 'quedan': 437910, 'perdidos': 339216}, {'etapa': 'sin_ambiguedad', 'label': 'Sin ambigüedad de traslape (A.5)', 'quedan': 437910, 'perdidos': 0}, {'etapa': 'banda_ucs', 'label': 'Dominio con banda de UCS asignada', 'quedan': 430764, 'perdidos': 7146}, {'etapa': 'no_excluido', 'label': 'Atributo no excluido explícitamente (T1.5)', 'quedan': 430764, 'perdidos': 0}, {'etapa': 'rango_ucs', 'label': 'Etiqueta de UCS dentro de [0, 450] MPa', 'quedan': 430764, 'perdidos': 0}, {'etapa': 'roca_intacta', 'label': 'DI ≤ umbral (1.5) — roca intacta', 'quedan': 399262, 'perdidos': 31502}], 'n_excl_ambiguo': 0, 'n_compuestos': 0, 'n_anidamiento': 0, 'overlap_motivos': {}, 'r2_train': 0.247, 'rmse_train': 25.0, 'rmsea': 0.0396, 'cv_r2_mean': 0.189, 'cv_r2_std': 0.01, 'cv_n_grupos': 444, 'cv_warning': None, 'rmse_test': 34.7, 'overfit': 9.6, 'feat_imp': {'ROP': 0.0123, 'PP': 0.1139, 'AP': 0.0426, 'DP': 0.0268, 'RP': 0.093, 'FP': 0.1312, 'SE': 0.0143}}  (112.1s)
+
+========================================================================
+  9 — MODELO DE BLOQUES (IDW anisotrópico)
+========================================================================
+  status: ok  (55.2s)
+  bloque 2.5 m · IDW p=2 · anisotropía [1.0, 1.0, 3.0] · radio 7.5/2.5 m
+    caserón       bloques   vacíos     fuera  cobertura  encajonado (E×N×Z m)
+    PCC_0042        7.041   16.075 3.367.966      30.5%  [581.9. 955.3. 93.3]
+    PCC_1541        2.674    8.122     6.052      24.8%  [67.1. 63.9. 59.2]
+    PCS_1043        3.803   11.554    39.477      24.8%  [93.2. 95.1. 91.8]
+  muestras MWD con UCS: 777.126
+  bloques con valor : 13.518
+  bloques VACÍOS    : 35.751  (72.6% del volumen encajonado)
+  35751 bloque(s) quedaron VACÍOS por no reunir 3 muestra(s) dentro del elipsoide de búsqueda (7.5 m en planta, 2.5 m en cota). No se interpolan desde más lejos: un bloque sin soporte es información, no un hueco a rellenar. El encajonado se calcula POR CASERÓN: un encajonado único sobre caserones separados por kilómetros contaría el aire entre ellos y volvería la cobertura una cifra sin significado.
+
+  por banda ISRM (Clasificación ISRM de resistencia de la roca intacta (Brown, 1981). Criterio trazable, no percentiles de la muestra.):
+    banda               bloques          m³  UCS med   DI med  conf med
+    R5_muy_alta          13.518     211.219    142.2    0.689     0.246
+
+  cobertura del encajonado: 27.4%
+  Confianza = f_calidad × f_proximidad × f_soporte, los tres en [0, 1]. f_calidad es el inverso del pi_factor del atributo: incorpora la CALIDAD de la etiqueta, de modo que un dominio anclado en un ensayo del sitio y otro anclado en literatura no pueden salir con la misma confianza. f_proximidad decae con la distancia al dato más cercano. f_soporte crece con el número de muestras dentro del elipsoide.
+
+  CSV: /home/user/Proyecto2/resultados/sesion9_modelo_bloques.csv  (1.502.192 bytes)
+  DXF: /home/user/Proyecto2/resultados/sesion9_modelo_bloques.dxf  (20.1 MB)
+  total: 247.7s

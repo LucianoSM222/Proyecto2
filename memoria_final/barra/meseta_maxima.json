@@ -1,0 +1,177 @@
+{
+ "PP": {
+  "registros": 869842,
+  "pozos_con_meseta_5m": 719,
+  "meseta_mas_alta": [
+   {
+    "mediana_bar": 225.1,
+    "pozo": "PCS_1059_PR01_P204_H18",
+    "desde_m": 3.73
+   },
+   {
+    "mediana_bar": 225.1,
+    "pozo": "PCS_1059_PR01_P204_H17",
+    "desde_m": 3.8
+   },
+   {
+    "mediana_bar": 225.0,
+    "pozo": "PCS_1059_PR01_P205_H8",
+    "desde_m": 18.05
+   },
+   {
+    "mediana_bar": 225.0,
+    "pozo": "PCS_1059_PR01_P205_H7",
+    "desde_m": 5.48
+   },
+   {
+    "mediana_bar": 225.0,
+    "pozo": "PCS_1059_PR01_P205_H5",
+    "desde_m": 10.95
+   },
+   {
+    "mediana_bar": 225.0,
+    "pozo": "PCS_1059_PR01_P205_H2",
+    "desde_m": 12.8
+   },
+   {
+    "mediana_bar": 225.0,
+    "pozo": "PCS_1059_PR01_P204_H4",
+    "desde_m": 5.35
+   },
+   {
+    "mediana_bar": 225.0,
+    "pozo": "PCS_1059_PR01_P204_H3",
+    "desde_m": 7.64
+   }
+  ],
+  "meseta_mas_alta_por_pozo": {
+   "max": 225.1,
+   "p_mediana": 223.3
+  },
+  "pozos_con_meseta_sobre": {
+   "220": 435,
+   "225": 55,
+   "228": 0,
+   "230": 0,
+   "232": 0,
+   "235": 0
+  },
+  "registros_sobre": {
+   "220": [
+    365483,
+    42.02
+   ],
+   "225": [
+    99754,
+    11.47
+   ],
+   "228": [
+    78,
+    0.01
+   ],
+   "230": [
+    4,
+    0.0
+   ],
+   "232": [
+    0,
+    0.0
+   ],
+   "235": [
+    0,
+    0.0
+   ]
+  },
+  "maximo_registrado": 230.5
+ },
+ "RP": {
+  "registros": 869842,
+  "pozos_con_meseta_5m": 817,
+  "meseta_mas_alta": [
+   {
+    "mediana_bar": 81.0,
+    "pozo": "PCC_0042_PR01_TH_P21_H20",
+    "desde_m": 24.21
+   },
+   {
+    "mediana_bar": 75.5,
+    "pozo": "PCC_0042_PR01_TH_P26_H9",
+    "desde_m": 8.62
+   },
+   {
+    "mediana_bar": 73.1,
+    "pozo": "PCC_0042_PR01_TH_P22_H23",
+    "desde_m": 10.29
+   },
+   {
+    "mediana_bar": 72.4,
+    "pozo": "PCS_1043_CL01_TH_P105_H6",
+    "desde_m": 29.35
+   },
+   {
+    "mediana_bar": 72.0,
+    "pozo": "PCC_0042_PR03_TH_P56_H5",
+    "desde_m": 19.08
+   },
+   {
+    "mediana_bar": 71.6,
+    "pozo": "PCS_1043_CL01_TH_P105_H5",
+    "desde_m": 24.89
+   },
+   {
+    "mediana_bar": 71.3,
+    "pozo": "PCC_0042_PR01_TH_P22_H20",
+    "desde_m": 24.5
+   },
+   {
+    "mediana_bar": 71.2,
+    "pozo": "PCC_0042_PR01_TH_P23_H21",
+    "desde_m": 17.66
+   }
+  ],
+  "meseta_mas_alta_por_pozo": {
+   "max": 81.0,
+   "p_mediana": 48.7
+  },
+  "pozos_con_meseta_sobre": {
+   "60": 127,
+   "65": 57,
+   "70": 10,
+   "75": 2,
+   "80": 1,
+   "90": 0,
+   "100": 0
+  },
+  "registros_sobre": {
+   "60": [
+    109345,
+    12.57
+   ],
+   "65": [
+    41048,
+    4.72
+   ],
+   "70": [
+    8448,
+    0.97
+   ],
+   "75": [
+    1838,
+    0.21
+   ],
+   "80": [
+    578,
+    0.07
+   ],
+   "90": [
+    72,
+    0.01
+   ],
+   "100": [
+    21,
+    0.0
+   ]
+  },
+  "maximo_registrado": 142.6
+ }
+}

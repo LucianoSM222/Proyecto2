@@ -1,0 +1,11 @@
+﻿Grupo;Litología;Estructura;UCS ML media [MPa];DI medio;Registros MWD
+G2;Kpcli;—;165,5;0,620;395.040
+G1;Bht;—;138,5;0,712;192.611
+G45;Kpcls;—;134,9;0,898;59.665
+G4;Kpcli;—;155,0;1,256;45.050
+G12;Kpcli;—;137,4;0,641;35.561
+G14;Bht;FM;139,7;0,701;20.249
+G3;Brecha_mixta;—;153,7;0,636;17.683
+G8;Bht;—;169,1;0,550;14.324
+G5;Bht;—;147,4;1,239;12.303
+G25;Bht;ZF;159,9;0,697;8.013
